@@ -33,7 +33,7 @@ from typing import Optional
 
 from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
-from pyspark.sql.types import ArrayType, StringType
+from pyspark.sql.types import ArrayType, StringType, StructField, StructType
 
 
 # ---------------------------------------------------------------------------
@@ -90,7 +90,11 @@ def _validate_single_rule(rule_cfg: dict, schema_cols: set, section: str) -> Non
     if rule in {"not_null", "unique", "greater_than", "valid_date",
                 "less_than", "not_past"}:
         field = rule_cfg.get("field")
-        if field and field not in schema_cols:
+        if not field:
+            raise DQConfigurationError(
+                f"[{section}] rule {rule!r} requires a 'field' key"
+            )
+        if field not in schema_cols:
             raise DQConfigurationError(
                 f"[{section}] rule {rule!r} references field {field!r} "
                 f"which does not exist in the DataFrame schema. "
@@ -100,10 +104,15 @@ def _validate_single_rule(rule_cfg: dict, schema_cols: set, section: str) -> Non
     # date_gte — validate field AND value_type AND (if column) the value column
     if rule == "date_gte":
         field = rule_cfg.get("field")
-        if field and field not in schema_cols:
+        if not field:
+            raise DQConfigurationError(
+                f"[{section}] date_gte requires a 'field' key"
+            )
+        if field not in schema_cols:
             raise DQConfigurationError(
                 f"[{section}] date_gte references field {field!r} "
-                f"which does not exist in the DataFrame schema."
+                f"which does not exist in the DataFrame schema. "
+                f"Available: {sorted(schema_cols)}"
             )
         value_type = rule_cfg.get("value_type")
         if not value_type:
@@ -227,12 +236,10 @@ def evaluate_dq_rules(
     # -----------------------------------------------------------------------
     if df.isEmpty():
         # failing_df needs _dq_fail_reason; passing_df must not have it
-        from pyspark.sql.types import StructType, StructField
         fail_schema_fields = df.schema.fields + [
             StructField("_dq_fail_reason", ArrayType(StringType()), True)
         ]
-        from pyspark.sql.types import StructType as ST
-        fail_schema = ST(fail_schema_fields)
+        fail_schema = StructType(fail_schema_fields)
         empty_failing = df.sparkSession.createDataFrame([], schema=fail_schema)
         return df, empty_failing, []
 
@@ -260,7 +267,7 @@ def evaluate_dq_rules(
     # We'll use a row-index approach: add a monotonically_increasing_id,
     # collect failing row ids per rule, union them, then split.
 
-    df_with_id = df.withColumn("__row_id__", F.monotonically_increasing_id())
+    df_with_id = df.withColumn("__row_id__", F.monotonically_increasing_id()).cache()
 
     # Set of row IDs that fail at least one rule
     failing_id_sets: list[DataFrame] = []   # each: (__row_id__, __reason__)
@@ -354,7 +361,6 @@ def evaluate_dq_rules(
         # No hard-block rules defined (or all empty) — everything passes
         passing_df = df
         # failing_df is empty with extended schema
-        from pyspark.sql.types import StructType, StructField
         fail_schema = df.schema.add(
             StructField("_dq_fail_reason", ArrayType(StringType()), True)
         )
@@ -387,6 +393,8 @@ def evaluate_dq_rules(
             .join(failing_ids_only, on="__row_id__", how="left_anti")
             .drop("__row_id__")
         )
+
+    df_with_id.unpersist()
 
     # -----------------------------------------------------------------------
     # 5. Evaluate soft warns

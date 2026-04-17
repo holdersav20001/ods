@@ -184,8 +184,8 @@ def test_date_gte_column_hard_block(spark):
     passing_ids = [r["policy_id"] for r in passing_df.collect()]
     failing_ids = [r["policy_id"] for r in failing_df.collect()]
 
-    assert passing_ids == ["POL-001"]
-    assert failing_ids == ["POL-002"]
+    assert sorted(passing_ids) == ["POL-001"]
+    assert sorted(failing_ids) == ["POL-002"]
 
 
 # ---------------------------------------------------------------------------
