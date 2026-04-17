@@ -1,0 +1,200 @@
+# IMPORTANT: Run this stack from within the WSL2 filesystem (e.g. ~/aviva-ods),
+# NOT from a Windows path (/mnt/c/...). Bind mounts on Windows NTFS paths
+# cause 5-10x slower I/O through the WSL2 p9 layer, breaking Airflow's DAG scanner.
+
+version: "3.9"
+
+x-env-common: &env-common
+  env_file: .env
+
+x-airflow-common: &airflow-common
+  image: apache/airflow:2.9.1-python3.10
+  env_file: .env
+  environment:
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow_app:airflow@postgres:5432/airflow
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+    AIRFLOW__CORE__FERNET_KEY: "46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho="
+    DOCKER_HOST: unix:///var/run/docker.sock
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - /var/run/docker.sock:/var/run/docker.sock
+    - airflow-logs:/opt/airflow/logs
+  depends_on:
+    postgres:
+      condition: service_healthy
+
+services:
+  localstack:
+    image: localstack/localstack:3.4
+    ports:
+      - "4566:4566"
+    environment:
+      SERVICES: s3
+      DEFAULT_REGION: eu-west-1
+    volumes:
+      - ./scripts/localstack-init.sh:/etc/localstack/init/ready.d/init.sh
+      - localstack-data:/var/lib/localstack
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 15s
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  broker:
+    image: confluentinc/cp-kafka:7.6.0
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      # Split listeners: PLAINTEXT for inter-container, PLAINTEXT_HOST for host access
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://broker:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 15s
+      timeout: 10s
+      retries: 15
+      start_period: 30s
+
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.6.0
+    depends_on:
+      broker:
+        condition: service_healthy
+    ports:
+      - "8081:8081"
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: broker:29092
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/subjects"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  postgres:
+    image: postgres:15
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: ods_dev
+      POSTGRES_USER: ods
+      POSTGRES_PASSWORD: ods
+    command: >
+      postgres
+      -c max_connections=200
+      -c statement_timeout=30000
+    volumes:
+      - ./db/migrations:/docker-entrypoint-initdb.d
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ods -d ods_dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  airflow-init:
+    <<: *airflow-common
+    command: >
+      bash -c "
+        pip install --quiet apache-airflow-providers-docker apache-airflow-providers-postgres &&
+        airflow db migrate &&
+        airflow users create
+          --username admin --password admin
+          --firstname Admin --lastname User
+          --role Admin --email admin@local.dev || true
+      "
+    restart: "no"
+
+  airflow-webserver:
+    <<: *airflow-common
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    command: >
+      bash -c "pip install --quiet apache-airflow-providers-docker apache-airflow-providers-postgres && airflow webserver"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  airflow-scheduler:
+    <<: *airflow-common
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    command: >
+      bash -c "pip install --quiet apache-airflow-providers-docker apache-airflow-providers-postgres && airflow scheduler"
+    restart: on-failure
+    healthcheck:
+      test: ["CMD-SHELL", "airflow jobs check --job-type SchedulerJob --limit 5"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  glue:
+    build: ./glue
+    image: ods-glue:local
+    environment:
+      AWS_DEFAULT_REGION: eu-west-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      LOCALSTACK_ENDPOINT: http://localstack:4566
+      KAFKA_BOOTSTRAP_SERVERS: broker:29092
+      SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ods_dev
+      POSTGRES_USER: ods
+      POSTGRES_PASSWORD: ods
+      ENV: local
+    volumes:
+      - ./glue/jobs:/home/glue_user/workspace/jobs
+    # This service is pre-built but not run directly.
+    # Airflow's DockerOperator spawns it per-job with:
+    #   network_mode="ods-network"
+    # Ensure the image is built: docker compose build glue
+    entrypoint: ["echo", "ODS Glue image ready — use DockerOperator to invoke"]
+
+networks:
+  default:
+    name: ods-network
+
+volumes:
+  postgres-data:
+  localstack-data:
+  airflow-logs:
