@@ -15,7 +15,7 @@ x-airflow-common: &airflow-common
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow_app:airflow@postgres:5432/airflow
     AIRFLOW__CORE__LOAD_EXAMPLES: "false"
     AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
-    AIRFLOW__CORE__FERNET_KEY: "46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho="
+    AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
     DOCKER_HOST: unix:///var/run/docker.sock
   volumes:
     - ./dags:/opt/airflow/dags
@@ -49,7 +49,7 @@ services:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "2181"]
+      test: ["CMD-SHELL", "echo ruok | nc -w 2 localhost 2181 | grep -q imok"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -130,6 +130,11 @@ services:
           --firstname Admin --lastname User
           --role Admin --email admin@local.dev || true
       "
+    depends_on:
+      postgres:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
     restart: "no"
 
   airflow-webserver:
@@ -138,6 +143,8 @@ services:
       - "8080:8080"
     depends_on:
       postgres:
+        condition: service_healthy
+      localstack:
         condition: service_healthy
       airflow-init:
         condition: service_completed_successfully
@@ -154,6 +161,8 @@ services:
     <<: *airflow-common
     depends_on:
       postgres:
+        condition: service_healthy
+      localstack:
         condition: service_healthy
       airflow-init:
         condition: service_completed_successfully
