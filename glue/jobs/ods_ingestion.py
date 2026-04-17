@@ -141,9 +141,11 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int:
             run_id=run_id,
             domain=domain,
             dataset=dataset,
-            s3_input_path=s3_input_path,
+            job_name="ods_ingestion",
+            pipeline_type="ingestion",
+            source_path=s3_input_path,
             status="skipped",
-            message="File already in completed state — skipping.",
+            error_reason="File already in completed state — skipping.",
         )
         pg.close()
         return 0
@@ -163,7 +165,10 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int:
         run_id=run_id,
         domain=domain,
         dataset=dataset,
-        s3_input_path=s3_input_path,
+        job_name="ods_ingestion",
+        pipeline_type="ingestion",
+        source_path=s3_input_path,
+        business_date=business_date_str,
         status="started",
         config_version=config_version,
         config_snapshot=config_snapshot,
@@ -191,7 +196,10 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int:
         run_id=run_id,
         domain=domain,
         dataset=dataset,
-        s3_input_path=s3_input_path,
+        job_name="ods_ingestion",
+        pipeline_type="ingestion",
+        source_path=s3_input_path,
+        business_date=business_date_str,
         status="file_read",
         record_count=source_count,
     )
@@ -210,9 +218,12 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int:
             run_id=run_id,
             domain=domain,
             dataset=dataset,
-            s3_input_path=s3_input_path,
+            job_name="ods_ingestion",
+            pipeline_type="ingestion",
+            source_path=s3_input_path,
+            business_date=business_date_str,
             status="failed",
-            message=err_msg,
+            error_reason=err_msg,
         )
         set_file_state(pg, s3_input_path, run_id, "failed", error_reason=err_msg)
         pg.close()
@@ -227,7 +238,10 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int:
         run_id=run_id,
         domain=domain,
         dataset=dataset,
-        s3_input_path=s3_input_path,
+        job_name="ods_ingestion",
+        pipeline_type="ingestion",
+        source_path=s3_input_path,
+        business_date=business_date_str,
         status="schema_validated",
     )
 
@@ -253,16 +267,19 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int:
     # ------------------------------------------------------------------
     # Step 11 — Log dq_passed or dq_warned
     # ------------------------------------------------------------------
-    dq_status = "dq_warned" if warnings else "dq_passed"
+    dq_status = "dq_warned" if (warnings or failing_count > 0) else "dq_passed"
     write_job_log(
         pg,
         run_id=run_id,
         domain=domain,
         dataset=dataset,
-        s3_input_path=s3_input_path,
+        job_name="ods_ingestion",
+        pipeline_type="ingestion",
+        source_path=s3_input_path,
+        business_date=business_date_str,
         status=dq_status,
         record_count=failing_count,
-        message=json.dumps(warnings) if warnings else None,
+        error_reason=json.dumps(warnings) if warnings else None,
     )
 
     # ------------------------------------------------------------------
@@ -292,7 +309,10 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int:
         run_id=run_id,
         domain=domain,
         dataset=dataset,
-        s3_input_path=s3_input_path,
+        job_name="ods_ingestion",
+        pipeline_type="ingestion",
+        source_path=s3_input_path,
+        business_date=business_date_str,
         status="parquet_written",
         record_count=source_count - failing_count,
     )
@@ -313,9 +333,12 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int:
             run_id=run_id,
             domain=domain,
             dataset=dataset,
-            s3_input_path=s3_input_path,
+            job_name="ods_ingestion",
+            pipeline_type="ingestion",
+            source_path=s3_input_path,
+            business_date=business_date_str,
             status="failed",
-            message=err,
+            error_reason=err,
         )
         set_file_state(pg, s3_input_path, run_id, "failed", error_reason=err)
         pg.close()
@@ -330,7 +353,10 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int:
         run_id=run_id,
         domain=domain,
         dataset=dataset,
-        s3_input_path=s3_input_path,
+        job_name="ods_ingestion",
+        pipeline_type="ingestion",
+        source_path=s3_input_path,
+        business_date=business_date_str,
         status="count_verified",
         record_count=written_count,
     )
@@ -343,7 +369,10 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int:
         run_id=run_id,
         domain=domain,
         dataset=dataset,
-        s3_input_path=s3_input_path,
+        job_name="ods_ingestion",
+        pipeline_type="ingestion",
+        source_path=s3_input_path,
+        business_date=business_date_str,
         status="completed",
         record_count=written_count,
     )
