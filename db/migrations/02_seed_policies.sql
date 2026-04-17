@@ -17,7 +17,7 @@ INSERT INTO pipeline.dataset_config (
             {"field": "premium_amount", "rule": "not_null"},
             {"field": "premium_amount", "rule": "greater_than", "value": 0},
             {"field": "start_date",     "rule": "valid_date",   "format": "yyyy-MM-dd"},
-            {"fields": ["end_date", "start_date"], "rule": "date_gte"}
+            {"field": "end_date", "rule": "date_gte", "value_type": "column", "value": "start_date"}
         ],
         "soft_warns": [
             {"field": "premium_amount", "rule": "less_than",    "value": 50000},
