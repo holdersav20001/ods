@@ -12,11 +12,19 @@ PG_DSN = os.environ.get('PIPELINE_PG_DSN', 'host=postgres port=5432 dbname=ods u
 
 def run_sync():
     conn = psycopg2.connect(PG_DSN)
+    failed = []
+    paths = sorted(glob.glob(f'{DATASETS_DIR}/**/*.yaml', recursive=True))
     try:
-        for path in sorted(glob.glob(f'{DATASETS_DIR}/**/*.yaml', recursive=True)):
-            sync_to_db(path, conn)
+        for path in paths:
+            try:
+                sync_to_db(path, conn)
+            except Exception as e:
+                print(f"sync failed for {path}: {e}")
+                failed.append(path)
     finally:
         conn.close()
+    if failed:
+        raise RuntimeError(f"{len(failed)} of {len(paths)} dataset YAMLs failed to sync")
 
 with DAG(
     dag_id='dag_config_sync',

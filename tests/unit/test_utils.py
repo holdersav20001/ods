@@ -56,11 +56,21 @@ def test_generate_message_key_multi_field_order_stable():
 
 # --- load_dataset_config (requires postgres) ---
 
+def _pg_kwargs():
+    import os
+    return dict(
+        host=os.environ.get("TEST_PG_HOST", "127.0.0.1"),
+        port=int(os.environ.get("TEST_PG_PORT", "5440")),
+        dbname=os.environ.get("TEST_PG_DB", "ods_dev"),
+        user=os.environ.get("TEST_PG_USER", "ods"),
+        password=os.environ.get("TEST_PG_PASSWORD", "ods"),
+    )
+
+
 @pytest.fixture(scope="module")
 def pg():
     import psycopg2
-    conn = psycopg2.connect(host="localhost", port=5432,
-                            dbname="ods_dev", user="ods", password="ods")
+    conn = psycopg2.connect(**_pg_kwargs())
     yield conn
     conn.close()
 
@@ -68,8 +78,7 @@ def pg():
 def postgres_available():
     try:
         import psycopg2
-        psycopg2.connect(host="localhost", port=5432,
-                         dbname="ods_dev", user="ods", password="ods").close()
+        psycopg2.connect(**_pg_kwargs()).close()
         return True
     except Exception:
         return False
