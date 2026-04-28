@@ -49,7 +49,7 @@ services:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
     healthcheck:
-      test: ["CMD-SHELL", "echo ruok | nc -w 2 localhost 2181 | grep -q imok"]
+      test: ["CMD-SHELL", "echo srvr | nc -w 2 localhost 2181 | grep -q 'Zookeeper version'"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -100,7 +100,7 @@ services:
   postgres:
     image: postgres:15
     ports:
-      - "5432:5432"
+      - "5440:5432"
     environment:
       POSTGRES_DB: ods_dev
       POSTGRES_USER: ods
@@ -122,14 +122,7 @@ services:
   airflow-init:
     <<: *airflow-common
     command: >
-      bash -c "
-        pip install --quiet apache-airflow-providers-docker apache-airflow-providers-postgres &&
-        airflow db migrate &&
-        airflow users create
-          --username admin --password admin
-          --firstname Admin --lastname User
-          --role Admin --email admin@local.dev || true
-      "
+      bash -c "pip install --quiet apache-airflow-providers-docker apache-airflow-providers-postgres && airflow db migrate && airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@local.dev || true"
     depends_on:
       postgres:
         condition: service_healthy
@@ -199,6 +192,75 @@ services:
     # Ensure the image is built: docker compose build glue
     entrypoint: ["echo", "ODS Glue image ready — use DockerOperator to invoke"]
 
+  sftp:
+    image: atmoz/sftp:latest
+    ports:
+      - "2222:22"
+    volumes:
+      - ./docker/sftp/users.conf:/etc/sftp/users.conf:ro
+      - sftp-data:/home/ods/upload
+
+  kafka-connect:
+    build: ./docker/kafka-connect
+    depends_on:
+      broker:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+    ports:
+      - "8083:8083"
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: broker:29092
+      CONNECT_GROUP_ID: ods-connect
+      CONNECT_CONFIG_STORAGE_TOPIC: _connect_configs
+      CONNECT_OFFSET_STORAGE_TOPIC: _connect_offsets
+      CONNECT_STATUS_STORAGE_TOPIC: _connect_status
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_KEY_CONVERTER: org.apache.kafka.connect.storage.StringConverter
+      CONNECT_VALUE_CONVERTER: io.confluent.connect.avro.AvroConverter
+      CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      CONNECT_REST_ADVERTISED_HOST_NAME: kafka-connect
+      CONNECT_PLUGIN_PATH: /usr/share/confluent-hub-components,/usr/share/java
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_REGION: eu-west-1
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+
+  connect-bootstrap:
+    image: curlimages/curl:8.6.0
+    depends_on:
+      kafka-connect:
+        condition: service_healthy
+    volumes:
+      - ./docker/connect-config:/cfg:ro
+    entrypoint: ["/bin/sh", "/cfg/bootstrap.sh"]
+    restart: "no"
+
+  grafana:
+    image: grafana/grafana:10.4.2
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./docker/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 networks:
   default:
     name: ods-network
@@ -207,3 +269,5 @@ volumes:
   postgres-data:
   localstack-data:
   airflow-logs:
+  sftp-data:
+  grafana-data:
