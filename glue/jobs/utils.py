@@ -147,3 +147,36 @@ def write_stage_row(pg_dsn, *, run_id, stage, status,
              record_count_in, record_count_out,
              json.dumps(metrics) if metrics else None, error),
         )
+
+
+def write_recon_row(pg_dsn, *, check_type, run_id, domain, dataset, business_date,
+                    source_count=None, kafka_count=None, postgres_count=None,
+                    status, detail=None, window_start=None, window_end=None):
+    """Insert a row into pipeline.reconciliation_log.
+
+    Computes discrepancy and pct automatically from the supplied counts.
+    Opens its own connection so it can be called from anywhere.
+    """
+    discrepancy = None
+    if source_count is not None and kafka_count is not None:
+        discrepancy = (kafka_count or 0) - (source_count or 0)
+    elif kafka_count is not None and postgres_count is not None:
+        discrepancy = (postgres_count or 0) - (kafka_count or 0)
+    pct = None
+    if discrepancy is not None and source_count:
+        pct = round(100.0 * discrepancy / source_count, 4)
+    with psycopg2.connect(pg_dsn) as conn, conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO pipeline.reconciliation_log
+                (check_type, run_id, domain, dataset, business_date,
+                 window_start, window_end,
+                 source_count, kafka_count, postgres_count,
+                 discrepancy_count, discrepancy_pct, status, detail)
+            VALUES (%s,%s,%s,%s,%s, %s,%s, %s,%s,%s, %s,%s,%s,%s)
+            """,
+            (check_type, run_id, domain, dataset, business_date,
+             window_start, window_end,
+             source_count, kafka_count, postgres_count,
+             discrepancy, pct, status, detail),
+        )

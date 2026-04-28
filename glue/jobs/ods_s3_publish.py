@@ -13,15 +13,18 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import io
 import json
 import os
 import sys
+import uuid
+from datetime import date, datetime
+from decimal import Decimal
 
-import fastavro
 import psycopg2
-import requests
-from confluent_kafka import Producer
+from confluent_kafka import Consumer, Producer, TopicPartition
+from confluent_kafka.schema_registry import SchemaRegistryClient
+from confluent_kafka.schema_registry.avro import AvroSerializer
+from confluent_kafka.serialization import MessageField, SerializationContext, StringSerializer
 from pyspark.sql import SparkSession
 
 from utils import (
@@ -29,7 +32,10 @@ from utils import (
     get_file_state,
     load_dataset_config,
     set_file_state,
-    write_job_log,
+    update_run_fields,
+    upsert_run_header,
+    write_recon_row,
+    write_stage_row,
 )
 from dq import evaluate_dq_rules
 
@@ -37,6 +43,16 @@ from dq import evaluate_dq_rules
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _pg_dsn() -> str:
+    return (
+        f"host={os.environ.get('POSTGRES_HOST', 'localhost')} "
+        f"port={os.environ.get('POSTGRES_PORT', '5432')} "
+        f"dbname={os.environ.get('POSTGRES_DB', 'ods_dev')} "
+        f"user={os.environ.get('POSTGRES_USER', 'ods')} "
+        f"password={os.environ.get('POSTGRES_PASSWORD', 'ods')}"
+    )
+
 
 def _get_pg_conn():
     return psycopg2.connect(
@@ -65,40 +81,41 @@ def _build_spark(dataset: str) -> SparkSession:
     )
 
 
-def _fetch_avro_schema(schema_id: str, schema_version: str) -> dict:
+def _fetch_schema_from_registry(sr: SchemaRegistryClient, topic: str) -> tuple[str, int]:
+    """Fetch latest Avro schema string for <topic>-value from Schema Registry.
+
+    Returns (schema_str, schema_id).
+    Raises RuntimeError if the subject is not registered — never auto-registers.
     """
-    Fetch the Avro schema from Schema Registry.
-    Returns the parsed schema dict (via fastavro.parse_schema).
-    Raises RuntimeError on any failure.
-    """
-    registry_url = os.environ.get("SCHEMA_REGISTRY_URL", "http://schema-registry:8081")
-    url = f"{registry_url}/subjects/{schema_id}/versions/{schema_version}"
+    subject = f"{topic}-value"
     try:
-        resp = requests.get(url, timeout=10)
-        resp.raise_for_status()
+        latest = sr.get_latest_version(subject)
     except Exception as exc:
-        raise RuntimeError(f"Schema Registry request failed: {exc}") from exc
+        raise RuntimeError(
+            f"Schema not found for subject '{subject}' in Schema Registry. "
+            f"Register it first via scripts/register_schemas.py. Error: {exc}"
+        ) from exc
+    return latest.schema.schema_str, latest.schema_id
 
-    body = resp.json()
-    schema_str = body.get("schema", "{}")
+
+def _topic_end_offsets(topic: str, bootstrap: str) -> int:
+    """Return the sum of high-watermark offsets across all partitions of *topic*."""
+    c = Consumer({
+        "bootstrap.servers": bootstrap,
+        "group.id": f"ods-offset-probe-{uuid.uuid4()}",
+    })
     try:
-        avro_schema_dict = json.loads(schema_str)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(f"Could not parse Avro schema JSON: {exc}") from exc
-
-    try:
-        parsed = fastavro.parse_schema(avro_schema_dict)
-    except Exception as exc:
-        raise RuntimeError(f"fastavro.parse_schema failed: {exc}") from exc
-
-    return parsed
-
-
-def _serialize_avro(parsed_schema: dict, record: dict) -> bytes:
-    """Serialize a single record dict to Avro bytes using schemaless_writer."""
-    buf = io.BytesIO()
-    fastavro.schemaless_writer(buf, parsed_schema, record)
-    return buf.getvalue()
+        md = c.list_topics(topic, timeout=10).topics[topic]
+        if md.error:
+            raise RuntimeError(f"topic metadata error: {md.error}")
+        parts = [TopicPartition(topic, p) for p in md.partitions]
+        total = 0
+        for tp in parts:
+            _, high = c.get_watermark_offsets(tp, timeout=10)
+            total += high
+        return total
+    finally:
+        c.close()
 
 
 def _write_dlq(spark, failing_df, domain: str, dataset: str,
@@ -111,24 +128,6 @@ def _write_dlq(spark, failing_df, domain: str, dataset: str,
     failing_df.write.mode("overwrite").parquet(dlq_path)
 
 
-def _write_lineage(pg, run_id: str, domain: str, dataset: str,
-                   source_ref: str, target_topic: str,
-                   business_date: str | None, record_count: int,
-                   schema_version: str) -> None:
-    with pg.cursor() as cur:
-        cur.execute(
-            """
-            INSERT INTO pipeline.lineage
-              (run_id, domain, dataset, source_type, source_ref, target_topic,
-               business_date, record_count, schema_version)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """,
-            (run_id, domain, dataset, "s3_parquet", source_ref, target_topic,
-             business_date, record_count, schema_version),
-        )
-    pg.commit()
-
-
 # ---------------------------------------------------------------------------
 # Main publish logic
 # ---------------------------------------------------------------------------
@@ -136,185 +135,20 @@ def _write_lineage(pg, run_id: str, domain: str, dataset: str,
 def run(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int:
     """Execute the publish pipeline. Returns process exit code."""
 
+    pg_dsn = _pg_dsn()
     pg = _get_pg_conn()
 
+    bootstrap = os.environ.get("KAFKA_BOOTSTRAP_SERVERS",
+                               os.environ.get("KAFKA_BOOTSTRAP", "localhost:9092"))
+    sr_url = os.environ.get("SCHEMA_REGISTRY_URL", "http://schema-registry:8081")
+
     # ------------------------------------------------------------------
-    # Step 1 — Load dataset config + snapshot
+    # Step 1 — Load dataset config
     # ------------------------------------------------------------------
     config = load_dataset_config(pg, domain, dataset)
-    config_snapshot = json.dumps(
-        {k: v for k, v in config.items()},
-        default=str,
-    )
+    target_topic = config["target_topic"]
     config_version = config.get("version")
 
-    schema_id = str(config["schema_id"])
-    schema_version = str(config["schema_version"])
-    target_topic = config["target_topic"]
-
-    # ------------------------------------------------------------------
-    # Step 2 — Idempotency check
-    # ------------------------------------------------------------------
-    current_state = get_file_state(pg, s3_input_path)
-    if current_state == "completed":
-        write_job_log(
-            pg,
-            run_id=run_id,
-            job_name="ods_s3_publish",
-            pipeline_type="publish",
-            domain=domain,
-            dataset=dataset,
-            source_path=s3_input_path,
-            status="skipped",
-            error_reason="Path already in completed state — skipping.",
-        )
-        pg.close()
-        return 0
-
-    # ------------------------------------------------------------------
-    # Step 3 — Log started
-    # ------------------------------------------------------------------
-    write_job_log(
-        pg,
-        run_id=run_id,
-        job_name="ods_s3_publish",
-        pipeline_type="publish",
-        domain=domain,
-        dataset=dataset,
-        source_path=s3_input_path,
-        status="started",
-        config_version=config_version,
-        config_snapshot=config_snapshot,
-    )
-
-    # ------------------------------------------------------------------
-    # Step 4 — Set file_state = processing
-    # ------------------------------------------------------------------
-    set_file_state(pg, s3_input_path, run_id, "processing")
-
-    # ------------------------------------------------------------------
-    # Step 5 — Fetch Avro schema from Schema Registry
-    # ------------------------------------------------------------------
-    try:
-        parsed_schema = _fetch_avro_schema(schema_id, schema_version)
-    except RuntimeError as exc:
-        err_msg = str(exc)
-        write_job_log(
-            pg,
-            run_id=run_id,
-            job_name="ods_s3_publish",
-            pipeline_type="publish",
-            domain=domain,
-            dataset=dataset,
-            source_path=s3_input_path,
-            status="failed",
-            error_reason="schema_fetch_failed",
-            error_detail=err_msg,
-        )
-        set_file_state(pg, s3_input_path, run_id, "failed",
-                       error_reason="schema_fetch_failed")
-        pg.close()
-        return 1
-
-    # ------------------------------------------------------------------
-    # Step 6 — Log schema_fetched
-    # ------------------------------------------------------------------
-    write_job_log(
-        pg,
-        run_id=run_id,
-        job_name="ods_s3_publish",
-        pipeline_type="publish",
-        domain=domain,
-        dataset=dataset,
-        source_path=s3_input_path,
-        status="schema_fetched",
-    )
-
-    # ------------------------------------------------------------------
-    # Step 7 — Build Spark session
-    # ------------------------------------------------------------------
-    spark = _build_spark(dataset)
-    s3a_path = s3_input_path.replace("s3://", "s3a://")
-
-    # ------------------------------------------------------------------
-    # Step 8 — Read Parquet from S3 Curated
-    # ------------------------------------------------------------------
-    df = spark.read.parquet(s3a_path)
-    source_count = df.count()
-
-    # Extract business_date from the _ods_business_date column if present.
-    business_date: str | None = None
-    if "_ods_business_date" in df.columns:
-        first_row = df.select("_ods_business_date").first()
-        if first_row and first_row[0] is not None:
-            business_date = str(first_row[0])
-
-    # ------------------------------------------------------------------
-    # Step 9 — Run DQ rules
-    # ------------------------------------------------------------------
-    dq_rules = (
-        config["dq_rules"]
-        if isinstance(config["dq_rules"], dict)
-        else json.loads(config["dq_rules"])
-    )
-
-    passing_df, failing_df, warnings = evaluate_dq_rules(
-        df, dq_rules, total_count=source_count
-    )
-    failing_count = failing_df.count()
-
-    # Write failing rows to DLQ if any
-    if failing_count > 0:
-        _write_dlq(spark, failing_df, domain, dataset,
-                   business_date or "unknown", run_id)
-
-    dq_status = "dq_warned" if (warnings or failing_count > 0) else "dq_passed"
-    write_job_log(
-        pg,
-        run_id=run_id,
-        job_name="ods_s3_publish",
-        pipeline_type="publish",
-        domain=domain,
-        dataset=dataset,
-        source_path=s3_input_path,
-        business_date=business_date,
-        status=dq_status,
-        record_count=failing_count,
-        error_reason=json.dumps(warnings) if warnings else None,
-    )
-
-    # ------------------------------------------------------------------
-    # Step 10 — Log publishing
-    # ------------------------------------------------------------------
-    write_job_log(
-        pg,
-        run_id=run_id,
-        job_name="ods_s3_publish",
-        pipeline_type="publish",
-        domain=domain,
-        dataset=dataset,
-        source_path=s3_input_path,
-        business_date=business_date,
-        status="publishing",
-        record_count=source_count - failing_count,
-    )
-
-    # ------------------------------------------------------------------
-    # Step 11 — Create Kafka Producer with transactions
-    # ------------------------------------------------------------------
-    producer = Producer({
-        "bootstrap.servers": os.environ.get(
-            "KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"
-        ),
-        "enable.idempotence": True,
-        "acks": "all",
-        "transactional.id": f"ods-publish-{run_id}",
-    })
-    producer.init_transactions()
-
-    # ------------------------------------------------------------------
-    # Steps 12–13 — Collect, serialize, produce within a transaction
-    # ------------------------------------------------------------------
     key_fields_raw = config.get("key_fields", [])
     key_fields = (
         key_fields_raw
@@ -322,68 +156,156 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int:
         else json.loads(key_fields_raw)
     )
 
-    # Collect passing rows to the driver
-    rows = passing_df.collect()
-    published = 0
+    # ------------------------------------------------------------------
+    # Step 2 — Idempotency check
+    # ------------------------------------------------------------------
+    current_state = get_file_state(pg, s3_input_path)
+    if current_state == "completed":
+        pg.close()
+        return 0
 
+    # ------------------------------------------------------------------
+    # Step 3 — Write run_log header (status=running)
+    # ------------------------------------------------------------------
+    upsert_run_header(
+        pg_dsn,
+        run_id=run_id,
+        pipeline_type="publish",
+        domain=domain,
+        dataset=dataset,
+        business_date=None,  # refined below once parquet is read
+        kafka_topic=target_topic,
+        config_version_id=config_version,
+    )
+    set_file_state(pg, s3_input_path, run_id, "processing")
+
+    # ------------------------------------------------------------------
+    # Step 4 — Fetch Avro schema from Schema Registry (fail, don't register)
+    # ------------------------------------------------------------------
+    sr = SchemaRegistryClient({"url": sr_url})
     try:
-        producer.begin_transaction()
+        avro_schema_str, schema_id = _fetch_schema_from_registry(sr, target_topic)
+    except RuntimeError as exc:
+        err_msg = str(exc)
+        update_run_fields(pg_dsn, run_id, status="failed", error_summary=err_msg)
+        write_stage_row(pg_dsn, run_id=run_id, stage="schema_fetch",
+                        status="failed", error=err_msg)
+        set_file_state(pg, s3_input_path, run_id, "failed",
+                       error_reason="schema_fetch_failed")
+        pg.close()
+        return 1
 
+    # ------------------------------------------------------------------
+    # Step 5 — Build Spark + read Parquet
+    # ------------------------------------------------------------------
+    spark = _build_spark(dataset)
+    s3a_path = s3_input_path.replace("s3://", "s3a://")
+    df = spark.read.parquet(s3a_path)
+    source_count = df.count()
+
+    # Extract business_date from partition column if present
+    business_date: str | None = None
+    if "_ods_business_date" in df.columns:
+        first_row = df.select("_ods_business_date").first()
+        if first_row and first_row[0] is not None:
+            business_date = str(first_row[0])
+
+    # Back-fill business_date in run_log now that we know it
+    if business_date:
+        update_run_fields(pg_dsn, run_id, business_date=business_date)
+
+    write_stage_row(pg_dsn, run_id=run_id, stage="read_parquet",
+                    status="succeeded", input_ref=s3a_path,
+                    record_count_in=source_count, record_count_out=source_count)
+
+    # ------------------------------------------------------------------
+    # Step 6 — Run DQ rules
+    # ------------------------------------------------------------------
+    dq_rules = (
+        config["dq_rules"]
+        if isinstance(config["dq_rules"], dict)
+        else json.loads(config["dq_rules"])
+    )
+    passing_df, failing_df, warnings = evaluate_dq_rules(
+        df, dq_rules, total_count=source_count
+    )
+    failing_count = failing_df.count()
+    dq_pass_count = source_count - failing_count
+
+    if failing_count > 0:
+        _write_dlq(spark, failing_df, domain, dataset,
+                   business_date or "unknown", run_id)
+
+    dq_status = "dq_warned" if (warnings or failing_count > 0) else "succeeded"
+    write_stage_row(pg_dsn, run_id=run_id, stage="dq_check",
+                    status=dq_status,
+                    record_count_in=source_count,
+                    record_count_out=dq_pass_count,
+                    metrics={"failing_count": failing_count,
+                             "warnings": warnings or []},
+                    error=json.dumps(warnings) if warnings else None)
+
+    update_run_fields(pg_dsn, run_id,
+                      record_count_source=source_count,
+                      record_count_dq_pass=dq_pass_count,
+                      record_count_dq_fail=failing_count)
+
+    # ------------------------------------------------------------------
+    # Step 7 — Confluent Avro producer setup
+    # ------------------------------------------------------------------
+    key_ser = StringSerializer("utf_8")
+    value_ser = AvroSerializer(sr, avro_schema_str)
+
+    def _deliver_cb(err, msg):
+        if err:
+            raise RuntimeError(f"Kafka delivery failed: {err}")
+
+    producer = Producer({
+        "bootstrap.servers": bootstrap,
+        "enable.idempotence": True,
+        "acks": "all",
+    })
+
+    # ------------------------------------------------------------------
+    # Step 8 — Capture start offsets BEFORE producing
+    # ------------------------------------------------------------------
+    try:
+        offset_start = _topic_end_offsets(target_topic, bootstrap)
+    except Exception as exc:
+        err_msg = f"Failed to read start offsets: {exc}"
+        update_run_fields(pg_dsn, run_id, status="failed", error_summary=err_msg)
+        write_stage_row(pg_dsn, run_id=run_id, stage="publish",
+                        status="failed", error=err_msg)
+        set_file_state(pg, s3_input_path, run_id, "failed",
+                       error_reason="offset_read_failed")
+        pg.close()
+        spark.stop()
+        return 1
+
+    # ------------------------------------------------------------------
+    # Step 9 — Produce Avro messages
+    # ------------------------------------------------------------------
+    rows = passing_df.collect()
+    try:
         for row in rows:
             row_dict = row.asDict()
-
             msg_key = generate_message_key(key_fields, row_dict)
-
-            # Build a record that only contains fields present in the Avro schema.
-            # We pass the full row dict and let fastavro ignore extra keys
-            # (parsed_schema handles union/default resolution).
-            try:
-                avro_bytes = _serialize_avro(parsed_schema, row_dict)
-            except Exception as exc:
-                raise RuntimeError(
-                    f"Avro serialization failed for row {row_dict}: {exc}"
-                ) from exc
-
-            headers = [
-                ("x-ods-run-id", run_id),
-                ("x-ods-source-ref", s3_input_path),
-                ("x-ods-source-type", "file"),
-                ("x-ods-business-date", business_date or ""),
-                ("x-ods-schema-version", schema_version),
-                ("x-ods-pipeline-type", "publish"),
-            ]
-
             producer.produce(
                 topic=target_topic,
-                key=msg_key,
-                value=avro_bytes,
-                headers=headers,
+                key=key_ser(msg_key),
+                value=value_ser(row_dict, SerializationContext(target_topic, MessageField.VALUE)),
+                on_delivery=_deliver_cb,
             )
-            published += 1
-
         producer.flush()
-        producer.commit_transaction()
-
     except Exception as exc:
         err_msg = str(exc)
-        try:
-            producer.abort_transaction()
-        except Exception:
-            pass  # best-effort abort
-
-        write_job_log(
-            pg,
-            run_id=run_id,
-            job_name="ods_s3_publish",
-            pipeline_type="publish",
-            domain=domain,
-            dataset=dataset,
-            source_path=s3_input_path,
-            business_date=business_date,
-            status="failed",
-            error_reason="kafka_publish_failed",
-            error_detail=err_msg,
-        )
+        update_run_fields(pg_dsn, run_id, status="failed", error_summary=err_msg)
+        write_stage_row(pg_dsn, run_id=run_id, stage="publish",
+                        status="failed",
+                        input_ref=s3a_path,
+                        output_ref=f"kafka://{target_topic}",
+                        record_count_in=dq_pass_count,
+                        error=err_msg)
         set_file_state(pg, s3_input_path, run_id, "failed",
                        error_reason="kafka_publish_failed")
         pg.close()
@@ -391,104 +313,84 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int:
         return 1
 
     # ------------------------------------------------------------------
-    # Step 14 — Count verification
+    # Step 10 — Capture end offsets and compute published count
     # ------------------------------------------------------------------
-    expected_published = passing_df.count()
-    if published != expected_published:
-        err = (
-            f"Count mismatch: published={published}, "
-            f"expected={expected_published}"
-        )
-        write_job_log(
-            pg,
-            run_id=run_id,
-            job_name="ods_s3_publish",
-            pipeline_type="publish",
-            domain=domain,
-            dataset=dataset,
-            source_path=s3_input_path,
-            business_date=business_date,
-            status="failed",
-            error_reason=err,
-        )
-        set_file_state(pg, s3_input_path, run_id, "failed", error_reason=err)
+    try:
+        offset_end = _topic_end_offsets(target_topic, bootstrap)
+    except Exception as exc:
+        err_msg = f"Failed to read end offsets: {exc}"
+        update_run_fields(pg_dsn, run_id, status="failed", error_summary=err_msg)
+        set_file_state(pg, s3_input_path, run_id, "failed",
+                       error_reason="offset_read_failed")
         pg.close()
         spark.stop()
         return 1
 
-    # ------------------------------------------------------------------
-    # Step 15 — Log count_verified
-    # ------------------------------------------------------------------
-    write_job_log(
-        pg,
-        run_id=run_id,
-        job_name="ods_s3_publish",
-        pipeline_type="publish",
-        domain=domain,
-        dataset=dataset,
-        source_path=s3_input_path,
-        business_date=business_date,
-        status="count_verified",
-        record_count=published,
-    )
+    published_count = offset_end - offset_start
+    discrepancy = published_count - dq_pass_count
+    t0_passed = discrepancy == 0
 
     # ------------------------------------------------------------------
-    # Step 16 — Write lineage row
+    # Step 11 — Write recon row (always, even on success)
     # ------------------------------------------------------------------
-    _write_lineage(
-        pg,
+    write_recon_row(
+        pg_dsn,
+        check_type="t0_publish_count",
         run_id=run_id,
         domain=domain,
         dataset=dataset,
-        source_ref=s3_input_path,
-        target_topic=target_topic,
         business_date=business_date,
-        record_count=published,
-        schema_version=schema_version,
+        source_count=dq_pass_count,
+        kafka_count=published_count,
+        status="ok" if t0_passed else "failed",
+        detail=None if t0_passed else f"discrepancy={discrepancy}",
     )
 
     # ------------------------------------------------------------------
-    # Step 17 — Log lineage_written
+    # Step 12 — Write publish stage row + update run_log
     # ------------------------------------------------------------------
-    write_job_log(
-        pg,
+    final_status = "succeeded" if t0_passed else "failed"
+    error_summary = None if t0_passed else f"T0 mismatch: {discrepancy}"
+
+    write_stage_row(
+        pg_dsn,
         run_id=run_id,
-        job_name="ods_s3_publish",
-        pipeline_type="publish",
-        domain=domain,
-        dataset=dataset,
-        source_path=s3_input_path,
-        business_date=business_date,
-        status="lineage_written",
-        record_count=published,
+        stage="publish",
+        status=final_status,
+        input_ref=s3a_path,
+        output_ref=f"kafka://{target_topic}",
+        record_count_in=dq_pass_count,
+        record_count_out=published_count,
+        metrics={"offset_start": offset_start, "offset_end": offset_end},
+        error=error_summary,
+    )
+
+    update_run_fields(
+        pg_dsn,
+        run_id,
+        record_count_published=published_count,
+        kafka_topic=target_topic,
+        kafka_offset_start=offset_start,
+        kafka_offset_end=offset_end,
+        status=final_status,
+        error_summary=error_summary,
     )
 
     # ------------------------------------------------------------------
-    # Step 18 — Log completed
-    # ------------------------------------------------------------------
-    write_job_log(
-        pg,
-        run_id=run_id,
-        job_name="ods_s3_publish",
-        pipeline_type="publish",
-        domain=domain,
-        dataset=dataset,
-        source_path=s3_input_path,
-        business_date=business_date,
-        status="completed",
-        record_count=published,
-    )
-
-    # ------------------------------------------------------------------
-    # Step 19 — Set file_state = completed
+    # Step 13 — Update file_state
     # ------------------------------------------------------------------
     set_file_state(
-        pg, s3_input_path, run_id, "completed",
-        record_count=published,
+        pg, s3_input_path, run_id,
+        "completed" if t0_passed else "failed",
+        record_count=published_count,
+        error_reason=error_summary,
     )
 
     pg.close()
     spark.stop()
+
+    if not t0_passed:
+        sys.exit(1)
     return 0
 
 

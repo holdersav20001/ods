@@ -28,7 +28,6 @@ def s3():
 
 @pytest.fixture
 def pg():
-    import os
     conn = psycopg2.connect(
         host=os.environ.get("TEST_PG_HOST", "127.0.0.1"),
         port=int(os.environ.get("TEST_PG_PORT", "5440")),
@@ -127,6 +126,7 @@ def test_publish_happy_path(s3, pg):
     raw_key = "insurance/policies/date=20260501/policies_20260501.csv"
     s3.put_object(Bucket="ods-raw-local", Key=raw_key, Body=GOOD_CSV.encode())
 
+    # Run ingestion first to produce curated parquet
     r = run_ingestion_job(ingest_run_id, f"s3://ods-raw-local/{raw_key}")
     assert r.returncode == 0, r.stderr
 
@@ -134,19 +134,65 @@ def test_publish_happy_path(s3, pg):
     result = run_publish_job(pub_run_id, curated_path)
     assert result.returncode == 0, result.stderr
 
+    # ── Kafka: at least 2 messages consumed ─────────────────────────────
     msgs = consume_messages(TOPIC)
     assert len(msgs) >= 2
 
     cur = pg.cursor()
+
+    # ── run_log: record_count_published + offset fields populated ───────
     cur.execute(
-        "SELECT record_count FROM pipeline.lineage WHERE run_id=%s",
+        """
+        SELECT record_count_published, kafka_offset_start, kafka_offset_end,
+               kafka_topic, status
+        FROM pipeline.run_log
+        WHERE run_id = %s
+        """,
         (pub_run_id,),
     )
     row = cur.fetchone()
-    assert row is not None and row[0] == 2
+    assert row is not None, "No row in pipeline.run_log for pub_run_id"
+    record_count_published, offset_start, offset_end, kafka_topic, status = row
+    assert record_count_published == 2, f"expected 2, got {record_count_published}"
+    assert offset_start is not None, "kafka_offset_start should be populated"
+    assert offset_end is not None, "kafka_offset_end should be populated"
+    assert offset_end > offset_start, "offset_end should be > offset_start after producing"
+    assert status == "succeeded"
 
+    # ── run_stage_log: publish stage exists ─────────────────────────────
     cur.execute(
-        "SELECT status FROM pipeline.file_state WHERE run_id=%s",
+        """
+        SELECT status, record_count_out
+        FROM pipeline.run_stage_log
+        WHERE run_id = %s AND stage = 'publish'
+        """,
+        (pub_run_id,),
+    )
+    stage_row = cur.fetchone()
+    assert stage_row is not None, "No 'publish' stage row in pipeline.run_stage_log"
+    assert stage_row[0] == "succeeded"
+    assert stage_row[1] == 2
+
+    # ── reconciliation_log: t0_publish_count row with status=ok ─────────
+    cur.execute(
+        """
+        SELECT status, source_count, kafka_count, discrepancy_count
+        FROM pipeline.reconciliation_log
+        WHERE run_id = %s AND check_type = 't0_publish_count'
+        """,
+        (pub_run_id,),
+    )
+    recon_row = cur.fetchone()
+    assert recon_row is not None, "No t0_publish_count recon row found"
+    recon_status, source_count, kafka_count, discrepancy = recon_row
+    assert recon_status == "ok", f"T0 check status: {recon_status}"
+    assert source_count == 2
+    assert kafka_count == 2
+    assert discrepancy == 0
+
+    # ── file_state: completed ────────────────────────────────────────────
+    cur.execute(
+        "SELECT status FROM pipeline.file_state WHERE run_id = %s",
         (pub_run_id,),
     )
     assert cur.fetchone()[0] == "completed"
