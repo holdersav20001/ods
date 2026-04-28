@@ -80,3 +80,70 @@ def get_file_state(conn, s3_path: str) -> str | None:
         )
         row = cur.fetchone()
     return row[0] if row else None
+
+
+# ---------------------------------------------------------------------------
+# New consolidated logging helpers (pipeline.run_log + pipeline.run_stage_log)
+# ---------------------------------------------------------------------------
+
+def upsert_run_header(pg_dsn, *, run_id, pipeline_type, domain, dataset,
+                      business_date, file_id=None, kafka_topic=None,
+                      config_version_id=None):
+    with psycopg2.connect(pg_dsn) as conn, conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO pipeline.run_log
+                (run_id, pipeline_type, domain, dataset, business_date,
+                 file_id, status, kafka_topic, config_version_id)
+            VALUES (%s,%s,%s,%s,%s, %s,'running',%s,%s)
+            ON CONFLICT (run_id) DO NOTHING
+            """,
+            (run_id, pipeline_type, domain, dataset, business_date,
+             file_id, kafka_topic, config_version_id),
+        )
+
+
+ALLOWED_RUN_LOG_FIELDS = {
+    'status', 'record_count_source', 'record_count_dq_pass', 'record_count_dq_fail',
+    'record_count_published', 'kafka_topic', 'kafka_offset_start', 'kafka_offset_end',
+    'config_version_id', 'schema_version_id', 'parents', 'error_summary', 'file_id',
+    'business_date',
+}
+TERMINAL_STATUSES = ('succeeded', 'failed', 'partial')
+
+
+def update_run_fields(pg_dsn, run_id, **fields):
+    if not fields:
+        return
+    invalid = set(fields) - ALLOWED_RUN_LOG_FIELDS
+    if invalid:
+        raise ValueError(f"unknown run_log fields: {sorted(invalid)}")
+    cols = list(fields.keys())
+    vals = [json.dumps(v) if k == 'parents' and v is not None else v
+            for k, v in fields.items()]
+    sets = ', '.join(f"{c}=%s" for c in cols)
+    if fields.get('status') in TERMINAL_STATUSES:
+        sets += ", ended_at=COALESCE(ended_at, NOW())"
+    with psycopg2.connect(pg_dsn) as conn, conn.cursor() as cur:
+        cur.execute(
+            f"UPDATE pipeline.run_log SET {sets} WHERE run_id=%s",
+            vals + [run_id],
+        )
+
+
+def write_stage_row(pg_dsn, *, run_id, stage, status,
+                    input_ref=None, output_ref=None,
+                    record_count_in=None, record_count_out=None,
+                    metrics=None, error=None):
+    with psycopg2.connect(pg_dsn) as conn, conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO pipeline.run_stage_log
+                (run_id, stage, status, started_at, ended_at,
+                 input_ref, output_ref, record_count_in, record_count_out, metrics, error)
+            VALUES (%s,%s,%s, NOW(), NOW(), %s,%s,%s,%s,%s,%s)
+            """,
+            (run_id, stage, status, input_ref, output_ref,
+             record_count_in, record_count_out,
+             json.dumps(metrics) if metrics else None, error),
+        )

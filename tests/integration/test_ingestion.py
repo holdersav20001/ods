@@ -17,7 +17,7 @@ import boto3
 import psycopg2
 import pytest
 
-S3_ENDPOINT = "http://localhost:4566"
+S3_ENDPOINT = "http://127.0.0.1:4566"
 RAW_BUCKET = "ods-raw-local"
 CURATED_BUCKET = "ods-curated-local"
 NETWORK = "ods-network"
@@ -125,16 +125,15 @@ def test_happy_path_writes_parquet(s3, pg):
         "No Parquet files found in curated bucket after successful ingestion."
     )
 
-    # Final log entry should be 'completed'
+    # Final run_log entry should be 'succeeded'
     cur = pg.cursor()
     cur.execute(
-        "SELECT status FROM pipeline.glue_job_log "
-        "WHERE run_id = %s ORDER BY id DESC LIMIT 1",
+        "SELECT status FROM pipeline.run_log WHERE run_id = %s",
         (run_id,),
     )
     row = cur.fetchone()
-    assert row is not None, "No log entry found for run_id."
-    assert row[0] == "completed", f"Expected 'completed', got '{row[0]}'."
+    assert row is not None, "No run_log entry found for run_id."
+    assert row[0] == "succeeded", f"Expected 'succeeded', got '{row[0]}'."
 
 
 def test_idempotency_exits_cleanly(s3, pg):
@@ -155,16 +154,14 @@ def test_idempotency_exits_cleanly(s3, pg):
         f"STDERR:\n{result.stderr}"
     )
 
-    # The second run should have been logged as 'skipped' (or 'completed' if
-    # the implementation chooses to re-process — both are acceptable).
+    # The second run should have been logged as 'succeeded' (idempotency skip path)
     cur = pg.cursor()
     cur.execute(
-        "SELECT status FROM pipeline.glue_job_log "
-        "WHERE run_id = %s ORDER BY id LIMIT 1",
+        "SELECT status FROM pipeline.run_log WHERE run_id = %s",
         (run_id_2,),
     )
     row = cur.fetchone()
-    assert row is not None, "No log entry found for second run_id."
-    assert row[0] in ("completed", "skipped"), (
-        f"Expected 'completed' or 'skipped', got '{row[0]}'."
+    assert row is not None, "No run_log entry found for second run_id."
+    assert row[0] in ("succeeded", "skipped"), (
+        f"Expected 'succeeded' or 'skipped', got '{row[0]}'."
     )

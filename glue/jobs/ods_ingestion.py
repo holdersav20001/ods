@@ -27,7 +27,9 @@ from utils import (
     get_file_state,
     load_dataset_config,
     set_file_state,
-    write_job_log,
+    upsert_run_header,
+    update_run_fields,
+    write_stage_row,
 )
 from dq import evaluate_dq_rules
 
@@ -43,6 +45,16 @@ def _get_pg_conn():
         dbname=os.environ.get("POSTGRES_DB", "ods_dev"),
         user=os.environ.get("POSTGRES_USER", "ods"),
         password=os.environ.get("POSTGRES_PASSWORD", "ods"),
+    )
+
+
+def _pg_dsn() -> str:
+    return (
+        f"host={os.environ.get('POSTGRES_HOST', 'localhost')} "
+        f"port={os.environ.get('POSTGRES_PORT', '5432')} "
+        f"dbname={os.environ.get('POSTGRES_DB', 'ods_dev')} "
+        f"user={os.environ.get('POSTGRES_USER', 'ods')} "
+        f"password={os.environ.get('POSTGRES_PASSWORD', 'ods')}"
     )
 
 
@@ -109,7 +121,7 @@ def _write_dlq(spark, failing_df, domain: str, dataset: str,
     dlq_bucket = f"ods-dlq-{env}"
     key = f"{domain}/{dataset}/date={business_date}/run_id={run_id}/failed.csv"
     dlq_path = f"s3a://{dlq_bucket}/{key}"
-    failing_df.write.mode("overwrite").option("header", "true").csv(dlq_path)
+    failing_df.write.mode("overwrite").parquet(dlq_path)
 
 
 # ---------------------------------------------------------------------------
@@ -134,18 +146,29 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int:
     # ------------------------------------------------------------------
     # Step 2 — Idempotency check
     # ------------------------------------------------------------------
+    pg_dsn = _pg_dsn()
     current_state = get_file_state(pg, s3_input_path)
     if current_state == "completed":
-        write_job_log(
-            pg,
+        upsert_run_header(
+            pg_dsn,
             run_id=run_id,
+            pipeline_type="ingestion",
             domain=domain,
             dataset=dataset,
-            job_name="ods_ingestion",
-            pipeline_type="ingestion",
-            source_path=s3_input_path,
+            business_date=None,
+        )
+        update_run_fields(
+            pg_dsn, run_id,
+            status="succeeded",
+            error_summary="File already in completed state — skipping.",
+        )
+        write_stage_row(
+            pg_dsn,
+            run_id=run_id,
+            stage="ingest",
             status="skipped",
-            error_reason="File already in completed state — skipping.",
+            input_ref=s3_input_path,
+            error="File already in completed state — skipping.",
         )
         pg.close()
         return 0
@@ -160,18 +183,25 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int:
     # ------------------------------------------------------------------
     # Step 4 — Log started
     # ------------------------------------------------------------------
-    write_job_log(
-        pg,
+    try:
+        config_version_id_val = int(config_version) if config_version is not None else None
+    except (TypeError, ValueError):
+        config_version_id_val = None
+    upsert_run_header(
+        pg_dsn,
         run_id=run_id,
+        pipeline_type="ingestion",
         domain=domain,
         dataset=dataset,
-        job_name="ods_ingestion",
-        pipeline_type="ingestion",
-        source_path=s3_input_path,
         business_date=business_date_str,
-        status="started",
-        config_version=config_version,
-        config_snapshot=config_snapshot,
+        config_version_id=config_version_id_val,
+    )
+    write_stage_row(
+        pg_dsn,
+        run_id=run_id,
+        stage="ingest",
+        status="running",
+        input_ref=s3_input_path,
     )
 
     spark = _build_spark(dataset)
@@ -191,18 +221,7 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int:
     # Step 6 — Log file_read
     # ------------------------------------------------------------------
     source_count = df.count()
-    write_job_log(
-        pg,
-        run_id=run_id,
-        domain=domain,
-        dataset=dataset,
-        job_name="ods_ingestion",
-        pipeline_type="ingestion",
-        source_path=s3_input_path,
-        business_date=business_date_str,
-        status="file_read",
-        record_count=source_count,
-    )
+    update_run_fields(pg_dsn, run_id, record_count_source=source_count)
 
     # ------------------------------------------------------------------
     # Step 7 — Schema validation via Schema Registry
@@ -213,37 +232,21 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int:
         df.columns, schema_id, schema_version
     )
     if not ok:
-        write_job_log(
-            pg,
+        update_run_fields(pg_dsn, run_id, status="failed", error_summary=err_msg)
+        write_stage_row(
+            pg_dsn,
             run_id=run_id,
-            domain=domain,
-            dataset=dataset,
-            job_name="ods_ingestion",
-            pipeline_type="ingestion",
-            source_path=s3_input_path,
-            business_date=business_date_str,
+            stage="ingest",
             status="failed",
-            error_reason=err_msg,
+            input_ref=s3_input_path,
+            error=err_msg,
         )
         set_file_state(pg, s3_input_path, run_id, "failed", error_reason=err_msg)
         pg.close()
         spark.stop()
         return 1
 
-    # ------------------------------------------------------------------
-    # Step 8 — Log schema_validated
-    # ------------------------------------------------------------------
-    write_job_log(
-        pg,
-        run_id=run_id,
-        domain=domain,
-        dataset=dataset,
-        job_name="ods_ingestion",
-        pipeline_type="ingestion",
-        source_path=s3_input_path,
-        business_date=business_date_str,
-        status="schema_validated",
-    )
+    # Step 8 — schema_validated (no separate log row needed; progress tracked via run_log)
 
     # ------------------------------------------------------------------
     # Step 9 — Run DQ rules
@@ -265,21 +268,13 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int:
         _write_dlq(spark, failing_df, domain, dataset, business_date_str, run_id)
 
     # ------------------------------------------------------------------
-    # Step 11 — Log dq_passed or dq_warned
+    # Step 11 — Log DQ counts
     # ------------------------------------------------------------------
-    dq_status = "dq_warned" if (warnings or failing_count > 0) else "dq_passed"
-    write_job_log(
-        pg,
-        run_id=run_id,
-        domain=domain,
-        dataset=dataset,
-        job_name="ods_ingestion",
-        pipeline_type="ingestion",
-        source_path=s3_input_path,
-        business_date=business_date_str,
-        status=dq_status,
-        record_count=failing_count,
-        error_reason=json.dumps(warnings) if warnings else None,
+    dq_pass_count = source_count - failing_count
+    update_run_fields(
+        pg_dsn, run_id,
+        record_count_dq_pass=dq_pass_count,
+        record_count_dq_fail=failing_count,
     )
 
     # ------------------------------------------------------------------
@@ -301,21 +296,7 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int:
     )
     passing_df.write.mode("overwrite").parquet(curated_path)
 
-    # ------------------------------------------------------------------
-    # Step 14 — Log parquet_written
-    # ------------------------------------------------------------------
-    write_job_log(
-        pg,
-        run_id=run_id,
-        domain=domain,
-        dataset=dataset,
-        job_name="ods_ingestion",
-        pipeline_type="ingestion",
-        source_path=s3_input_path,
-        business_date=business_date_str,
-        status="parquet_written",
-        record_count=source_count - failing_count,
-    )
+    # Step 14 — parquet written; output_ref recorded in stage row at completion
 
     # ------------------------------------------------------------------
     # Step 15 — Count verification
@@ -328,17 +309,15 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int:
             f"expected={expected_count} "
             f"(source={source_count} - failed={failing_count})"
         )
-        write_job_log(
-            pg,
+        update_run_fields(pg_dsn, run_id, status="failed", error_summary=err)
+        write_stage_row(
+            pg_dsn,
             run_id=run_id,
-            domain=domain,
-            dataset=dataset,
-            job_name="ods_ingestion",
-            pipeline_type="ingestion",
-            source_path=s3_input_path,
-            business_date=business_date_str,
+            stage="ingest",
             status="failed",
-            error_reason=err,
+            input_ref=s3_input_path,
+            record_count_in=source_count,
+            error=err,
         )
         set_file_state(pg, s3_input_path, run_id, "failed", error_reason=err)
         pg.close()
@@ -346,35 +325,25 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int:
         return 1
 
     # ------------------------------------------------------------------
-    # Step 16 — Log count_verified
+    # Steps 16 & 17 — count_verified + completed
     # ------------------------------------------------------------------
-    write_job_log(
-        pg,
+    curated_output_ref = curated_path.replace("s3a://", "s3://")
+    write_stage_row(
+        pg_dsn,
         run_id=run_id,
-        domain=domain,
-        dataset=dataset,
-        job_name="ods_ingestion",
-        pipeline_type="ingestion",
-        source_path=s3_input_path,
-        business_date=business_date_str,
-        status="count_verified",
-        record_count=written_count,
+        stage="ingest",
+        status="succeeded",
+        input_ref=s3_input_path,
+        output_ref=curated_output_ref,
+        record_count_in=source_count,
+        record_count_out=written_count,
     )
-
-    # ------------------------------------------------------------------
-    # Step 17 — Log completed
-    # ------------------------------------------------------------------
-    write_job_log(
-        pg,
-        run_id=run_id,
-        domain=domain,
-        dataset=dataset,
-        job_name="ods_ingestion",
-        pipeline_type="ingestion",
-        source_path=s3_input_path,
-        business_date=business_date_str,
-        status="completed",
-        record_count=written_count,
+    update_run_fields(
+        pg_dsn, run_id,
+        status="succeeded",
+        record_count_source=source_count,
+        record_count_dq_pass=written_count,
+        record_count_dq_fail=failing_count,
     )
 
     # ------------------------------------------------------------------
