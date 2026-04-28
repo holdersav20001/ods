@@ -22,7 +22,7 @@ CREATE TABLE pipeline.file_catalogue (
     last_run_id             UUID,
     UNIQUE (domain, dataset, file_md5)
 );
-CREATE INDEX idx_file_catalogue_state ON pipeline.file_catalogue(state, state_updated_at);
+CREATE INDEX IF NOT EXISTS idx_file_catalogue_state ON pipeline.file_catalogue(state, state_updated_at);
 
 CREATE TABLE pipeline.run_log (
     run_id                  UUID PRIMARY KEY,
@@ -47,8 +47,8 @@ CREATE TABLE pipeline.run_log (
     error_summary           TEXT,
     created_at              TIMESTAMP NOT NULL DEFAULT NOW()
 );
-CREATE INDEX idx_run_log_dom_ds_bd ON pipeline.run_log(domain, dataset, business_date);
-CREATE INDEX idx_run_log_status_started ON pipeline.run_log(status, started_at);
+CREATE INDEX IF NOT EXISTS idx_run_log_dom_ds_bd ON pipeline.run_log(domain, dataset, business_date);
+CREATE INDEX IF NOT EXISTS idx_run_log_status_started ON pipeline.run_log(status, started_at);
 
 CREATE TABLE pipeline.run_stage_log (
     id               BIGSERIAL PRIMARY KEY,
@@ -64,7 +64,7 @@ CREATE TABLE pipeline.run_stage_log (
     metrics          JSONB,
     error            TEXT
 );
-CREATE INDEX idx_run_stage_log_run_stage ON pipeline.run_stage_log(run_id, stage);
+CREATE INDEX IF NOT EXISTS idx_run_stage_log_run_stage ON pipeline.run_stage_log(run_id, stage);
 
 CREATE TABLE pipeline.reconciliation_log (
     id                BIGSERIAL PRIMARY KEY,
@@ -84,7 +84,7 @@ CREATE TABLE pipeline.reconciliation_log (
     detail            TEXT,
     created_at        TIMESTAMP NOT NULL DEFAULT NOW()
 );
-CREATE INDEX idx_recon_dom_ds_check ON pipeline.reconciliation_log(domain, dataset, check_type, created_at);
+CREATE INDEX IF NOT EXISTS idx_recon_dom_ds_check ON pipeline.reconciliation_log(domain, dataset, check_type, created_at);
 
 -- Backfill from existing tables.
 INSERT INTO pipeline.run_log (
@@ -104,7 +104,13 @@ SELECT
     l.target_topic, l.kafka_offset_start, l.kafka_offset_end,
     g.config_version, l.schema_version, g.error_reason, g.created_at
 FROM pipeline.glue_job_log g
-LEFT JOIN pipeline.lineage l ON l.run_id = g.run_id
+LEFT JOIN LATERAL (
+    SELECT target_topic, kafka_offset_start, kafka_offset_end, schema_version
+    FROM pipeline.lineage
+    WHERE run_id = g.run_id
+    ORDER BY id DESC
+    LIMIT 1
+) l ON TRUE
 ON CONFLICT (run_id) DO NOTHING;
 
 ALTER TABLE pipeline.glue_job_log         RENAME TO glue_job_log_deprecated_2026_04_28;

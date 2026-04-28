@@ -107,8 +107,15 @@ def test_run_stage_log_fk(conn):
 
 def test_reconciliation_log_table_exists(conn):
     with conn.cursor() as cur:
-        cur.execute("SELECT 1 FROM pipeline.reconciliation_log LIMIT 1")
-    assert True
+        cur.execute("""
+            SELECT column_name, data_type FROM information_schema.columns
+            WHERE table_schema='pipeline' AND table_name='reconciliation_log'
+        """)
+        cols = {r[0]: r[1] for r in cur.fetchall()}
+    assert 'check_type' in cols and cols['check_type'] == 'character varying'
+    assert 'discrepancy_count' in cols and cols['discrepancy_count'] == 'bigint'
+    assert 'status' in cols and cols['status'] == 'character varying'
+    assert 'source_count' in cols and cols['source_count'] == 'bigint'
 
 def test_legacy_tables_renamed(conn):
     with conn.cursor() as cur:
@@ -137,5 +144,16 @@ def test_dataset_config_has_version_columns(conn):
 
 def test_v_lineage_view_exists(conn):
     with conn.cursor() as cur:
-        cur.execute("SELECT 1 FROM pipeline.v_lineage LIMIT 1")
-    assert True
+        cur.execute("""
+            SELECT 1 FROM information_schema.views
+            WHERE table_schema='pipeline' AND table_name='v_lineage'
+        """)
+        assert cur.fetchone() is not None
+        cur.execute("""
+            SELECT column_name FROM information_schema.columns
+            WHERE table_schema='pipeline' AND table_name='v_lineage'
+        """)
+        cols = {r[0] for r in cur.fetchall()}
+    assert 'run_id' in cols
+    assert 'kafka_topic' in cols
+    assert 'source_ref' in cols
