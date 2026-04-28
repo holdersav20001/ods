@@ -11,6 +11,11 @@ def isolated_run(pg_conn):
     """Create a run, yield its run_id, clean up after."""
     run_id = str(uuid.uuid4())
     yield run_id
+    # rollback any failed-transaction state before cleanup
+    try:
+        pg_conn.rollback()
+    except Exception:
+        pass
     # cleanup: delete dependent rows then header
     with pg_conn.cursor() as cur:
         cur.execute("DELETE FROM pipeline.reconciliation_log WHERE run_id=%s", (run_id,))
@@ -66,6 +71,16 @@ def test_write_recon_discrepancy_calculation(pg_conn, isolated_run):
         d, s = cur.fetchone()
     assert d == -1
     assert s == 'failed'
+
+def test_update_run_header_rejects_unknown_field(pg_conn, isolated_run):
+    rid = isolated_run
+    insert_run_header(pg_conn, run_id=rid, pipeline_type='s3_batch',
+                      domain='insurance', dataset='policies',
+                      business_date='2026-04-28', file_id=None,
+                      config_version_id=1)
+    with pytest.raises(ValueError):
+        update_run_header(pg_conn, rid, bogus_column='x')
+
 
 def test_update_run_header_terminal_sets_ended_at_only_for_terminal_status(pg_conn, isolated_run):
     rid = isolated_run

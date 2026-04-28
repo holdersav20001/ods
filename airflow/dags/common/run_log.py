@@ -3,6 +3,13 @@ import psycopg2
 
 TERMINAL_STATUSES = ('succeeded', 'failed', 'partial')
 
+ALLOWED_FIELDS = {
+    'status', 'record_count_source', 'record_count_dq_pass', 'record_count_dq_fail',
+    'record_count_published', 'kafka_topic', 'kafka_offset_start', 'kafka_offset_end',
+    'config_version_id', 'schema_version_id', 'parents', 'error_summary', 'file_id',
+    'business_date',
+}
+
 
 def insert_run_header(conn, *, run_id, pipeline_type, domain, dataset,
                       business_date, file_id, config_version_id,
@@ -30,6 +37,9 @@ def insert_run_header(conn, *, run_id, pipeline_type, domain, dataset,
 def update_run_header(conn, run_id, **fields):
     if not fields:
         return
+    invalid = set(fields) - ALLOWED_FIELDS
+    if invalid:
+        raise ValueError(f"unknown run_log fields: {sorted(invalid)}")
     cols = list(fields.keys())
     vals = [json.dumps(v) if k == 'parents' and v is not None else v
             for k, v in fields.items()]
