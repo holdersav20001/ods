@@ -98,6 +98,59 @@ def _fetch_schema_from_registry(sr: SchemaRegistryClient, topic: str) -> tuple[s
     return latest.schema.schema_str, latest.schema_id
 
 
+def _coerce_for_avro(row_dict: dict, schema_str: str) -> dict:
+    """Walk the Avro schema and coerce Python values for fastavro/AvroSerializer.
+
+    Handles `date` and `decimal` logical types, which Spark+parquet can return
+    as `datetime.datetime`, `float`, or `str`. fastavro 1.9 already accepts
+    `datetime.date` and `decimal.Decimal` for these logical types, so the helper
+    is mostly a safety net for stray types coming back from Spark.
+    """
+    try:
+        schema = json.loads(schema_str)
+    except Exception:
+        return row_dict
+
+    def _logical_for(field_type):
+        # field_type may be a string, a dict, or a list (union).
+        if isinstance(field_type, dict):
+            return field_type.get("logicalType")
+        if isinstance(field_type, list):
+            for branch in field_type:
+                if isinstance(branch, dict) and branch.get("logicalType"):
+                    return branch.get("logicalType")
+        return None
+
+    fields = schema.get("fields", []) if isinstance(schema, dict) else []
+    out = dict(row_dict)
+    for fld in fields:
+        name = fld.get("name")
+        if name not in out or out[name] is None:
+            continue
+        logical = _logical_for(fld.get("type"))
+        v = out[name]
+        if logical == "date":
+            # Convert datetime -> date; string YYYY-MM-DD -> date; Decimal/int passthrough
+            if isinstance(v, datetime):
+                out[name] = v.date()
+            elif isinstance(v, str):
+                try:
+                    out[name] = datetime.strptime(v[:10], "%Y-%m-%d").date()
+                except ValueError:
+                    pass  # leave as-is; serializer will error meaningfully
+        elif logical in ("decimal", "decimal-bytes"):
+            if isinstance(v, Decimal):
+                continue
+            if isinstance(v, (int, float)):
+                out[name] = Decimal(str(v))
+            elif isinstance(v, str):
+                try:
+                    out[name] = Decimal(v)
+                except Exception:
+                    pass
+    return out
+
+
 def _topic_end_offsets(topic: str, bootstrap: str) -> int:
     """Return the sum of high-watermark offsets across all partitions of *topic*."""
     c = Consumer({
@@ -133,6 +186,22 @@ def _write_dlq(spark, failing_df, domain: str, dataset: str,
 # ---------------------------------------------------------------------------
 
 def run(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int:
+    """Top-level entry: guarantees run_log.status='failed' on any unhandled error."""
+    pg_dsn = _pg_dsn()
+    try:
+        return _run_impl(run_id, domain, dataset, s3_input_path)
+    except Exception as exc:
+        # Best-effort: mark the run as failed before propagating.
+        try:
+            update_run_fields(pg_dsn, run_id,
+                              status="failed",
+                              error_summary=str(exc)[:1000])
+        except Exception:
+            pass
+        raise
+
+
+def _run_impl(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int:
     """Execute the publish pipeline. Returns process exit code."""
 
     pg_dsn = _pg_dsn()
@@ -256,9 +325,12 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int:
     key_ser = StringSerializer("utf_8")
     value_ser = AvroSerializer(sr, avro_schema_str)
 
+    delivery_errors: list[str] = []
+
     def _deliver_cb(err, msg):
+        # Runs in librdkafka thread — must NOT raise. Accumulate and check after flush.
         if err:
-            raise RuntimeError(f"Kafka delivery failed: {err}")
+            delivery_errors.append(str(err))
 
     producer = Producer({
         "bootstrap.servers": bootstrap,
@@ -289,14 +361,20 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int:
     try:
         for row in rows:
             row_dict = row.asDict()
-            msg_key = generate_message_key(key_fields, row_dict)
+            coerced = _coerce_for_avro(row_dict, avro_schema_str)
+            msg_key = generate_message_key(key_fields, coerced)
             producer.produce(
                 topic=target_topic,
                 key=key_ser(msg_key),
-                value=value_ser(row_dict, SerializationContext(target_topic, MessageField.VALUE)),
+                value=value_ser(coerced, SerializationContext(target_topic, MessageField.VALUE)),
                 on_delivery=_deliver_cb,
             )
         producer.flush()
+        if delivery_errors:
+            raise RuntimeError(
+                f"{len(delivery_errors)} kafka delivery failures; "
+                f"first: {delivery_errors[0]}"
+            )
     except Exception as exc:
         err_msg = str(exc)
         update_run_fields(pg_dsn, run_id, status="failed", error_summary=err_msg)
