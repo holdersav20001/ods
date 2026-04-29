@@ -11,7 +11,9 @@ import pendulum
 import psycopg2
 from airflow import DAG
 from airflow.decorators import task
-from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
+from airflow.operators.python import get_current_context
+from airflow.providers.docker.operators.docker import DockerOperator
+from docker.types import Mount
 
 from common.connect_admin import wait_until_offset_consumed
 from common.run_log import insert_run_header, update_run_header, write_stage
@@ -21,27 +23,70 @@ PG_DSN = os.environ.get(
     "PIPELINE_PG_DSN",
     "host=postgres port=5432 dbname=ods_dev user=ods password=ods",
 )
+GLUE_JOBS_PATH = os.environ.get(
+    "GLUE_JOBS_PATH",
+    "/c/Users/Holde/development/aviva ODS/glue/jobs",
+)
+GLUE_IMAGE = os.environ.get("GLUE_IMAGE", "ods-glue:local")
+GLUE_ENV = {
+    "AWS_ACCESS_KEY_ID": "test",
+    "AWS_SECRET_ACCESS_KEY": "test",
+    "AWS_DEFAULT_REGION": "eu-west-1",
+    "LOCALSTACK_ENDPOINT": "http://localstack:4566",
+    "KAFKA_BOOTSTRAP_SERVERS": "broker:29092",
+    "SCHEMA_REGISTRY_URL": "http://schema-registry:8081",
+    "POSTGRES_HOST": "postgres",
+    "POSTGRES_DB": "ods_dev",
+    "POSTGRES_USER": "ods",
+    "POSTGRES_PASSWORD": "ods",
+    "ENV": "local",
+}
 
 
 @task
-def init_run(conf: dict) -> dict:
+def init_run() -> dict:
+    ctx = get_current_context()
+    dag_run = ctx["dag_run"]
+    conf = dict(dag_run.conf or {})
+    required = ("file_id", "domain", "dataset", "business_date")
+    missing = [k for k in required if not conf.get(k)]
+    if missing:
+        raise RuntimeError(f"dag_run.conf missing keys: {missing}")
     run_id = str(uuid.uuid4())
     conn = psycopg2.connect(PG_DSN)
     try:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT config_version_id FROM pipeline.dataset_config
+                SELECT s3_raw_path, s3_curated_path
+                  FROM pipeline.file_catalogue
+                 WHERE file_id=%s
+                """,
+                (conf["file_id"],),
+            )
+            row = cur.fetchone()
+            if not row:
+                raise RuntimeError(f"file_catalogue missing for file_id={conf['file_id']}")
+            s3_raw_path, s3_curated_path = row
+
+            cur.execute(
+                """
+                SELECT config_version_id, s3_curated_path
+                  FROM pipeline.dataset_config
                  WHERE domain=%s AND dataset=%s
                 """,
                 (conf["domain"], conf["dataset"]),
             )
-            row = cur.fetchone()
-            if not row:
+            cfg = cur.fetchone()
+            if not cfg:
                 raise RuntimeError(
                     f"dataset_config missing for {conf['domain']}/{conf['dataset']}"
                 )
-            config_version_id = row[0]
+            config_version_id, dataset_curated_root = cfg
+        if not s3_curated_path:
+            s3_curated_path = (
+                f"{dataset_curated_root.rstrip('/')}/date={conf['business_date']}/"
+            )
         insert_run_header(
             conn,
             run_id=run_id,
@@ -54,7 +99,13 @@ def init_run(conf: dict) -> dict:
         )
     finally:
         conn.close()
-    return {**conf, "run_id": run_id, "config_version_id": config_version_id}
+    return {
+        **conf,
+        "run_id": run_id,
+        "config_version_id": config_version_id,
+        "s3_raw_path": s3_raw_path,
+        "s3_curated_path": s3_curated_path,
+    }
 
 
 @task
@@ -126,38 +177,47 @@ with DAG(
     schedule=None,
     catchup=False,
     tags=["ods"],
-    params={
-        "file_id": None,
-        "domain": None,
-        "dataset": None,
-        "business_date": None,
-    },
 ):
-    ctx = init_run("{{ dag_run.conf }}")
+    ctx = init_run()
 
-    ingest = SparkSubmitOperator(
+    ingest = DockerOperator(
         task_id="stage_ingest",
-        application="/opt/glue/jobs/ods_ingestion.py",
-        application_args=[
-            "--run-id", '{{ ti.xcom_pull(task_ids="init_run")["run_id"] }}',
-            "--file-id", '{{ dag_run.conf["file_id"] }}',
-            "--domain", '{{ dag_run.conf["domain"] }}',
-            "--dataset", '{{ dag_run.conf["dataset"] }}',
-            "--business-date", '{{ dag_run.conf["business_date"] }}',
-        ],
-        conn_id="spark_default",
+        image=GLUE_IMAGE,
+        network_mode="ods-network",
+        auto_remove=True,
+        mount_tmp_dir=False,
+        command=(
+            "spark-submit "
+            "--py-files /home/glue_user/workspace/jobs/utils.py,"
+            "/home/glue_user/workspace/jobs/dq.py "
+            "/home/glue_user/workspace/jobs/ods_ingestion.py "
+            "--run_id {{ ti.xcom_pull(task_ids='init_run')['run_id'] }} "
+            "--domain {{ ti.xcom_pull(task_ids='init_run')['domain'] }} "
+            "--dataset {{ ti.xcom_pull(task_ids='init_run')['dataset'] }} "
+            "--s3_input_path {{ ti.xcom_pull(task_ids='init_run')['s3_raw_path'] }}"
+        ),
+        environment=GLUE_ENV,
+        mounts=[Mount(source=GLUE_JOBS_PATH, target="/home/glue_user/workspace/jobs", type="bind")],
     )
 
-    publish = SparkSubmitOperator(
+    publish = DockerOperator(
         task_id="stage_publish",
-        application="/opt/glue/jobs/ods_s3_publish.py",
-        application_args=[
-            "--run-id", '{{ ti.xcom_pull(task_ids="init_run")["run_id"] }}',
-            "--domain", '{{ dag_run.conf["domain"] }}',
-            "--dataset", '{{ dag_run.conf["dataset"] }}',
-            "--business-date", '{{ dag_run.conf["business_date"] }}',
-        ],
-        conn_id="spark_default",
+        image=GLUE_IMAGE,
+        network_mode="ods-network",
+        auto_remove=True,
+        mount_tmp_dir=False,
+        command=(
+            "spark-submit "
+            "--py-files /home/glue_user/workspace/jobs/utils.py,"
+            "/home/glue_user/workspace/jobs/dq.py "
+            "/home/glue_user/workspace/jobs/ods_s3_publish.py "
+            "--run_id {{ ti.xcom_pull(task_ids='init_run')['run_id'] }} "
+            "--domain {{ ti.xcom_pull(task_ids='init_run')['domain'] }} "
+            "--dataset {{ ti.xcom_pull(task_ids='init_run')['dataset'] }} "
+            "--s3_input_path {{ ti.xcom_pull(task_ids='init_run')['s3_curated_path'] }}"
+        ),
+        environment=GLUE_ENV,
+        mounts=[Mount(source=GLUE_JOBS_PATH, target="/home/glue_user/workspace/jobs", type="bind")],
     )
 
     waited = wait_sinks(ctx)

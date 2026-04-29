@@ -1,0 +1,36 @@
+
+==============================================================================
+OBSERVABILITY — docker compose ps
+==============================================================================
+airflow-scheduler	Up 27 minutes (healthy)
+airflow-webserver	Up 27 minutes (healthy)
+broker	Up 31 minutes (healthy)
+grafana	Up 31 minutes
+kafka-connect	Up 31 minutes (healthy)
+localstack	Up 31 minutes (healthy)
+postgres	Up 31 minutes (healthy)
+schema-registry	Up 31 minutes (healthy)
+sftp	Up 23 minutes
+zookeeper	Up 31 minutes (healthy)
+
+
+==============================================================================
+OBSERVABILITY — kafka-connect connector states
+==============================================================================
+s3-sink-policies: connector=RUNNING; task0=RUNNING
+jdbc-sink-policies: connector=RUNNING; task0=RUNNING
+
+==============================================================================
+OBSERVABILITY — schema registry subjects
+==============================================================================
+[
+  "ods-insurance-policies-value",
+  "ods.insurance.policies-value"
+]
+
+==============================================================================
+OBSERVABILITY — grafana health + datasource
+==============================================================================
+grafana health: {"commit": "701c851be7a930e04fbc6ebb1cd4254da80edd4c", "database": "ok", "version": "10.4.2"}
+datasources: [{"name": "ODS Postgres", "type": "grafana-postgresql-datasource"}]
+dashboards: ["ODS \u2014 Reconciliation", "ODS \u2014 Run Health"]

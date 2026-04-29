@@ -46,9 +46,9 @@ def _put(name: str, body: str) -> None:
 
 def test_drop_file_lands_in_postgres(pg_conn):
     body = (
-        "policy_id,status,premium\n"
-        "P100,ACTIVE,250.00\n"
-        "P101,ACTIVE,300.00\n"
+        "policy_id,status,premium,effective_date\n"
+        "P100,ACTIVE,250.00,2026-04-01\n"
+        "P101,ACTIVE,300.00,2026-04-15\n"
     )
 
     # Reset target rows so test is re-runnable

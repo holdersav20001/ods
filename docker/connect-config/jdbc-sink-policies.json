@@ -15,6 +15,9 @@
     "table.name.format": "ods.insurance_policies",
     "value.converter": "io.confluent.connect.avro.AvroConverter",
     "value.converter.schema.registry.url": "http://schema-registry:8081",
-    "key.converter": "org.apache.kafka.connect.storage.StringConverter"
+    "key.converter": "org.apache.kafka.connect.storage.StringConverter",
+    "transforms": "DropOdsMeta",
+    "transforms.DropOdsMeta.type": "org.apache.kafka.connect.transforms.ReplaceField$Value",
+    "transforms.DropOdsMeta.exclude": "_ods_run_id,_ods_business_date"
   }
 }

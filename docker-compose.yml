@@ -17,8 +17,16 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
     AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
     DOCKER_HOST: unix:///var/run/docker.sock
+    GLUE_JOBS_PATH: ${PWD}/glue/jobs
+    GLUE_IMAGE: ods-glue:local
+    PIPELINE_PG_DSN: host=postgres port=5432 dbname=ods_dev user=ods password=ods
+    SFTP_HOST: sftp
+    S3_RAW_BUCKET: ods-raw-local
+    S3_ENDPOINT: http://localstack:4566
+    CONNECT_URL: http://kafka-connect:8083
+    KAFKA_BOOTSTRAP: broker:29092
   volumes:
-    - ./dags:/opt/airflow/dags
+    - ./airflow/dags:/opt/airflow/dags
     - /var/run/docker.sock:/var/run/docker.sock
     - airflow-logs:/opt/airflow/logs
   depends_on:
@@ -122,7 +130,7 @@ services:
   airflow-init:
     <<: *airflow-common
     command: >
-      bash -c "pip install --quiet apache-airflow-providers-docker apache-airflow-providers-postgres && airflow db migrate && airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@local.dev || true"
+      bash -c "pip install --quiet apache-airflow-providers-docker apache-airflow-providers-postgres paramiko boto3 requests psycopg2-binary confluent-kafka && airflow db migrate && airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@local.dev || true"
     depends_on:
       postgres:
         condition: service_healthy
@@ -142,7 +150,7 @@ services:
       airflow-init:
         condition: service_completed_successfully
     command: >
-      bash -c "pip install --quiet apache-airflow-providers-docker apache-airflow-providers-postgres && airflow webserver"
+      bash -c "pip install --quiet apache-airflow-providers-docker apache-airflow-providers-postgres paramiko boto3 requests psycopg2-binary confluent-kafka && airflow webserver"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
@@ -160,7 +168,7 @@ services:
       airflow-init:
         condition: service_completed_successfully
     command: >
-      bash -c "pip install --quiet apache-airflow-providers-docker apache-airflow-providers-postgres && airflow scheduler"
+      bash -c "pip install --quiet apache-airflow-providers-docker apache-airflow-providers-postgres paramiko boto3 requests psycopg2-binary confluent-kafka && airflow scheduler"
     restart: on-failure
     healthcheck:
       test: ["CMD-SHELL", "airflow jobs check --job-type SchedulerJob --limit 5"]
@@ -198,6 +206,7 @@ services:
       - "2222:22"
     volumes:
       - ./docker/sftp/users.conf:/etc/sftp/users.conf:ro
+      - ./docker/sftp/fix-perms.sh:/etc/sftp.d/fix-perms.sh:ro
       - sftp-data:/home/ods/upload
 
   kafka-connect:
