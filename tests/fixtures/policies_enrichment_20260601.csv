@@ -1,0 +1,4 @@
+policy_id,agent_code,postcode,risk_score,channel
+POL001,AGT42,SW1A1AA,3.50,direct
+POL002,AGT17,EC1A1BB,7.20,broker
+POL004,AGT99,M11AE,2.10,direct
