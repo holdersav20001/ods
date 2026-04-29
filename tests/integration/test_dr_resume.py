@@ -51,11 +51,22 @@ def test_failed_run_resumes_cleanly(pg_conn):
     )
     fname = "policies_20260420.csv"
 
-    # Clean
+    # Clean — FK order: run_stage_log → run_log → file_catalogue → target
     with pg_conn.cursor() as cur:
         cur.execute("DELETE FROM ods.insurance_policies WHERE policy_id='DR1'")
-        cur.execute("DELETE FROM pipeline.file_catalogue WHERE state IS NOT NULL "
-                    "AND domain='insurance' AND dataset='policies' AND business_date='2026-04-20'")
+        cur.execute(
+            "DELETE FROM pipeline.run_stage_log WHERE run_id IN ("
+            "  SELECT run_id FROM pipeline.run_log WHERE domain='insurance' "
+            "  AND dataset='policies' AND business_date='2026-04-20')"
+        )
+        cur.execute(
+            "DELETE FROM pipeline.run_log WHERE domain='insurance' AND dataset='policies' "
+            "AND business_date='2026-04-20'"
+        )
+        cur.execute(
+            "DELETE FROM pipeline.file_catalogue WHERE domain='insurance' "
+            "AND dataset='policies' AND business_date='2026-04-20'"
+        )
     pg_conn.commit()
 
     # Inject a synthetic 'failed' run_log row to simulate an earlier crash

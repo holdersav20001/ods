@@ -51,8 +51,21 @@ def test_drop_file_lands_in_postgres(pg_conn):
         "P101,ACTIVE,300.00,2026-04-15\n"
     )
 
-    # Reset target rows so test is re-runnable
+    # Reset all state so test is re-runnable (FK order: run_stage_log → run_log → file_catalogue → target)
     with pg_conn.cursor() as cur:
+        cur.execute(
+            "DELETE FROM pipeline.run_stage_log WHERE run_id IN ("
+            "  SELECT run_id FROM pipeline.run_log WHERE domain='insurance' "
+            "  AND dataset='policies' AND business_date='2026-04-28')"
+        )
+        cur.execute(
+            "DELETE FROM pipeline.run_log WHERE domain='insurance' AND dataset='policies' "
+            "AND business_date='2026-04-28'"
+        )
+        cur.execute(
+            "DELETE FROM pipeline.file_catalogue WHERE domain='insurance' "
+            "AND dataset='policies' AND business_date='2026-04-28'"
+        )
         cur.execute(
             "DELETE FROM ods.insurance_policies WHERE policy_id IN ('P100','P101')"
         )

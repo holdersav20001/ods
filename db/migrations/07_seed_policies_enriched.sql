@@ -8,7 +8,7 @@ INSERT INTO pipeline.dataset_config (
     'insurance', 'policies_core', 's3_batch', 'core', 'policies_enriched',
     'pipeline.slot_staging_core',
     'policies_core_(?P<bd>\d{8})\.csv',
-    NULL,
+    '',
     'ods.insurance.policies_core-value', 1,
     '["policy_id"]',
     '{"hard_blocks":[{"field":"policy_id","rule":"not_null"},{"field":"policy_id","rule":"unique"}],"soft_warns":[]}',
@@ -23,7 +23,7 @@ INSERT INTO pipeline.dataset_config (
     'insurance', 'policies_enrichment', 's3_batch', 'enrichment', 'policies_enriched',
     'pipeline.slot_staging_enrichment',
     'policies_enrichment_(?P<bd>\d{8})\.csv',
-    NULL,
+    '',
     'ods.insurance.policies_enrichment-value', 1,
     '["policy_id"]',
     '{"hard_blocks":[{"field":"policy_id","rule":"not_null"},{"field":"policy_id","rule":"unique"}],"soft_warns":[]}',
@@ -37,7 +37,7 @@ INSERT INTO pipeline.dataset_config (
     s3_curated_path, postgres_target_table
 ) VALUES (
     'insurance', 'policies_enriched', 'multi_slot_merge',
-    NULL,
+    '',
     'ods.insurance.policies_enriched',
     'ods.insurance.policies_enriched-value', 1,
     '["policy_id"]', '{}',

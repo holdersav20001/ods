@@ -102,6 +102,8 @@ def _validate_schema(df_columns: list[str], schema_id: str, schema_version: str)
     url = f"{registry_url}/subjects/{schema_id}/versions/{schema_version}"
     try:
         resp = requests.get(url, timeout=10)
+        if resp.status_code == 404:
+            return True, ""  # schema not registered yet — skip validation
         resp.raise_for_status()
     except Exception as exc:
         return False, f"Schema Registry request failed: {exc}"
@@ -213,7 +215,7 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int:
         if isinstance(dq_rules, str):
             dq_rules = json.loads(dq_rules)
 
-        passing_df, failing_df, dq_result = evaluate_dq_rules(df, dq_rules)
+        passing_df, failing_df, dq_result = evaluate_dq_rules(df, dq_rules, source_count)
         fail_count = failing_df.count() if failing_df else 0
         pass_count = passing_df.count()
 

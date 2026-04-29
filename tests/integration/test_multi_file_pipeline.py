@@ -29,7 +29,6 @@ BD             = "2026-06-01"
 DOMAIN         = "insurance"
 MERGE_DATASET  = "policies_enriched"
 
-_HOST_JOBS = os.environ.get("HOST_JOBS_PATH", "")
 GLUE_COMMON = [
     "-e", "AWS_DEFAULT_REGION=eu-west-1",
     "-e", "AWS_ACCESS_KEY_ID=test",
@@ -41,7 +40,8 @@ GLUE_COMMON = [
     "-e", "POSTGRES_PASSWORD=ods",
     "-e", "SCHEMA_REGISTRY_URL=http://schema-registry:8081",
     "-e", "ENV=local",
-] + (["-v", f"{_HOST_JOBS}:/home/glue_user/workspace/jobs"] if _HOST_JOBS else [])
+    "-v", f"{os.getcwd()}/glue/jobs:/home/glue_user/workspace/jobs",
+]
 
 PY_FILES = (
     "/home/glue_user/workspace/jobs/utils.py,"

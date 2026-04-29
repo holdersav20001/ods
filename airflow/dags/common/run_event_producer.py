@@ -5,10 +5,6 @@ import datetime
 import json
 import os
 
-from confluent_kafka import Producer
-from confluent_kafka.schema_registry import SchemaRegistryClient
-from confluent_kafka.schema_registry.avro import AvroSerializer
-from confluent_kafka.serialization import MessageField, SerializationContext
 
 TOPIC = "ods.pipeline.run-events"
 _SUBJECT = f"{TOPIC}-value"
@@ -44,6 +40,11 @@ def produce_run_event(
     kafka_topic: str | None = None,
     kafka_offset_end: int | None = None,
 ) -> None:
+    from confluent_kafka import Producer
+    from confluent_kafka.schema_registry import SchemaRegistryClient
+    from confluent_kafka.schema_registry.avro import AvroSerializer
+    from confluent_kafka.serialization import MessageField, SerializationContext
+
     sr_url = os.environ.get("SCHEMA_REGISTRY_URL", "http://schema-registry:8081")
     bootstrap = os.environ.get("KAFKA_BOOTSTRAP", "broker:29092")
 
