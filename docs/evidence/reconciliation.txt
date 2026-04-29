@@ -4,8 +4,5 @@ RECONCILIATION — reconciliation_log
 ==============================================================================
 created_at                 | check_type       | domain    | dataset  | business_date | source_count | kafka_count | postgres_count | discrepancy_count | discrepancy_pct | status
 ---------------------------+------------------+-----------+----------+---------------+--------------+-------------+----------------+-------------------+-----------------+-------
-2026-04-29 07:24:59.184710 | t2_full          | insurance | policies | 2026-04-20    | 1            | 1           | 1              | 0                 | 0.0000          | passed
-2026-04-29 07:22:38.315782 | t2_full          | insurance | policies | 2026-04-28    | 2            | 2           | 2              | 0                 | 0.0000          | passed
-2026-04-29 07:22:38.311325 | t2_full          | insurance | policies | 2026-04-20    | 1            | 1           | 1              | 0                 | 0.0000          | passed
-2026-04-29 07:22:25.886917 | t0_publish_count | insurance | policies | 2026-04-20    | 1            | 1           | None           | 0                 | 0.0000          | ok    
-2026-04-29 07:21:25.003498 | t0_publish_count | insurance | policies | 2026-04-28    | 2            | 2           | None           | 0                 | 0.0000          | ok    
+2026-04-29 07:28:41.470725 | t2_full          | insurance | policies | 2026-04-28    | 2            | 2           | 2              | 0                 | 0.0000          | passed
+2026-04-29 07:28:26.270545 | t0_publish_count | insurance | policies | 2026-04-28    | 2            | 2           | None           | 0                 | 0.0000          | ok    

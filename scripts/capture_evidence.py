@@ -74,6 +74,23 @@ def lineage(conn) -> str:
           FROM pipeline.run_stage_log
          ORDER BY started_at DESC LIMIT 30
     """)
+    out += _section("LINEAGE — per-row trace (postgres row → run → file → SFTP/S3)")
+    out += _query(conn, """
+        SELECT
+            p.policy_id,
+            p._ods_business_date           AS bd,
+            p._ods_run_id                  AS run_id,
+            r.status                       AS run_status,
+            r.kafka_topic,
+            r.kafka_offset_start || '..' || r.kafka_offset_end AS kafka_offsets,
+            f.file_md5,
+            f.sftp_path,
+            f.s3_raw_path
+          FROM ods.insurance_policies p
+          LEFT JOIN pipeline.run_log r       ON r.run_id::text = p._ods_run_id
+          LEFT JOIN pipeline.file_catalogue f ON f.file_id    = r.file_id
+         ORDER BY p._ods_business_date, p.policy_id
+    """)
     out += _section("LINEAGE — joined chain (file → run → stages → target)")
     out += _query(conn, """
         SELECT f.file_md5, f.state AS file_state,
