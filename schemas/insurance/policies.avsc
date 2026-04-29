@@ -1,0 +1,16 @@
+{
+  "type": "record",
+  "name": "Policy",
+  "namespace": "com.aviva.ods.insurance",
+  "fields": [
+    {"name": "policy_id",         "type": "string"},
+    {"name": "policyholder_name", "type": "string"},
+    {"name": "premium_amount",    "type": "double"},
+    {"name": "start_date",        "type": "string"},
+    {"name": "end_date",          "type": ["null", "string"], "default": null},
+    {"name": "agent_code",        "type": ["null", "string"], "default": null},
+    {"name": "postcode",          "type": ["null", "string"], "default": null},
+    {"name": "_ods_business_date","type": "string"},
+    {"name": "_ods_run_id",       "type": "string"}
+  ]
+}

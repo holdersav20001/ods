@@ -1,0 +1,17 @@
+{
+  "type": "record",
+  "name": "RunEvent",
+  "namespace": "com.aviva.ods.pipeline",
+  "fields": [
+    {"name": "run_id",                 "type": "string"},
+    {"name": "event_type",             "type": "string"},
+    {"name": "domain",                 "type": "string"},
+    {"name": "dataset",                "type": "string"},
+    {"name": "business_date",          "type": "string"},
+    {"name": "status",                 "type": "string"},
+    {"name": "record_count_published", "type": ["null", "int"],    "default": null},
+    {"name": "kafka_topic",            "type": ["null", "string"], "default": null},
+    {"name": "kafka_offset_end",       "type": ["null", "long"],   "default": null},
+    {"name": "occurred_at",            "type": "string"}
+  ]
+}

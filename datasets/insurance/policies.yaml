@@ -1,0 +1,22 @@
+domain: insurance
+dataset: policies
+source_type: s3_batch
+filename_pattern: '^policies_(?P<bd>\d{8})\.csv$'
+key_fields: [policy_id]
+target_topic: ods.insurance.policies
+postgres_target_table: ods.insurance_policies
+s3_curated_path: s3://ods-curated/insurance/policies/
+schema_def:
+  fields:
+    - {name: policy_id,      type: string,          nullable: false}
+    - {name: status,         type: string,          nullable: false}
+    - {name: premium,        type: 'decimal(10,2)', nullable: true}
+    - {name: effective_date, type: date,            nullable: true}
+dq_rules:
+  hard:
+    - {rule: not_null, column: policy_id}
+    - {rule: unique,   column: policy_id}
+  soft:
+    - {rule: completeness_pct, column: premium, min_pct: 95}
+recon_tolerance_records: 0
+recon_tolerance_pct: 0
