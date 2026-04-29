@@ -2,7 +2,9 @@
 ==============================================================================
 DR — failed runs preserved (audit trail)
 ==============================================================================
-(no rows)
+run_id                               | domain    | dataset  | business_date | status | error_summary                  | started_at                
+-------------------------------------+-----------+----------+---------------+--------+--------------------------------+---------------------------
+dc888764-aeb7-4140-8864-12009af0847e | insurance | policies | 2026-04-10    | failed | total_count must be > 0, got 0 | 2026-04-29 08:11:02.905050
 
 ==============================================================================
 DR — recoveries (succeeded runs after failures, same bd)
@@ -10,3 +12,5 @@ DR — recoveries (succeeded runs after failures, same bd)
 business_date | failed_runs | succeeded_runs
 --------------+-------------+---------------
 2026-04-28    | 0           | 1             
+2026-04-11    | 0           | 1             
+2026-04-10    | 1           | 0             

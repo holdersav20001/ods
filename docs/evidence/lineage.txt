@@ -2,15 +2,19 @@
 ==============================================================================
 LINEAGE — file_catalogue (raw drop)
 ==============================================================================
-file_id                              | domain    | dataset  | business_date | state    | s3_raw_path                                                  | file_md5                         | last_run_id
--------------------------------------+-----------+----------+---------------+----------+--------------------------------------------------------------+----------------------------------+------------
-844f34a7-7535-45f6-a5f3-a77d114e1f25 | insurance | policies | 2026-04-28    | received | s3://ods-raw-local/insurance/policies/2026-04-28/policies_20 | 778390248037a252ed77920c0ef95690 | None       
+file_id                              | domain    | dataset  | business_date | state    | s3_raw_path                                                  | file_md5                         | last_run_id                         
+-------------------------------------+-----------+----------+---------------+----------+--------------------------------------------------------------+----------------------------------+-------------------------------------
+e5daed6f-d95b-4563-a374-d75091b2a2e4 | insurance | policies | 2026-04-11    | sunk     | s3://ods-raw-local/insurance/policies/2026-04-11/policies_20 | addfb45c4a1bc851bea477abf3dcc9ca | 1b6c4891-8cfe-4641-9200-010eae73600a
+40299e9f-0e62-43c7-bdf7-8a2fa6163ebc | insurance | policies | 2026-04-10    | received | s3://ods-raw-local/insurance/policies/2026-04-10/policies_20 | 07fc19b7490f608d8f704fb13480a9a4 | None                                
+844f34a7-7535-45f6-a5f3-a77d114e1f25 | insurance | policies | 2026-04-28    | sunk     | s3://ods-raw-local/insurance/policies/2026-04-28/policies_20 | 778390248037a252ed77920c0ef95690 | aeb00f20-8357-41d0-b092-2574aed7a7e1
 
 ==============================================================================
 LINEAGE — run_log (per-file run header)
 ==============================================================================
 run_id                               | domain    | dataset  | business_date | status    | record_count_source | record_count_dq_pass | record_count_published | kafka_offset_start | kafka_offset_end
 -------------------------------------+-----------+----------+---------------+-----------+---------------------+----------------------+------------------------+--------------------+-----------------
+1b6c4891-8cfe-4641-9200-010eae73600a | insurance | policies | 2026-04-11    | succeeded | 1                   | 1                    | 1                      | 16                 | 17              
+dc888764-aeb7-4140-8864-12009af0847e | insurance | policies | 2026-04-10    | failed    | 2                   | 0                    | None                   | None               | None            
 aeb00f20-8357-41d0-b092-2574aed7a7e1 | insurance | policies | 2026-04-28    | succeeded | 2                   | 2                    | 2                      | 8                  | 10              
 
 ==============================================================================
@@ -18,6 +22,18 @@ LINEAGE — run_stage_log (per-stage breakdown)
 ==============================================================================
 run_id                               | stage        | status    | input                                    | output                                   | started_at                 | ended_at                  
 -------------------------------------+--------------+-----------+------------------------------------------+------------------------------------------+----------------------------+---------------------------
+1b6c4891-8cfe-4641-9200-010eae73600a | sink_s3      | succeeded | None                                     | kafka://ods.insurance.policies#consumed  | 2026-04-29 08:13:17.348000 | 2026-04-29 08:13:17.348000
+1b6c4891-8cfe-4641-9200-010eae73600a | sink_pg      | succeeded | None                                     | kafka://ods.insurance.policies#consumed  | 2026-04-29 08:12:27.419124 | 2026-04-29 08:12:27.419124
+1b6c4891-8cfe-4641-9200-010eae73600a | publish      | succeeded | s3a://ods-curated-local/insurance/polici | kafka://ods.insurance.policies           | 2026-04-29 08:12:25.640492 | 2026-04-29 08:12:25.640492
+1b6c4891-8cfe-4641-9200-010eae73600a | dq_check     | succeeded | None                                     | None                                     | 2026-04-29 08:12:24.604071 | 2026-04-29 08:12:24.604071
+1b6c4891-8cfe-4641-9200-010eae73600a | read_parquet | succeeded | s3a://ods-curated-local/insurance/polici | None                                     | 2026-04-29 08:12:23.059743 | 2026-04-29 08:12:23.059743
+1b6c4891-8cfe-4641-9200-010eae73600a | ingest       | succeeded | s3://ods-raw-local/insurance/policies/20 | s3://ods-curated-local/insurance/policie | 2026-04-29 08:12:14.955202 | 2026-04-29 08:12:14.955202
+1b6c4891-8cfe-4641-9200-010eae73600a | ingest       | running   | s3://ods-raw-local/insurance/policies/20 | None                                     | 2026-04-29 08:12:06.326606 | 2026-04-29 08:12:06.326606
+dc888764-aeb7-4140-8864-12009af0847e | read_parquet | succeeded | s3a://ods-curated-local/insurance/polici | None                                     | 2026-04-29 08:11:26.355544 | 2026-04-29 08:11:26.355544
+dc888764-aeb7-4140-8864-12009af0847e | ingest       | succeeded | s3://ods-raw-local/insurance/policies/20 | s3://ods-curated-local/insurance/policie | 2026-04-29 08:11:17.631367 | 2026-04-29 08:11:17.631367
+dc888764-aeb7-4140-8864-12009af0847e | ingest       | running   | s3://ods-raw-local/insurance/policies/20 | None                                     | 2026-04-29 08:11:06.265927 | 2026-04-29 08:11:06.265927
+aeb00f20-8357-41d0-b092-2574aed7a7e1 | sink_s3      | succeeded | None                                     | kafka://ods.insurance.policies#consumed  | 2026-04-29 07:29:00.678653 | 2026-04-29 07:29:00.678653
+aeb00f20-8357-41d0-b092-2574aed7a7e1 | sink_pg      | succeeded | None                                     | kafka://ods.insurance.policies#consumed  | 2026-04-29 07:28:27.479525 | 2026-04-29 07:28:27.479525
 aeb00f20-8357-41d0-b092-2574aed7a7e1 | publish      | succeeded | s3a://ods-curated-local/insurance/polici | kafka://ods.insurance.policies           | 2026-04-29 07:28:26.275883 | 2026-04-29 07:28:26.275883
 aeb00f20-8357-41d0-b092-2574aed7a7e1 | dq_check     | succeeded | None                                     | None                                     | 2026-04-29 07:28:25.249848 | 2026-04-29 07:28:25.249848
 aeb00f20-8357-41d0-b092-2574aed7a7e1 | read_parquet | succeeded | s3a://ods-curated-local/insurance/polici | None                                     | 2026-04-29 07:28:23.854474 | 2026-04-29 07:28:23.854474
@@ -29,6 +45,7 @@ LINEAGE — per-row trace (postgres row → run → file → SFTP/S3)
 ==============================================================================
 policy_id | bd         | run_id                               | run_status | kafka_topic            | kafka_offsets | file_md5                         | sftp_path                     | s3_raw_path                                                           
 ----------+------------+--------------------------------------+------------+------------------------+---------------+----------------------------------+-------------------------------+-----------------------------------------------------------------------
+SF1       | 2026-04-11 | 1b6c4891-8cfe-4641-9200-010eae73600a | succeeded  | ods.insurance.policies | 16..17        | addfb45c4a1bc851bea477abf3dcc9ca | /upload/policies_20260411.csv | s3://ods-raw-local/insurance/policies/2026-04-11/policies_20260411.csv
 P100      | 2026-04-28 | aeb00f20-8357-41d0-b092-2574aed7a7e1 | succeeded  | ods.insurance.policies | 8..10         | 778390248037a252ed77920c0ef95690 | /upload/policies_20260428.csv | s3://ods-raw-local/insurance/policies/2026-04-28/policies_20260428.csv
 P101      | 2026-04-28 | aeb00f20-8357-41d0-b092-2574aed7a7e1 | succeeded  | ods.insurance.policies | 8..10         | 778390248037a252ed77920c0ef95690 | /upload/policies_20260428.csv | s3://ods-raw-local/insurance/policies/2026-04-28/policies_20260428.csv
 
@@ -37,8 +54,20 @@ LINEAGE — joined chain (file → run → stages → target)
 ==============================================================================
 file_md5                         | file_state | run_id                               | run_status | stage        | stage_status
 ---------------------------------+------------+--------------------------------------+------------+--------------+-------------
-778390248037a252ed77920c0ef95690 | received   | aeb00f20-8357-41d0-b092-2574aed7a7e1 | succeeded  | ingest       | running     
-778390248037a252ed77920c0ef95690 | received   | aeb00f20-8357-41d0-b092-2574aed7a7e1 | succeeded  | ingest       | succeeded   
-778390248037a252ed77920c0ef95690 | received   | aeb00f20-8357-41d0-b092-2574aed7a7e1 | succeeded  | read_parquet | succeeded   
-778390248037a252ed77920c0ef95690 | received   | aeb00f20-8357-41d0-b092-2574aed7a7e1 | succeeded  | dq_check     | succeeded   
-778390248037a252ed77920c0ef95690 | received   | aeb00f20-8357-41d0-b092-2574aed7a7e1 | succeeded  | publish      | succeeded   
+addfb45c4a1bc851bea477abf3dcc9ca | sunk       | 1b6c4891-8cfe-4641-9200-010eae73600a | succeeded  | ingest       | running     
+addfb45c4a1bc851bea477abf3dcc9ca | sunk       | 1b6c4891-8cfe-4641-9200-010eae73600a | succeeded  | ingest       | succeeded   
+addfb45c4a1bc851bea477abf3dcc9ca | sunk       | 1b6c4891-8cfe-4641-9200-010eae73600a | succeeded  | read_parquet | succeeded   
+addfb45c4a1bc851bea477abf3dcc9ca | sunk       | 1b6c4891-8cfe-4641-9200-010eae73600a | succeeded  | dq_check     | succeeded   
+addfb45c4a1bc851bea477abf3dcc9ca | sunk       | 1b6c4891-8cfe-4641-9200-010eae73600a | succeeded  | publish      | succeeded   
+addfb45c4a1bc851bea477abf3dcc9ca | sunk       | 1b6c4891-8cfe-4641-9200-010eae73600a | succeeded  | sink_pg      | succeeded   
+addfb45c4a1bc851bea477abf3dcc9ca | sunk       | 1b6c4891-8cfe-4641-9200-010eae73600a | succeeded  | sink_s3      | succeeded   
+07fc19b7490f608d8f704fb13480a9a4 | received   | dc888764-aeb7-4140-8864-12009af0847e | failed     | ingest       | running     
+07fc19b7490f608d8f704fb13480a9a4 | received   | dc888764-aeb7-4140-8864-12009af0847e | failed     | ingest       | succeeded   
+07fc19b7490f608d8f704fb13480a9a4 | received   | dc888764-aeb7-4140-8864-12009af0847e | failed     | read_parquet | succeeded   
+778390248037a252ed77920c0ef95690 | sunk       | aeb00f20-8357-41d0-b092-2574aed7a7e1 | succeeded  | ingest       | running     
+778390248037a252ed77920c0ef95690 | sunk       | aeb00f20-8357-41d0-b092-2574aed7a7e1 | succeeded  | ingest       | succeeded   
+778390248037a252ed77920c0ef95690 | sunk       | aeb00f20-8357-41d0-b092-2574aed7a7e1 | succeeded  | read_parquet | succeeded   
+778390248037a252ed77920c0ef95690 | sunk       | aeb00f20-8357-41d0-b092-2574aed7a7e1 | succeeded  | dq_check     | succeeded   
+778390248037a252ed77920c0ef95690 | sunk       | aeb00f20-8357-41d0-b092-2574aed7a7e1 | succeeded  | publish      | succeeded   
+778390248037a252ed77920c0ef95690 | sunk       | aeb00f20-8357-41d0-b092-2574aed7a7e1 | succeeded  | sink_pg      | succeeded   
+778390248037a252ed77920c0ef95690 | sunk       | aeb00f20-8357-41d0-b092-2574aed7a7e1 | succeeded  | sink_s3      | succeeded   
