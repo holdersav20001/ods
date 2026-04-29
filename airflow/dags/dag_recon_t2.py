@@ -53,7 +53,8 @@ def reconcile() -> None:
             schema, _, table = target_tbl.partition(".") if target_tbl else ("ods", ".", "unknown")
             with conn.cursor() as cur:
                 cur.execute(
-                    f'SELECT count(*) FROM {schema}."{table}"'
+                    f'SELECT count(*) FROM {schema}."{table}" WHERE _ods_run_id = %s',
+                    (str(run_id),),
                 )
                 pg_count = cur.fetchone()[0]
 

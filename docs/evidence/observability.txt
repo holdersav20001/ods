@@ -2,16 +2,16 @@
 ==============================================================================
 OBSERVABILITY — docker compose ps
 ==============================================================================
-airflow-scheduler	Up 27 minutes (healthy)
-airflow-webserver	Up 27 minutes (healthy)
-broker	Up 31 minutes (healthy)
-grafana	Up 31 minutes
-kafka-connect	Up 31 minutes (healthy)
-localstack	Up 31 minutes (healthy)
-postgres	Up 31 minutes (healthy)
-schema-registry	Up 31 minutes (healthy)
-sftp	Up 23 minutes
-zookeeper	Up 31 minutes (healthy)
+airflow-scheduler	Up 41 minutes (healthy)
+airflow-webserver	Up 41 minutes (healthy)
+broker	Up 45 minutes (healthy)
+grafana	Up 45 minutes
+kafka-connect	Up 45 minutes (healthy)
+localstack	Up 45 minutes (healthy)
+postgres	Up 45 minutes (healthy)
+schema-registry	Up 45 minutes (healthy)
+sftp	Up 37 minutes
+zookeeper	Up 45 minutes (healthy)
 
 
 ==============================================================================
