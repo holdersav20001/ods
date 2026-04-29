@@ -25,7 +25,8 @@ def register_schema(subject: str, schema_path: str) -> int:
 
 if __name__ == "__main__":
     schemas = [
-        ("ods-insurance-policies-value", "schemas/insurance/policies.avsc"),
+        ("ods-insurance-policies-value",  "schemas/insurance/policies.avsc"),
+        ("ods.pipeline.run-events-value", "schemas/pipeline/run_event.avsc"),
     ]
     for subject, path in schemas:
         register_schema(subject, path)

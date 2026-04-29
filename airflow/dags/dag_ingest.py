@@ -17,6 +17,7 @@ from docker.types import Mount
 
 from common.connect_admin import wait_until_offset_consumed
 from common.run_log import insert_run_header, update_run_header, write_stage
+from common.run_event_producer import produce_run_event
 
 
 PG_DSN = os.environ.get(
@@ -99,6 +100,16 @@ def init_run() -> dict:
         )
     finally:
         conn.close()
+
+    produce_run_event(
+        "run_started",
+        run_id=run_id,
+        domain=conf["domain"],
+        dataset=conf["dataset"],
+        business_date=conf["business_date"],
+        status="running",
+    )
+
     return {
         **conf,
         "run_id": run_id,
@@ -129,6 +140,17 @@ def wait_sinks(ctx: dict) -> dict:
                     status="failed",
                     output_ref=None,
                     error=f"wait_sinks aborted: {exc}",
+                )
+            except Exception:
+                pass
+            try:
+                produce_run_event(
+                    "run_partial",
+                    run_id=ctx["run_id"],
+                    domain=ctx["domain"],
+                    dataset=ctx["dataset"],
+                    business_date=ctx["business_date"],
+                    status="partial",
                 )
             except Exception:
                 pass
@@ -202,6 +224,15 @@ def finalise(ctx: dict) -> None:
         conn.commit()
     finally:
         conn.close()
+
+    produce_run_event(
+        "run_succeeded",
+        run_id=ctx["run_id"],
+        domain=ctx["domain"],
+        dataset=ctx["dataset"],
+        business_date=ctx["business_date"],
+        status="succeeded",
+    )
 
 
 with DAG(
