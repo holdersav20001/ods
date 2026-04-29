@@ -112,43 +112,76 @@ def init_run() -> dict:
 def wait_sinks(ctx: dict) -> dict:
     conn = psycopg2.connect(PG_DSN)
     try:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT kafka_topic, kafka_offset_end FROM pipeline.run_log WHERE run_id=%s",
-                (ctx["run_id"],),
-            )
-            row = cur.fetchone()
-        if not row or row[0] is None or row[1] is None:
-            raise RuntimeError(
-                f"run_log row for {ctx['run_id']} missing kafka_topic/offset_end"
-            )
-        topic, target = row
+        try:
+            return _wait_sinks_inner(conn, ctx)
+        except Exception as exc:
+            # Any unexpected error in the sink-wait path means we cannot
+            # confirm the sinks landed; force the run to 'partial' so the
+            # audit trail never silently retains the publish-job's
+            # 'succeeded' status.
+            try:
+                update_run_header(conn, ctx["run_id"], status="partial",
+                                  error_summary=f"wait_sinks aborted: {exc}")
+                write_stage(
+                    conn,
+                    run_id=ctx["run_id"],
+                    stage="sink_pg",
+                    status="failed",
+                    output_ref=None,
+                    error=f"wait_sinks aborted: {exc}",
+                )
+            except Exception:
+                pass
+            raise
+    finally:
+        conn.close()
 
-        ok_jdbc = wait_until_offset_consumed("jdbc-sink-policies", topic, target)
-        ok_s3 = wait_until_offset_consumed("s3-sink-policies", topic, target)
 
+def _wait_sinks_inner(conn, ctx: dict) -> dict:
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT kafka_topic, kafka_offset_end FROM pipeline.run_log WHERE run_id=%s",
+            (ctx["run_id"],),
+        )
+        row = cur.fetchone()
+    if not row or row[0] is None or row[1] is None:
+        update_run_header(conn, ctx["run_id"], status="partial")
         write_stage(
             conn,
             run_id=ctx["run_id"],
             stage="sink_pg",
-            status="succeeded" if ok_jdbc else "failed",
-            output_ref=f"kafka://{topic}#consumed",
-            error=None if ok_jdbc else "jdbc sink did not advance",
+            status="failed",
+            output_ref=None,
+            error="kafka_topic/offset_end missing — publish stage did not run",
         )
-        write_stage(
-            conn,
-            run_id=ctx["run_id"],
-            stage="sink_s3",
-            status="succeeded" if ok_s3 else "failed",
-            output_ref=f"kafka://{topic}#consumed",
-            error=None if ok_s3 else "s3 sink did not advance",
+        raise RuntimeError(
+            f"run_log row for {ctx['run_id']} missing kafka_topic/offset_end"
         )
+    topic, target = row
 
-        if not (ok_jdbc and ok_s3):
-            update_run_header(conn, ctx["run_id"], status="partial")
-            raise RuntimeError("sink wait failed")
-    finally:
-        conn.close()
+    ok_jdbc = wait_until_offset_consumed("jdbc-sink-policies", topic, target)
+    ok_s3 = wait_until_offset_consumed("s3-sink-policies", topic, target)
+
+    write_stage(
+        conn,
+        run_id=ctx["run_id"],
+        stage="sink_pg",
+        status="succeeded" if ok_jdbc else "failed",
+        output_ref=f"kafka://{topic}#consumed",
+        error=None if ok_jdbc else "jdbc sink did not advance",
+    )
+    write_stage(
+        conn,
+        run_id=ctx["run_id"],
+        stage="sink_s3",
+        status="succeeded" if ok_s3 else "failed",
+        output_ref=f"kafka://{topic}#consumed",
+        error=None if ok_s3 else "s3 sink did not advance",
+    )
+
+    if not (ok_jdbc and ok_s3):
+        update_run_header(conn, ctx["run_id"], status="partial")
+        raise RuntimeError("sink wait failed")
     return ctx
 
 

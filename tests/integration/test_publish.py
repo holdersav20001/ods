@@ -114,9 +114,9 @@ def consume_messages(topic, timeout=15.0):
 
 
 GOOD_CSV = (
-    "policy_id,policyholder_name,premium_amount,start_date,end_date,agent_code,postcode\n"
-    "POL-100,Alice,1200.00,2026-01-01,2027-01-01,AG001,EC1A1BB\n"
-    "POL-101,Bob,950.50,2026-02-01,2027-02-01,AG002,WC2N5DU\n"
+    "policy_id,status,premium,effective_date\n"
+    "POL-100,ACTIVE,1200.00,2026-01-01\n"
+    "POL-101,ACTIVE,950.50,2026-02-01\n"
 )
 
 

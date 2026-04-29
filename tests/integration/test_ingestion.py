@@ -93,9 +93,9 @@ def run_ingestion_job(
 # ---------------------------------------------------------------------------
 
 GOOD_CSV = (
-    "policy_id,policyholder_name,premium_amount,start_date,end_date,agent_code,postcode\n"
-    "POL-001,Alice Smith,1200.00,2026-01-01,2027-01-01,AG001,EC1A1BB\n"
-    "POL-002,Bob Jones,950.50,2026-02-01,2027-02-01,AG002,WC2N5DU\n"
+    "policy_id,status,premium,effective_date\n"
+    "POL-001,ACTIVE,1200.00,2026-01-01\n"
+    "POL-002,ACTIVE,950.50,2026-02-01\n"
 )
 
 

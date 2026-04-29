@@ -9,7 +9,7 @@ INSERT INTO pipeline.dataset_config (
     's3_batch',
     'policies_(?P<bd>\d{8})\.csv',
     'ods.insurance.policies',
-    'ods-insurance-policies-value',
+    'ods.insurance.policies-value',
     1,
     '["policy_id"]',
     '{

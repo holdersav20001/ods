@@ -72,7 +72,7 @@ def _put(name: str, body: str) -> None:
 
 
 def _wait_for_run(pg_conn, business_date: str, since_iso: str, timeout_s: int = 240) -> tuple[str, str]:
-    """Poll run_log for a terminal row started after `since_iso` for the given bd."""
+    """Poll run_log for a finalised row (ended_at set) started after `since_iso`."""
     deadline = time.time() + timeout_s
     while time.time() < deadline:
         pg_conn.rollback()
@@ -83,7 +83,7 @@ def _wait_for_run(pg_conn, business_date: str, since_iso: str, timeout_s: int = 
                   FROM pipeline.run_log
                  WHERE business_date=%s
                    AND started_at >= %s
-                   AND status IN ('failed','partial','succeeded')
+                   AND ended_at IS NOT NULL
                  ORDER BY started_at DESC LIMIT 1
                 """,
                 (business_date, since_iso),
@@ -92,7 +92,7 @@ def _wait_for_run(pg_conn, business_date: str, since_iso: str, timeout_s: int = 
         if row:
             return row
         time.sleep(3)
-    raise AssertionError(f"no run_log row reached terminal state for bd={business_date}")
+    raise AssertionError(f"no run_log row finalised for bd={business_date}")
 
 
 def test_dq_block_records_failure(pg_conn):
@@ -142,17 +142,6 @@ def test_dq_block_records_failure(pg_conn):
     assert dq_fail >= 2, f"expected record_count_dq_fail>=2, got {dq_fail}"
 
 
-@pytest.mark.xfail(
-    reason=(
-        "DAG state interaction: when ods_ingestion takes the file_state "
-        "idempotent-skip path it sets run_log.status='succeeded' before "
-        "stage_publish/wait_sinks run, and wait_sinks does not currently "
-        "downgrade a previously-succeeded run when offsets are NULL. "
-        "Tracked as a follow-up — pipeline still records sink_pg=failed "
-        "in run_stage_log so the failure is auditable."
-    ),
-    strict=False,
-)
 def test_sink_failure_marks_run_partial(pg_conn):
     """Pause the JDBC sink, drop a file. Expect wait_sinks to fail and the
     run_log row to land at status='partial' (not silently 'succeeded')."""
@@ -169,43 +158,53 @@ def test_sink_failure_marks_run_partial(pg_conn):
         since_iso = cur.fetchone()[0]
     pg_conn.commit()
 
-    # Delete JDBC sink so it can't consume; wait_sinks must time out and the
-    # run finalises as 'partial'. Re-register from local config in finally.
-    requests.delete(f"{CONNECT_URL}/connectors/jdbc-sink-policies", timeout=10)
-    time.sleep(2)
+    # Stop the entire kafka-connect container so neither sink can consume;
+    # wait_sinks must time out and the run finalises as 'partial'.
+    import subprocess
+    subprocess.run(["docker", "compose", "stop", "kafka-connect", "connect-bootstrap"],
+                   capture_output=True, check=False, timeout=30)
     try:
         _put("policies_20260411.csv", body)
-        status, _ = _wait_for_run(pg_conn, bd, since_iso, timeout_s=360)
-        assert status in ("partial", "failed"), f"expected partial/failed, got {status}"
-
-        # And the per-stage breakdown must call out which sink failed
-        with pg_conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT stage, status FROM pipeline.run_stage_log s
-                  JOIN pipeline.run_log r ON r.run_id = s.run_id
-                 WHERE r.business_date=%s
-                   AND s.stage='sink_pg'
-                 ORDER BY s.started_at DESC LIMIT 1
-                """,
-                (bd,),
-            )
-            row = cur.fetchone()
-        assert row and row[1] == "failed", (
-            f"sink_pg row should be failed, got {row!r}"
+        # Wait until wait_sinks stage has written its sink_pg row, then read
+        # the run_log status that wait_sinks finalised the run with.
+        deadline = time.time() + 420
+        sink_pg_status = None
+        run_status = None
+        while time.time() < deadline:
+            pg_conn.rollback()
+            with pg_conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT s.status, r.status
+                      FROM pipeline.run_stage_log s
+                      JOIN pipeline.run_log r ON r.run_id = s.run_id
+                     WHERE r.business_date=%s
+                       AND r.started_at >= %s
+                       AND s.stage='sink_pg'
+                     ORDER BY s.started_at DESC LIMIT 1
+                    """,
+                    (bd, since_iso),
+                )
+                row = cur.fetchone()
+            if row:
+                sink_pg_status, run_status = row
+                break
+            time.sleep(3)
+        assert sink_pg_status == "failed", (
+            f"sink_pg should be failed; got {sink_pg_status!r} (run={run_status!r})"
         )
+        assert run_status in ("partial", "failed"), (
+            f"run should land partial/failed; got {run_status!r}"
+        )
+        status = run_status
     finally:
-        # Re-register sink from on-disk config so subsequent tests work.
-        cfg_path = os.path.join(
-            os.path.dirname(__file__), "..", "..",
-            "docker", "connect-config", "jdbc-sink-policies.json",
-        )
-        with open(cfg_path) as fh:
-            import json as _json
-            cfg = _json.load(fh)
-        requests.delete(f"{CONNECT_URL}/connectors/jdbc-sink-policies", timeout=5)
-        time.sleep(1)
-        requests.post(
-            f"{CONNECT_URL}/connectors",
-            json=cfg, timeout=10,
-        )
+        # Restart kafka-connect so subsequent tests / pipeline runs work.
+        subprocess.run(["docker", "compose", "start", "kafka-connect"],
+                       capture_output=True, check=False, timeout=30)
+        # Wait for connect REST to come back up
+        for _ in range(30):
+            try:
+                if requests.get(f"{CONNECT_URL}/", timeout=2).ok:
+                    break
+            except requests.RequestException:
+                time.sleep(2)

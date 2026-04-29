@@ -1,3 +1,3 @@
-policy_id,policyholder_name,premium_amount,start_date,end_date,agent_code,postcode
-,Alice Smith,1200.00,2026-01-01,2027-01-01,AG001,EC1A1BB
-POL-002,Bob Jones,950.50,2026-02-01,2027-02-01,AG002,WC2N5DU
+policy_id,status,premium,effective_date
+,ACTIVE,1200.00,2026-01-01
+POL-NULL-002,ACTIVE,950.50,2026-02-01

@@ -2,16 +2,15 @@
 ==============================================================================
 OBSERVABILITY — docker compose ps
 ==============================================================================
-airflow-scheduler	Up 2 hours (healthy)
-airflow-webserver	Up 2 hours (healthy)
-broker	Up 2 hours (healthy)
-grafana	Up 2 hours
-kafka-connect	Up 2 hours (healthy)
-localstack	Up 2 hours (healthy)
-postgres	Up 2 hours (healthy)
-schema-registry	Up 2 hours (healthy)
-sftp	Up About an hour
-zookeeper	Up 2 hours (healthy)
+airflow-scheduler	Up 58 minutes (healthy)
+broker	Up 3 hours (healthy)
+grafana	Up 3 hours
+kafka-connect	Up 3 minutes (healthy)
+localstack	Up 3 hours (healthy)
+postgres	Up 3 hours (healthy)
+schema-registry	Up 3 hours (healthy)
+sftp	Up 3 hours
+zookeeper	Up 3 hours (healthy)
 
 
 ==============================================================================
@@ -24,7 +23,6 @@ jdbc-sink-policies: connector=RUNNING; task0=RUNNING
 OBSERVABILITY — schema registry subjects
 ==============================================================================
 [
-  "ods-insurance-policies-value",
   "ods.insurance.policies-value"
 ]
 

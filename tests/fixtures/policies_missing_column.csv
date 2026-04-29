@@ -1,2 +1,2 @@
-policyholder_name,premium_amount,start_date
-Alice Smith,1200.00,2026-01-01
+status,premium,effective_date
+ACTIVE,1200.00,2026-01-01
