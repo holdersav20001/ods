@@ -227,7 +227,6 @@ def test_4_dq_hard_block_null_policy_id(s3, pg):
 
 # ── Scenario 5 — DQ soft warn (high premium) ─────────────────────────────────
 
-@pytest.mark.skip(reason="Legacy soft-warn rule removed in seed dq_rules; new schema only carries hard not_null+unique")
 def test_5_dq_soft_warn_high_premium(s3, pg):
     high_csv = open(f"{os.getcwd()}/tests/fixtures/policies_high_premium.csv").read()
     key = "insurance/policies/date=20260605/policies_20260605.csv"
@@ -236,17 +235,12 @@ def test_5_dq_soft_warn_high_premium(s3, pg):
     r, run_id = ingest(f"s3://ods-raw-local/{key}")
     assert r.returncode == 0, r.stderr
 
-    # All rows should be in curated (soft warn doesn't block)
+    # Soft warn does not block — row lands in curated
     curated = s3.list_objects_v2(Bucket=CURATED_BUCKET, Prefix="insurance/policies/date=2026-06-05/")
     assert curated.get("KeyCount", 0) > 0
 
-    # Status is dq_warned or completed (job continues)
-    cur = pg.cursor()
-    cur.execute(
-        "SELECT status FROM pipeline.run_log "
-        "WHERE run_id=%s ORDER BY started_at", (run_id,))
-    statuses = [row[0] for row in cur.fetchall()]
-    assert "dq_warned" in statuses or "dq_passed" in statuses
+    # Job completes successfully regardless of soft-warn triggers
+    assert log_status(pg, run_id) == "succeeded"
 
 
 # ── Scenario 6 — Business date extraction ────────────────────────────────────
@@ -268,7 +262,6 @@ def test_6_business_date_extraction(s3, pg):
 
 # ── Scenario 7 — Publish idempotency ─────────────────────────────────────────
 
-@pytest.mark.skip(reason="Publish idempotency now depends on file_state on curated path; second publish exits early without writing run_log under same run_id semantics")
 def test_7_publish_idempotency(s3, pg):
     good = open(f"{os.getcwd()}/tests/fixtures/policies_good.csv").read()
     key = "insurance/policies/date=20260607/policies_20260607.csv"
@@ -276,14 +269,17 @@ def test_7_publish_idempotency(s3, pg):
 
     ingest(f"s3://ods-raw-local/{key}")
     curated = "s3://ods-curated-local/insurance/policies/date=2026-06-07/"
-    publish(curated)
+    r1, _ = publish(curated)
+    assert r1.returncode == 0, r1.stderr
 
-    msgs_after_first_pub = kafka_count()
-    _, run2 = publish(curated)
-    msgs_after_second_pub = kafka_count()
+    msgs_after_first = kafka_count()
 
-    assert msgs_after_first_pub == msgs_after_second_pub
-    assert log_status(pg, run2) == "succeeded"
+    # Second publish to same path — file_state guard exits 0, no new messages
+    r2, _ = publish(curated)
+    assert r2.returncode == 0, r2.stderr
+
+    msgs_after_second = kafka_count()
+    assert msgs_after_second == msgs_after_first
 
 
 # ── Scenario 8 — Full pipeline: ingest + publish ─────────────────────────────
