@@ -1,4 +1,4 @@
-"""Publish pipeline run lifecycle events to ods.pipeline.run-events."""
+"""Publish pipeline run lifecycle events to ods.pipeline.run-events (Kafka + Postgres)."""
 from __future__ import annotations
 
 import datetime
@@ -71,3 +71,33 @@ def produce_run_event(
         value=serializer(payload, SerializationContext(TOPIC, MessageField.VALUE)),
     )
     producer.flush()
+
+    _write_pg(payload)
+
+
+def _write_pg(payload: dict) -> None:
+    pg_dsn = os.environ.get("PG_DSN")
+    if not pg_dsn:
+        return
+    import psycopg2
+    with psycopg2.connect(pg_dsn) as conn, conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO pipeline.run_events
+                (run_id, event_type, domain, dataset, business_date, status,
+                 record_count_published, kafka_topic, kafka_offset_end, occurred_at)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            """,
+            (
+                payload["run_id"],
+                payload["event_type"],
+                payload["domain"],
+                payload["dataset"],
+                payload["business_date"],
+                payload["status"],
+                payload["record_count_published"],
+                payload["kafka_topic"],
+                payload["kafka_offset_end"],
+                payload["occurred_at"],
+            ),
+        )
