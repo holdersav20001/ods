@@ -27,8 +27,8 @@ def sync_to_db(path: str, pg_conn) -> None:
                      schema_id, key_fields, dq_rules, schema_def,
                      postgres_target_table, s3_curated_path,
                      config_version_id, config_yaml_hash, config_pinned_at,
-                     recon_tolerance_records, recon_tolerance_pct)
-                VALUES (%s,%s,%s,%s,%s, %s,%s,%s,%s, %s,%s, 1,%s,NOW(), %s,%s)
+                     recon_tolerance_records, recon_tolerance_pct, write_mode)
+                VALUES (%s,%s,%s,%s,%s, %s,%s,%s,%s, %s,%s, 1,%s,NOW(), %s,%s, %s)
                 ON CONFLICT (domain, dataset) DO UPDATE SET
                     source_type=EXCLUDED.source_type,
                     filename_pattern=EXCLUDED.filename_pattern,
@@ -42,7 +42,8 @@ def sync_to_db(path: str, pg_conn) -> None:
                     config_yaml_hash=EXCLUDED.config_yaml_hash,
                     config_pinned_at=NOW(),
                     recon_tolerance_records=EXCLUDED.recon_tolerance_records,
-                    recon_tolerance_pct=EXCLUDED.recon_tolerance_pct
+                    recon_tolerance_pct=EXCLUDED.recon_tolerance_pct,
+                    write_mode=EXCLUDED.write_mode
                 """,
                 (
                     cfg['domain'], cfg['dataset'], cfg.get('source_type', 's3_batch'),
@@ -53,6 +54,7 @@ def sync_to_db(path: str, pg_conn) -> None:
                     h,
                     int(cfg.get('recon_tolerance_records', 0)),
                     float(cfg.get('recon_tolerance_pct', 0)),
+                    cfg.get('write_mode', 'upsert'),
                 ),
             )
         pg_conn.commit()

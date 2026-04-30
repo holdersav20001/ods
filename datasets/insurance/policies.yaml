@@ -1,6 +1,7 @@
 domain: insurance
 dataset: policies
 source_type: s3_batch
+write_mode: upsert
 filename_pattern: '^policies_(?P<bd>\d{8})\.csv$'
 key_fields: [policy_id]
 target_topic: ods.insurance.policies
