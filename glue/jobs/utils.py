@@ -149,6 +149,42 @@ def write_stage_row(pg_dsn, *, run_id, stage, status,
         )
 
 
+def upsert_file_catalogue(pg_dsn, *, domain, dataset, business_date,
+                          file_md5, s3_raw_path=None, sftp_path=None,
+                          s3_curated_path=None, file_size_bytes=None,
+                          source_row_count=None, state="ingested",
+                          last_run_id=None) -> str:
+    """Upsert a file_catalogue row keyed on (domain, dataset, file_md5).
+
+    Returns the file_id UUID as a string.
+    """
+    import uuid as _uuid
+    with psycopg2.connect(pg_dsn) as conn, conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO pipeline.file_catalogue
+                (file_id, domain, dataset, business_date, file_md5,
+                 s3_raw_path, sftp_path, s3_curated_path,
+                 file_size_bytes, source_row_count, state, last_run_id)
+            VALUES (%s,%s,%s,%s,%s, %s,%s,%s, %s,%s,%s,%s)
+            ON CONFLICT (domain, dataset, file_md5) DO UPDATE SET
+                state          = EXCLUDED.state,
+                s3_raw_path    = COALESCE(EXCLUDED.s3_raw_path,    pipeline.file_catalogue.s3_raw_path),
+                s3_curated_path= COALESCE(EXCLUDED.s3_curated_path,pipeline.file_catalogue.s3_curated_path),
+                sftp_path      = COALESCE(EXCLUDED.sftp_path,      pipeline.file_catalogue.sftp_path),
+                file_size_bytes= COALESCE(EXCLUDED.file_size_bytes, pipeline.file_catalogue.file_size_bytes),
+                source_row_count=COALESCE(EXCLUDED.source_row_count,pipeline.file_catalogue.source_row_count),
+                last_run_id    = EXCLUDED.last_run_id,
+                state_updated_at = NOW()
+            RETURNING file_id
+            """,
+            (str(_uuid.uuid4()), domain, dataset, business_date, file_md5,
+             s3_raw_path, sftp_path, s3_curated_path,
+             file_size_bytes, source_row_count, state, last_run_id),
+        )
+        return str(cur.fetchone()[0])
+
+
 def write_recon_row(pg_dsn, *, check_type, run_id, domain, dataset, business_date,
                     source_count=None, kafka_count=None, postgres_count=None,
                     status, detail=None, window_start=None, window_end=None):

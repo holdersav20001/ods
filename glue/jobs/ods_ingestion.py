@@ -27,6 +27,7 @@ from utils import (
     get_file_state,
     load_dataset_config,
     set_file_state,
+    upsert_file_catalogue,
     upsert_run_header,
     update_run_fields,
     write_stage_row,
@@ -183,6 +184,39 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int:
     business_date_str = business_date.strftime("%Y-%m-%d")
 
     # ------------------------------------------------------------------
+    # Step 3b — Register file in file_catalogue (upsert on MD5)
+    # ------------------------------------------------------------------
+    import boto3 as _boto3, hashlib as _hashlib
+    _s3_client = _boto3.client(
+        "s3",
+        endpoint_url=os.environ.get("LOCALSTACK_ENDPOINT") or os.environ.get("S3_ENDPOINT"),
+        aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID", "test"),
+        aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY", "test"),
+        region_name=os.environ.get("AWS_DEFAULT_REGION", "eu-west-1"),
+    )
+    _bucket, _key = s3_input_path.replace("s3://", "").split("/", 1)
+    _head = _s3_client.head_object(Bucket=_bucket, Key=_key)
+    _etag = _head.get("ETag", "").strip('"').replace("-", "")  # ETag = MD5 for non-multipart
+    _size = _head.get("ContentLength")
+    if not _etag or len(_etag) != 32:
+        # Fallback: stream and compute MD5
+        _obj = _s3_client.get_object(Bucket=_bucket, Key=_key)
+        _md5 = _hashlib.md5(_obj["Body"].read()).hexdigest()
+    else:
+        _md5 = _etag
+    _file_id = upsert_file_catalogue(
+        pg_dsn,
+        domain=domain,
+        dataset=dataset,
+        business_date=business_date_str,
+        file_md5=_md5,
+        s3_raw_path=s3_input_path,
+        file_size_bytes=_size,
+        state="ingesting",
+        last_run_id=run_id,
+    )
+
+    # ------------------------------------------------------------------
     # Step 4 — Log started
     # ------------------------------------------------------------------
     try:
@@ -197,6 +231,7 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int:
         dataset=dataset,
         business_date=business_date_str,
         config_version_id=config_version_id_val,
+        file_id=_file_id,
     )
     write_stage_row(
         pg_dsn,
@@ -330,6 +365,17 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int:
     # Steps 16 & 17 — count_verified + completed
     # ------------------------------------------------------------------
     curated_output_ref = curated_path.replace("s3a://", "s3://")
+
+    # Back-fill curated path + final state into file_catalogue
+    with pg.cursor() as _cur:
+        _cur.execute(
+            "UPDATE pipeline.file_catalogue "
+            "SET s3_curated_path=%s, state='curated', state_updated_at=NOW() "
+            "WHERE domain=%s AND dataset=%s AND business_date=%s AND file_md5=%s",
+            (curated_output_ref, domain, dataset, business_date_str, _md5),
+        )
+    pg.commit()
+
     write_stage_row(
         pg_dsn,
         run_id=run_id,

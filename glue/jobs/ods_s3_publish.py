@@ -290,9 +290,20 @@ def _run_impl(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int
         if first_row and first_row[0] is not None:
             business_date = str(first_row[0])
 
-    # Back-fill business_date in run_log now that we know it
+    # Back-fill business_date + file_id in run_log now that we know them
     if business_date:
-        update_run_fields(pg_dsn, run_id, business_date=business_date)
+        # Look up file_catalogue to link this publish run to its source file
+        with pg.cursor() as _cur:
+            _cur.execute(
+                "SELECT file_id FROM pipeline.file_catalogue "
+                "WHERE domain=%s AND dataset=%s AND business_date=%s "
+                "ORDER BY first_seen_at DESC LIMIT 1",
+                (domain, dataset, business_date),
+            )
+            _row = _cur.fetchone()
+        _file_id = str(_row[0]) if _row else None
+        update_run_fields(pg_dsn, run_id, business_date=business_date,
+                          file_id=_file_id)
 
     write_stage_row(pg_dsn, run_id=run_id, stage="read_parquet",
                     status="succeeded", input_ref=s3a_path,
@@ -372,6 +383,7 @@ def _run_impl(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int
     try:
         for row in rows:
             row_dict = row.asDict()
+            row_dict["_ods_file_id"] = _file_id or ""
             coerced = _coerce_for_avro(row_dict, avro_schema_str)
             msg_key = generate_message_key(key_fields, coerced)
             producer.produce(
