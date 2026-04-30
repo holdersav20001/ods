@@ -116,6 +116,7 @@ _HISTORY_CONNECTOR = {
 
 _DAY1_BD  = "20260801"
 _DAY2_BD  = "20260802"
+_POLICY_IDS = ("POL-001", "POL-002", "POL-003")
 
 _DAY1_CSV = (
     "policy_id,status,premium,effective_date\n"
@@ -394,7 +395,13 @@ def test_day1_insurance_policies_upsert(pg):
     assert r_in.returncode == 0, f"Ingest failed:\n{r_in.stderr}"
     assert r_pub.returncode == 0, f"Publish failed:\n{r_pub.stderr}"
 
-    count = _wait_count(pg, "ods.insurance_policy", min_count=2)
+    count = _wait_count(
+        pg,
+        "ods.insurance_policy",
+        "policy_id IN (%s,%s)",
+        ("POL-001", "POL-002"),
+        min_count=2,
+    )
     assert count == 2, f"Expected 2 rows in insurance_policies after Day 1, got {count}"
 
 
@@ -402,9 +409,16 @@ def test_day1_both_tables_same_count(pg):
     """After Day 1: both tables have same row count — history sink reads same topic as upsert sink."""
     _wait_count(pg, "ods.insurance_policy_history", min_count=2)
     with pg.cursor() as cur:
-        cur.execute("SELECT COUNT(*) FROM ods.insurance_policy")
+        cur.execute(
+            "SELECT COUNT(*) FROM ods.insurance_policy WHERE policy_id IN (%s,%s)",
+            ("POL-001", "POL-002"),
+        )
         pol_count = cur.fetchone()[0]
-        cur.execute("SELECT COUNT(*) FROM ods.insurance_policy_history")
+        cur.execute(
+            "SELECT COUNT(*) FROM ods.insurance_policy_history "
+            "WHERE policy_id IN (%s,%s) AND _ods_business_date::text=%s",
+            ("POL-001", "POL-002", "2026-08-01"),
+        )
         hist_count = cur.fetchone()[0]
     assert pol_count == 2
     assert hist_count == 2
@@ -422,7 +436,13 @@ def test_day2_insurance_policies_upserted(pg):
     assert r_pub.returncode == 0, f"Publish failed:\n{r_pub.stderr}"
 
     # Total 3 policies: POL-001 (upserted), POL-002 (unchanged), POL-003 (new)
-    count = _wait_count(pg, "ods.insurance_policy", min_count=3)
+    count = _wait_count(
+        pg,
+        "ods.insurance_policy",
+        "policy_id IN (%s,%s,%s)",
+        _POLICY_IDS,
+        min_count=3,
+    )
     assert count == 3, f"Expected 3 rows in insurance_policies after Day 2, got {count}"
 
     # POL-001 must be LAPSED (not ACTIVE)
@@ -439,16 +459,29 @@ def test_day2_insurance_policies_upserted(pg):
 
 def test_day2_policy_history_accumulates(pg):
     """Day 2 incremental: history sink appends Day 2 messages from same topic → total 4."""
-    count = _wait_count(pg, "ods.insurance_policy_history", min_count=4)
+    count = _wait_count(
+        pg,
+        "ods.insurance_policy_history",
+        "policy_id IN (%s,%s,%s) AND _ods_business_date::text IN (%s,%s)",
+        _POLICY_IDS + ("2026-08-01", "2026-08-02"),
+        min_count=4,
+    )
     assert count == 4, f"Expected 4 rows in history after Day 2 (2+2), got {count}"
 
 
 def test_history_exceeds_current_policies(pg):
     """History row count > insurance_policies row count: history preserves all versions."""
     with pg.cursor() as cur:
-        cur.execute("SELECT COUNT(*) FROM ods.insurance_policy")
+        cur.execute(
+            "SELECT COUNT(*) FROM ods.insurance_policy WHERE policy_id IN (%s,%s,%s)",
+            _POLICY_IDS,
+        )
         pol_count = cur.fetchone()[0]
-        cur.execute("SELECT COUNT(*) FROM ods.insurance_policy_history")
+        cur.execute(
+            "SELECT COUNT(*) FROM ods.insurance_policy_history "
+            "WHERE policy_id IN (%s,%s,%s) AND _ods_business_date::text IN (%s,%s)",
+            _POLICY_IDS + ("2026-08-01", "2026-08-02"),
+        )
         hist_count = cur.fetchone()[0]
 
     assert hist_count > pol_count, (
@@ -475,7 +508,12 @@ def test_pol001_has_both_versions_in_history(pg):
 def test_insurance_policy_file_id_populated(pg):
     """Every row in ods.insurance_policy has a non-null _ods_file_id."""
     with pg.cursor() as cur:
-        cur.execute("SELECT COUNT(*) FROM ods.insurance_policy WHERE _ods_file_id IS NULL OR _ods_file_id = ''")
+        cur.execute(
+            "SELECT COUNT(*) FROM ods.insurance_policy "
+            "WHERE policy_id IN (%s,%s,%s) "
+            "AND (_ods_file_id IS NULL OR _ods_file_id = '')",
+            _POLICY_IDS,
+        )
         nulls = cur.fetchone()[0]
     assert nulls == 0, f"{nulls} rows in insurance_policy missing _ods_file_id"
 
@@ -483,7 +521,12 @@ def test_insurance_policy_file_id_populated(pg):
 def test_insurance_policy_history_file_id_populated(pg):
     """Every row in ods.insurance_policy_history has a non-null _ods_file_id."""
     with pg.cursor() as cur:
-        cur.execute("SELECT COUNT(*) FROM ods.insurance_policy_history WHERE _ods_file_id IS NULL OR _ods_file_id = ''")
+        cur.execute(
+            "SELECT COUNT(*) FROM ods.insurance_policy_history "
+            "WHERE policy_id IN (%s,%s,%s) "
+            "AND (_ods_file_id IS NULL OR _ods_file_id = '')",
+            _POLICY_IDS,
+        )
         nulls = cur.fetchone()[0]
     assert nulls == 0, f"{nulls} rows in insurance_policy_history missing _ods_file_id"
 
@@ -494,8 +537,9 @@ def test_file_id_joins_to_catalogue(pg):
         cur.execute("""
             SELECT COUNT(*) FROM ods.insurance_policy p
             LEFT JOIN pipeline.file_catalogue fc ON fc.file_id = p._ods_file_id::uuid
-            WHERE fc.s3_raw_path IS NULL
-        """)
+            WHERE p.policy_id IN (%s,%s,%s)
+              AND fc.s3_raw_path IS NULL
+        """, _POLICY_IDS)
         unlinked = cur.fetchone()[0]
     assert unlinked == 0, f"{unlinked} insurance_policy rows have _ods_file_id not in file_catalogue"
 
@@ -503,8 +547,9 @@ def test_file_id_joins_to_catalogue(pg):
         cur.execute("""
             SELECT COUNT(*) FROM ods.insurance_policy_history h
             LEFT JOIN pipeline.file_catalogue fc ON fc.file_id = h._ods_file_id::uuid
-            WHERE fc.s3_raw_path IS NULL
-        """)
+            WHERE h.policy_id IN (%s,%s,%s)
+              AND fc.s3_raw_path IS NULL
+        """, _POLICY_IDS)
         unlinked = cur.fetchone()[0]
     assert unlinked == 0, f"{unlinked} insurance_policy_history rows have _ods_file_id not in file_catalogue"
 
@@ -515,6 +560,7 @@ def test_catalogue_has_raw_and_curated_paths(pg):
         cur.execute("""
             SELECT COUNT(*) FROM pipeline.file_catalogue
             WHERE domain='insurance' AND dataset='policies'
+              AND business_date IN ('2026-08-01', '2026-08-02')
               AND (s3_raw_path IS NULL OR s3_curated_path IS NULL)
         """)
         incomplete = cur.fetchone()[0]
@@ -529,6 +575,7 @@ def test_run_log_file_id_populated(pg):
             LEFT JOIN pipeline.file_catalogue fc ON fc.file_id = r.file_id
             WHERE r.domain='insurance' AND r.dataset='policies'
               AND r.pipeline_type='publish'
+              AND r.business_date IN ('2026-08-01', '2026-08-02')
               AND fc.file_id IS NULL
         """)
         unlinked = cur.fetchone()[0]
@@ -571,7 +618,9 @@ def test_run_events_contain_file_id(pg):
     with pg.cursor() as cur:
         cur.execute(
             "SELECT COUNT(*) FROM pipeline.run_events "
-            "WHERE domain='insurance' AND dataset='policies' AND file_id IS NULL"
+            "WHERE domain='insurance' AND dataset='policies' "
+            "AND business_date IN ('2026-08-01', '2026-08-02') "
+            "AND file_id IS NULL"
         )
         nulls = cur.fetchone()[0]
     assert nulls == 0, f"{nulls} run_events rows for insurance/policies have null file_id"
@@ -582,6 +631,7 @@ def test_run_events_contain_file_id(pg):
             SELECT COUNT(*) FROM pipeline.run_events re
             LEFT JOIN pipeline.file_catalogue fc ON fc.file_id::text = re.file_id
             WHERE re.domain='insurance' AND re.dataset='policies'
+              AND re.business_date IN ('2026-08-01', '2026-08-02')
               AND re.file_id IS NOT NULL AND fc.file_id IS NULL
         """)
         unlinked = cur.fetchone()[0]
@@ -597,6 +647,7 @@ def test_lineage_edges_written(pg):
               FROM pipeline.lineage_edge le
               JOIN pipeline.run_log rl ON rl.run_id = le.child_run_id
              WHERE rl.domain='insurance' AND rl.dataset='policies'
+               AND rl.business_date IN ('2026-08-01', '2026-08-02')
              GROUP BY le.edge_type
         """)
         rows = {r[0]: r[1] for r in cur.fetchall()}

@@ -65,6 +65,46 @@ def test_same_file_twice_yields_single_catalogue_row(pg_conn):
 
     # Clean prior state for this md5
     with pg_conn.cursor() as cur:
+        cur.execute(
+            """
+            DELETE FROM pipeline.lineage_edge
+             WHERE child_run_id IN (
+                   SELECT run_id FROM pipeline.run_log
+                    WHERE file_id IN (
+                          SELECT file_id FROM pipeline.file_catalogue
+                           WHERE file_md5=%s
+                    )
+             )
+                OR parent_file_id IN (
+                   SELECT file_id FROM pipeline.file_catalogue
+                    WHERE file_md5=%s
+                )
+            """,
+            (md5, md5),
+        )
+        cur.execute(
+            """
+            DELETE FROM pipeline.run_stage_log
+             WHERE run_id IN (
+                   SELECT run_id FROM pipeline.run_log
+                    WHERE file_id IN (
+                          SELECT file_id FROM pipeline.file_catalogue
+                           WHERE file_md5=%s
+                    )
+             )
+            """,
+            (md5,),
+        )
+        cur.execute(
+            """
+            DELETE FROM pipeline.run_log
+             WHERE file_id IN (
+                   SELECT file_id FROM pipeline.file_catalogue
+                    WHERE file_md5=%s
+             )
+            """,
+            (md5,),
+        )
         cur.execute("DELETE FROM pipeline.file_catalogue WHERE file_md5=%s", (md5,))
     pg_conn.commit()
 

@@ -36,14 +36,29 @@ def pg_conn():
 def _clean_for_bd(pg_conn, bd: str) -> None:
     pg_conn.rollback()
     with pg_conn.cursor() as cur:
+        cur.execute("DELETE FROM ods.insurance_policy WHERE _ods_business_date=%s", (bd,))
+        cur.execute(
+            """
+            DELETE FROM pipeline.lineage_edge
+             WHERE child_run_id IN (
+                   SELECT run_id FROM pipeline.run_log
+                    WHERE business_date=%s
+             )
+                OR parent_file_id IN (
+                   SELECT file_id FROM pipeline.file_catalogue
+                    WHERE business_date=%s
+             )
+            """,
+            (bd, bd),
+        )
         cur.execute(
             "DELETE FROM pipeline.run_stage_log s USING pipeline.run_log r "
             "WHERE s.run_id = r.run_id AND r.business_date=%s",
             (bd,),
         )
+        cur.execute("DELETE FROM pipeline.run_events WHERE business_date=%s", (bd,))
         cur.execute("DELETE FROM pipeline.reconciliation_log WHERE business_date=%s", (bd,))
         cur.execute("DELETE FROM pipeline.run_log WHERE business_date=%s", (bd,))
-        bd_compact = bd.replace("-", "")
         cur.execute(
             "DELETE FROM pipeline.file_state WHERE s3_path LIKE %s",
             (f"%/{bd}/%",),
@@ -53,7 +68,6 @@ def _clean_for_bd(pg_conn, bd: str) -> None:
             (f"%/date={bd}/%",),
         )
         cur.execute("DELETE FROM pipeline.file_catalogue WHERE business_date=%s", (bd,))
-        cur.execute("DELETE FROM ods.insurance_policies WHERE _ods_business_date=%s", (bd,))
     pg_conn.commit()
 
 
@@ -153,7 +167,7 @@ def test_sink_failure_marks_run_partial(pg_conn):
 
     _clean_for_bd(pg_conn, bd)
     with pg_conn.cursor() as cur:
-        cur.execute("DELETE FROM ods.insurance_policies WHERE policy_id='SF1'")
+        cur.execute("DELETE FROM ods.insurance_policy WHERE policy_id='SF1'")
         cur.execute("SELECT NOW()::timestamp")
         since_iso = cur.fetchone()[0]
     pg_conn.commit()
@@ -180,7 +194,7 @@ def test_sink_failure_marks_run_partial(pg_conn):
                       JOIN pipeline.run_log r ON r.run_id = s.run_id
                      WHERE r.business_date=%s
                        AND r.started_at >= %s
-                       AND s.stage='sink_pg'
+                       AND s.stage='sink_pg_wait'
                      ORDER BY s.started_at DESC LIMIT 1
                     """,
                     (bd, since_iso),
@@ -191,7 +205,7 @@ def test_sink_failure_marks_run_partial(pg_conn):
                 break
             time.sleep(3)
         assert sink_pg_status == "failed", (
-            f"sink_pg should be failed; got {sink_pg_status!r} (run={run_status!r})"
+            f"sink_pg_wait should be failed; got {sink_pg_status!r} (run={run_status!r})"
         )
         assert run_status in ("partial", "failed"), (
             f"run should land partial/failed; got {run_status!r}"

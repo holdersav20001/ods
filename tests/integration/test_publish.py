@@ -124,6 +124,68 @@ def test_publish_happy_path(s3, pg):
     ingest_run_id = str(uuid.uuid4())
     pub_run_id = str(uuid.uuid4())
     raw_key = "insurance/policies/date=20260501/policies_20260501.csv"
+    with pg.cursor() as cur:
+        cur.execute(
+            "DELETE FROM ods.insurance_policy WHERE _ods_business_date::text=%s",
+            ("2026-05-01",),
+        )
+        cur.execute(
+            """
+            DELETE FROM pipeline.lineage_edge
+             WHERE child_run_id IN (
+                   SELECT run_id FROM pipeline.run_log
+                    WHERE domain='insurance'
+                      AND dataset='policies'
+                      AND business_date='2026-05-01'
+             )
+                OR parent_file_id IN (
+                   SELECT file_id FROM pipeline.file_catalogue
+                    WHERE domain='insurance'
+                      AND dataset='policies'
+                      AND business_date='2026-05-01'
+             )
+            """
+        )
+        cur.execute(
+            """
+            DELETE FROM pipeline.run_stage_log
+             WHERE run_id IN (
+                   SELECT run_id FROM pipeline.run_log
+                    WHERE domain='insurance'
+                      AND dataset='policies'
+                      AND business_date='2026-05-01'
+             )
+            """
+        )
+        cur.execute(
+            "DELETE FROM pipeline.reconciliation_log "
+            "WHERE domain='insurance' AND dataset='policies' "
+            "AND business_date='2026-05-01'"
+        )
+        cur.execute(
+            "DELETE FROM pipeline.run_events "
+            "WHERE domain='insurance' AND dataset='policies' "
+            "AND business_date='2026-05-01'"
+        )
+        cur.execute(
+            "DELETE FROM pipeline.run_log "
+            "WHERE domain='insurance' AND dataset='policies' "
+            "AND business_date='2026-05-01'"
+        )
+        cur.execute(
+            "DELETE FROM pipeline.file_catalogue "
+            "WHERE domain='insurance' AND dataset='policies' "
+            "AND business_date='2026-05-01'"
+        )
+        cur.execute(
+            "DELETE FROM pipeline.file_state "
+            "WHERE s3_path IN (%s, %s)",
+            (
+                f"s3://ods-raw-local/{raw_key}",
+                "s3://ods-curated-local/insurance/policies/date=2026-05-01/",
+            ),
+        )
+    pg.commit()
     s3.put_object(Bucket="ods-raw-local", Key=raw_key, Body=GOOD_CSV.encode())
 
     # Run ingestion first to produce curated parquet
@@ -164,12 +226,12 @@ def test_publish_happy_path(s3, pg):
         """
         SELECT status, record_count_out
         FROM pipeline.run_stage_log
-        WHERE run_id = %s AND stage = 'publish'
+        WHERE run_id = %s AND stage = 'kafka_publish'
         """,
         (pub_run_id,),
     )
     stage_row = cur.fetchone()
-    assert stage_row is not None, "No 'publish' stage row in pipeline.run_stage_log"
+    assert stage_row is not None, "No 'kafka_publish' stage row in pipeline.run_stage_log"
     assert stage_row[0] == "succeeded"
     assert stage_row[1] == 2
 

@@ -116,6 +116,18 @@ def _wipe(pg):
         "AND r.dataset IN ('policies_core','policies_enrichment','policies_enriched')"
     )
     cur.execute(
+        "DELETE FROM pipeline.lineage_edge "
+        "WHERE child_run_id IN ("
+        "  SELECT run_id FROM pipeline.run_log "
+        "   WHERE domain='insurance' "
+        "     AND dataset IN ('policies_core','policies_enrichment','policies_enriched')"
+        ") OR parent_file_id IN ("
+        "  SELECT file_id FROM pipeline.file_catalogue "
+        "   WHERE domain='insurance' "
+        "     AND dataset IN ('policies_core','policies_enrichment','policies_enriched')"
+        ")"
+    )
+    cur.execute(
         "DELETE FROM pipeline.run_log "
         "WHERE domain='insurance' "
         "AND dataset IN ('policies_core','policies_enrichment','policies_enriched')"
