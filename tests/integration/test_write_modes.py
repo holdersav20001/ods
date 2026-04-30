@@ -67,12 +67,6 @@ _POLICIES_SCHEMA = {
     "fields": _POLICY_FIELDS,
 }
 
-_POLICY_HISTORY_SCHEMA = {
-    "type": "record", "name": "insurance_policy_history",
-    "namespace": "ods.insurance",
-    "fields": _POLICY_FIELDS,
-}
-
 # ── JDBC connector configs ────────────────────────────────────────────────────
 
 _POLICIES_CONNECTOR = {
@@ -101,7 +95,7 @@ _HISTORY_CONNECTOR = {
     "config": {
         "connector.class":  "io.confluent.connect.jdbc.JdbcSinkConnector",
         "tasks.max":        "1",
-        "topics":           "ods.insurance.policy_history",
+        "topics":           "ods.insurance.policies",
         "connection.url":   "jdbc:postgresql://postgres:5432/ods_dev",
         "connection.user":  "ods",
         "connection.password": "ods",
@@ -214,11 +208,17 @@ def _register_schema(subject: str, schema: dict):
 
 def _provision_connector(cfg: dict):
     name = cfg["name"]
-    if requests.get(f"{CONNECT_URL}/connectors/{name}", timeout=10).status_code == 404:
+    resp = requests.put(
+        f"{CONNECT_URL}/connectors/{name}/config",
+        json=cfg["config"],
+        headers={"Content-Type": "application/json"},
+        timeout=10,
+    )
+    if resp.status_code == 404:
         resp = requests.post(f"{CONNECT_URL}/connectors", json=cfg,
                              headers={"Content-Type": "application/json"}, timeout=10)
-        assert resp.status_code in (200, 201), \
-            f"Connector provision failed {name}: {resp.status_code} {resp.text}"
+    assert resp.status_code in (200, 201), \
+        f"Connector provision failed {name}: {resp.status_code} {resp.text}"
 
 
 def _delete_connector(name: str):
@@ -266,7 +266,6 @@ def pg():
 @pytest.fixture(scope="module", autouse=True)
 def setup_schemas():
     _register_schema("ods.insurance.policies-value", _POLICIES_SCHEMA)
-    _register_schema("ods.insurance.policy_history-value", _POLICY_HISTORY_SCHEMA)
     # Restart connectors to flush cached schema versions
     for name in (_POLICIES_CONNECTOR["name"], _HISTORY_CONNECTOR["name"]):
         requests.post(f"{CONNECT_URL}/connectors/{name}/restart?includeTasks=true",
@@ -296,18 +295,6 @@ def setup_dataset_configs(pg):
             "postgres_target_table": "ods.insurance_policy",
             "s3_curated_path": "s3://ods-curated-local/insurance/policies/",
             "version": 1, "data_classification": "Internal", "active": True, "write_mode": "upsert",
-        },
-        {
-            "domain": "insurance", "dataset": "insurance_policy_history",
-            "source_type": "s3_batch",
-            "filename_pattern": r"policies_(?P<bd>\d{8})\.csv",
-            "target_topic": "ods.insurance.policy_history",
-            "schema_id": "ods.insurance.policy_history-value", "schema_version": 1,
-            "key_fields": json.dumps([]),
-            "dq_rules": json.dumps({"hard_blocks": [{"field": "policy_id", "rule": "not_null"}], "soft_warns": []}),
-            "postgres_target_table": "ods.insurance_policy_history",
-            "s3_curated_path": "s3://ods-curated-local/insurance/insurance_policy_history/",
-            "version": 1, "data_classification": "Internal", "active": True, "write_mode": "append",
         },
     ]
     sql = """
@@ -343,17 +330,14 @@ def reset_state(pg, setup_dataset_configs, setup_connectors):
     pg.commit()
 
     _clean_pipeline(pg, "insurance", "policies")
-    _clean_pipeline(pg, "insurance", "insurance_policy_history")
 
     s3 = _s3()
-    for prefix in ("insurance/policies/", "insurance/insurance_policy_history/"):
-        paginator = s3.get_paginator("list_objects_v2")
-        for page in paginator.paginate(Bucket="ods-curated-local", Prefix=prefix):
-            for obj in page.get("Contents", []):
-                s3.delete_object(Bucket="ods-curated-local", Key=obj["Key"])
+    paginator = s3.get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket="ods-curated-local", Prefix="insurance/policies/"):
+        for obj in page.get("Contents", []):
+            s3.delete_object(Bucket="ods-curated-local", Key=obj["Key"])
 
-    for topic in ("ods.insurance.policies", "ods.insurance.policy_history"):
-        _recreate_topic(topic)
+    _recreate_topic("ods.insurance.policies")
 
     time.sleep(3)
     for name in (_POLICIES_CONNECTOR["name"], _HISTORY_CONNECTOR["name"]):
@@ -377,21 +361,9 @@ def test_day1_insurance_policies_upsert(pg):
     assert count == 2, f"Expected 2 rows in insurance_policies after Day 1, got {count}"
 
 
-def test_day1_policy_history_append(pg):
-    """Day 1 daily load: same 2 policies appended to ods.insurance_policy_history."""
-    key = f"insurance/insurance_policy_history/date={_DAY1_BD}/policies_{_DAY1_BD}.csv"
-    _upload(RAW_BUCKET, key, _DAY1_CSV)
-
-    r_in, r_pub = _run_pipeline("insurance", "insurance_policy_history", _DAY1_BD, key)
-    assert r_in.returncode == 0, f"Ingest failed:\n{r_in.stderr}"
-    assert r_pub.returncode == 0, f"Publish failed:\n{r_pub.stderr}"
-
-    count = _wait_count(pg, "ods.insurance_policy_history", min_count=2)
-    assert count == 2, f"Expected 2 rows in insurance_policy_history after Day 1, got {count}"
-
-
 def test_day1_both_tables_same_count(pg):
-    """After Day 1: both tables have same row count (2 each)."""
+    """After Day 1: both tables have same row count — history sink reads same topic as upsert sink."""
+    _wait_count(pg, "ods.insurance_policy_history", min_count=2)
     with pg.cursor() as cur:
         cur.execute("SELECT COUNT(*) FROM ods.insurance_policy")
         pol_count = cur.fetchone()[0]
@@ -429,14 +401,7 @@ def test_day2_insurance_policies_upserted(pg):
 
 
 def test_day2_policy_history_accumulates(pg):
-    """Day 2 incremental: history appends 2 more rows → total 4 (never replaces)."""
-    key = f"insurance/insurance_policy_history/date={_DAY2_BD}/policies_{_DAY2_BD}.csv"
-    _upload(RAW_BUCKET, key, _DAY2_CSV)
-
-    r_in, r_pub = _run_pipeline("insurance", "insurance_policy_history", _DAY2_BD, key)
-    assert r_in.returncode == 0, f"Ingest failed:\n{r_in.stderr}"
-    assert r_pub.returncode == 0, f"Publish failed:\n{r_pub.stderr}"
-
+    """Day 2 incremental: history sink appends Day 2 messages from same topic → total 4."""
     count = _wait_count(pg, "ods.insurance_policy_history", min_count=4)
     assert count == 4, f"Expected 4 rows in history after Day 2 (2+2), got {count}"
 
@@ -555,7 +520,8 @@ def test_policies_connector_is_upsert():
 
 
 def test_history_connector_is_insert():
-    """jdbc-sink-policy-history must use insert mode with no PK (pure append)."""
+    """jdbc-sink-policy-history must use insert mode, no PK, and read from policies topic."""
     cfg = requests.get(f"{CONNECT_URL}/connectors/jdbc-sink-policy-history/config", timeout=10).json()
     assert cfg.get("insert.mode") == "insert"
     assert cfg.get("pk.mode") == "none"
+    assert cfg.get("topics") == "ods.insurance.policies"
