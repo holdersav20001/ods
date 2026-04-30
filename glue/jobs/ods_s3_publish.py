@@ -121,14 +121,25 @@ def _coerce_for_avro(row_dict: dict, schema_str: str) -> dict:
                     return branch.get("logicalType")
         return None
 
+    def _union_contains_string(field_type):
+        return isinstance(field_type, list) and "string" in field_type
+
     fields = schema.get("fields", []) if isinstance(schema, dict) else []
     out = dict(row_dict)
     for fld in fields:
         name = fld.get("name")
         if name not in out or out[name] is None:
             continue
-        logical = _logical_for(fld.get("type"))
+        field_type = fld.get("type")
+        logical = _logical_for(field_type)
         v = out[name]
+        # Coerce datetime/date to ISO string for ["null","string"] union fields
+        if logical is None and _union_contains_string(field_type):
+            if isinstance(v, datetime):
+                out[name] = v.isoformat()[:10]
+            elif isinstance(v, date):
+                out[name] = v.isoformat()
+            continue
         if logical == "date":
             # Convert datetime -> date; string YYYY-MM-DD -> date; Decimal/int passthrough
             if isinstance(v, datetime):

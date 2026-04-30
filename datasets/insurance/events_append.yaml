@@ -1,0 +1,23 @@
+domain: insurance
+dataset: events_append
+source_type: s3_batch
+write_mode: append
+filename_pattern: '^events_append_(?P<bd>\d{8})\.csv$'
+key_fields: []
+target_topic: ods.insurance.events_append
+postgres_target_table: ods.events_append
+s3_curated_path: s3://ods-curated-local/insurance/events_append/
+schema_def:
+  fields:
+    - {name: event_id,   type: string,          nullable: false}
+    - {name: policy_id,  type: string,          nullable: false}
+    - {name: event_type, type: string,          nullable: false}
+    - {name: event_date, type: date,            nullable: true}
+    - {name: amount,     type: 'decimal(10,2)', nullable: true}
+dq_rules:
+  hard:
+    - {rule: not_null, column: event_id}
+    - {rule: not_null, column: policy_id}
+  soft: []
+recon_tolerance_records: 0
+recon_tolerance_pct: 0

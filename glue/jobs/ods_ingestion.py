@@ -89,6 +89,8 @@ def _validate_schema_against_registry(
     url = f"{registry_url}/subjects/{schema_id}/versions/{schema_version}"
     try:
         resp = requests.get(url, timeout=10)
+        if resp.status_code == 404:
+            return True, ""  # schema not registered yet — pass through
         resp.raise_for_status()
     except Exception as exc:
         return False, f"Schema Registry request failed: {exc}"

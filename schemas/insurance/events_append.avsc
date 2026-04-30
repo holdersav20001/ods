@@ -1,0 +1,14 @@
+{
+  "type": "record",
+  "name": "PolicyEvent",
+  "namespace": "com.aviva.ods.insurance",
+  "fields": [
+    {"name": "event_id",            "type": "string"},
+    {"name": "policy_id",           "type": "string"},
+    {"name": "event_type",          "type": "string"},
+    {"name": "event_date",          "type": ["null", {"type": "int", "logicalType": "date"}], "default": null},
+    {"name": "amount",              "type": ["null", "double"], "default": null},
+    {"name": "_ods_business_date",  "type": "string"},
+    {"name": "_ods_run_id",         "type": "string"}
+  ]
+}
