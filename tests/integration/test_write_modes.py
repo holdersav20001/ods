@@ -40,7 +40,9 @@ GLUE_COMMON = [
     "-e", "POSTGRES_PASSWORD=ods",
     "-e", "ENV=local",
 ] + (["-v", f"{_HOST_JOBS}:/home/glue_user/workspace/jobs"] if _HOST_JOBS else
-     ["-v", f"{os.getcwd()}/glue/jobs:/home/glue_user/workspace/jobs"])
+     ["-v", f"{os.getcwd()}/glue/jobs:/home/glue_user/workspace/jobs"]) + [
+    "-v", f"{os.getcwd()}/airflow/dags/common:/home/glue_user/airflow/dags/common",
+]
 
 SPARK = [
     GLUE_IMAGE,
@@ -158,7 +160,32 @@ def _ingest(run_id: str, domain: str, dataset: str, s3_path: str):
     return subprocess.run(cmd, capture_output=True, text=True, timeout=300)
 
 
-def _publish(run_id: str, domain: str, dataset: str, business_date: str):
+def _get_file_id_from_pg(domain: str, dataset: str, business_date_yyyymmdd: str) -> str | None:
+    """Fetch file_id from file_catalogue after ingest creates the entry."""
+    from datetime import date as _date
+    bd = _date(int(business_date_yyyymmdd[:4]),
+               int(business_date_yyyymmdd[4:6]),
+               int(business_date_yyyymmdd[6:]))
+    conn = psycopg2.connect(
+        host=os.environ.get("POSTGRES_HOST", "localhost"),
+        port=PG_PORT, dbname="ods_dev", user="ods", password="ods",
+    )
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT file_id FROM pipeline.file_catalogue "
+                "WHERE domain=%s AND dataset=%s AND business_date=%s "
+                "ORDER BY first_seen_at DESC LIMIT 1",
+                (domain, dataset, bd),
+            )
+            row = cur.fetchone()
+        return str(row[0]) if row else None
+    finally:
+        conn.close()
+
+
+def _publish(run_id: str, domain: str, dataset: str, business_date: str,
+             file_id: str | None = None):
     bd_fmt = f"{business_date[:4]}-{business_date[4:6]}-{business_date[6:]}"
     curated_path = f"s3://ods-curated-local/{domain}/{dataset}/date={bd_fmt}/"
     cmd = GLUE_COMMON + SPARK + [
@@ -166,13 +193,17 @@ def _publish(run_id: str, domain: str, dataset: str, business_date: str):
         "--run_id", run_id, "--domain", domain, "--dataset", dataset,
         "--s3_input_path", curated_path,
     ]
+    if file_id:
+        cmd += ["--file_id", file_id]
     return subprocess.run(cmd, capture_output=True, text=True, timeout=300)
 
 
 def _run_pipeline(domain: str, dataset: str, bd: str, s3_key: str):
-    """Ingest then publish. Returns (ingest_result, publish_result)."""
+    """Ingest, look up file_id, then publish with explicit lineage contract."""
     r_in = _ingest(str(uuid.uuid4()), domain, dataset, f"s3://{RAW_BUCKET}/{s3_key}")
-    r_pub = _publish(str(uuid.uuid4()), domain, dataset, bd)
+    # Fetch the file_id created/upserted during ingest so publish uses it explicitly
+    file_id = _get_file_id_from_pg(domain, dataset, bd)
+    r_pub = _publish(str(uuid.uuid4()), domain, dataset, bd, file_id=file_id)
     return r_in, r_pub
 
 
@@ -240,9 +271,15 @@ def _recreate_topic(topic: str):
 def _clean_pipeline(pg, domain: str, dataset: str):
     with pg.cursor() as cur:
         cur.execute(
+            "DELETE FROM pipeline.lineage_edge WHERE child_run_id IN "
+            "(SELECT run_id FROM pipeline.run_log WHERE domain=%s AND dataset=%s)",
+            (domain, dataset))
+        cur.execute(
             "DELETE FROM pipeline.run_stage_log WHERE run_id IN "
             "(SELECT run_id FROM pipeline.run_log WHERE domain=%s AND dataset=%s)",
             (domain, dataset))
+        cur.execute("DELETE FROM pipeline.run_events WHERE domain=%s AND dataset=%s",
+                    (domain, dataset))
         cur.execute("DELETE FROM pipeline.run_log WHERE domain=%s AND dataset=%s", (domain, dataset))
         cur.execute("DELETE FROM pipeline.file_catalogue WHERE domain=%s AND dataset=%s", (domain, dataset))
         cur.execute("DELETE FROM pipeline.file_state WHERE s3_path LIKE %s",
@@ -525,3 +562,51 @@ def test_history_connector_is_insert():
     assert cfg.get("insert.mode") == "insert"
     assert cfg.get("pk.mode") == "none"
     assert cfg.get("topics") == "ods.insurance.policies"
+
+
+# ── Lineage edge + run_events enrichment ──────────────────────────────────────
+
+def test_run_events_contain_file_id(pg):
+    """pipeline.run_events rows for insurance/policies all carry a non-null file_id."""
+    with pg.cursor() as cur:
+        cur.execute(
+            "SELECT COUNT(*) FROM pipeline.run_events "
+            "WHERE domain='insurance' AND dataset='policies' AND file_id IS NULL"
+        )
+        nulls = cur.fetchone()[0]
+    assert nulls == 0, f"{nulls} run_events rows for insurance/policies have null file_id"
+
+    # Every file_id in run_events resolves to a file_catalogue row
+    with pg.cursor() as cur:
+        cur.execute("""
+            SELECT COUNT(*) FROM pipeline.run_events re
+            LEFT JOIN pipeline.file_catalogue fc ON fc.file_id::text = re.file_id
+            WHERE re.domain='insurance' AND re.dataset='policies'
+              AND re.file_id IS NOT NULL AND fc.file_id IS NULL
+        """)
+        unlinked = cur.fetchone()[0]
+    assert unlinked == 0, \
+        f"{unlinked} run_events rows have file_id not present in file_catalogue"
+
+
+def test_lineage_edges_written(pg):
+    """pipeline.lineage_edge has raw_to_curated and curated_to_kafka edges for each run."""
+    with pg.cursor() as cur:
+        cur.execute("""
+            SELECT le.edge_type, COUNT(*)
+              FROM pipeline.lineage_edge le
+              JOIN pipeline.run_log rl ON rl.run_id = le.child_run_id
+             WHERE rl.domain='insurance' AND rl.dataset='policies'
+             GROUP BY le.edge_type
+        """)
+        rows = {r[0]: r[1] for r in cur.fetchall()}
+
+    assert "raw_to_curated" in rows, \
+        f"No raw_to_curated edges in lineage_edge; found: {list(rows.keys())}"
+    assert "curated_to_kafka" in rows, \
+        f"No curated_to_kafka edges in lineage_edge; found: {list(rows.keys())}"
+    # 2 pipeline runs (Day 1 + Day 2) → ≥2 edges per type
+    assert rows["raw_to_curated"] >= 2, \
+        f"Expected >=2 raw_to_curated edges, got {rows['raw_to_curated']}"
+    assert rows["curated_to_kafka"] >= 2, \
+        f"Expected >=2 curated_to_kafka edges, got {rows['curated_to_kafka']}"

@@ -23,6 +23,7 @@ from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
 from utils import (
+    Stage, StageEvent,
     extract_business_date,
     get_file_state,
     load_dataset_config,
@@ -30,14 +31,32 @@ from utils import (
     upsert_file_catalogue,
     upsert_run_header,
     update_run_fields,
+    write_lineage_edge,
     write_stage_row,
 )
 from dq import evaluate_dq_rules
+
+import sys as _sys
+_PRODUCER_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "airflow", "dags", "common")
+if _PRODUCER_PATH not in _sys.path:
+    _sys.path.insert(0, os.path.abspath(_PRODUCER_PATH))
+try:
+    from run_event_producer import produce_run_event as _produce_run_event
+except ImportError:
+    _produce_run_event = None
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _emit(run_id, domain, dataset, business_date, status, **kwargs):
+    if _produce_run_event:
+        _produce_run_event(
+            "ingestion.completed", run_id, domain, dataset,
+            business_date or "", status,
+            pipeline_type="ingestion", **kwargs,
+        )
 
 def _get_pg_conn():
     return psycopg2.connect(
@@ -131,7 +150,10 @@ def _write_dlq(spark, failing_df, domain: str, dataset: str,
 # Main ingestion logic
 # ---------------------------------------------------------------------------
 
-def run(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int:
+def run(run_id: str, domain: str, dataset: str, s3_input_path: str,
+        file_id: str | None = None,
+        airflow_dag_id: str | None = None,
+        airflow_run_id: str | None = None) -> int:
     """Execute the ingestion pipeline. Returns process exit code."""
 
     pg = _get_pg_conn()
@@ -150,6 +172,17 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int:
     # Step 2 — Idempotency check
     # ------------------------------------------------------------------
     pg_dsn = _pg_dsn()
+
+    # spark_app_id starts None; updated once Spark is running.
+    # _ws closes over it by reference so post-Spark calls see the real value.
+    spark_app_id: str | None = None
+
+    def _ws(**kw):
+        write_stage_row(pg_dsn, run_id=run_id,
+                        airflow_dag_id=airflow_dag_id,
+                        airflow_run_id=airflow_run_id,
+                        spark_app_id=spark_app_id, **kw)
+
     current_state = get_file_state(pg, s3_input_path)
     if current_state == "completed":
         upsert_run_header(
@@ -165,10 +198,9 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int:
             status="succeeded",
             error_summary="File already in completed state — skipping.",
         )
-        write_stage_row(
-            pg_dsn,
-            run_id=run_id,
-            stage="ingest",
+        _ws(
+            stage=Stage.RAW_READ,
+            event_type=StageEvent.SKIPPED,
             status="skipped",
             input_ref=s3_input_path,
             error="File already in completed state — skipping.",
@@ -204,17 +236,31 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int:
         _md5 = _hashlib.md5(_obj["Body"].read()).hexdigest()
     else:
         _md5 = _etag
-    _file_id = upsert_file_catalogue(
-        pg_dsn,
-        domain=domain,
-        dataset=dataset,
-        business_date=business_date_str,
-        file_md5=_md5,
-        s3_raw_path=s3_input_path,
-        file_size_bytes=_size,
-        state="ingesting",
-        last_run_id=run_id,
-    )
+
+    if file_id:
+        # Explicit file_id from DAG — update existing catalogue record
+        with pg.cursor() as _cur:
+            _cur.execute(
+                "UPDATE pipeline.file_catalogue "
+                "SET state='ingesting', last_run_id=%s, state_updated_at=NOW() "
+                "WHERE file_id=%s",
+                (run_id, file_id),
+            )
+        pg.commit()
+        _file_id = file_id
+    else:
+        # No explicit file_id — upsert keyed on MD5 (backward compat)
+        _file_id = upsert_file_catalogue(
+            pg_dsn,
+            domain=domain,
+            dataset=dataset,
+            business_date=business_date_str,
+            file_md5=_md5,
+            s3_raw_path=s3_input_path,
+            file_size_bytes=_size,
+            state="ingesting",
+            last_run_id=run_id,
+        )
 
     # ------------------------------------------------------------------
     # Step 4 — Log started
@@ -233,15 +279,16 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int:
         config_version_id=config_version_id_val,
         file_id=_file_id,
     )
-    write_stage_row(
-        pg_dsn,
-        run_id=run_id,
-        stage="ingest",
+    _ws(
+        stage=Stage.RAW_READ,
+        event_type=StageEvent.STARTED,
         status="running",
         input_ref=s3_input_path,
     )
 
     spark = _build_spark(dataset)
+    spark_app_id = spark.sparkContext.applicationId  # updates the cell _ws closes over
+
     s3a_path = s3_input_path.replace("s3://", "s3a://")
 
     # ------------------------------------------------------------------
@@ -270,20 +317,29 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int:
     )
     if not ok:
         update_run_fields(pg_dsn, run_id, status="failed", error_summary=err_msg)
-        write_stage_row(
-            pg_dsn,
-            run_id=run_id,
-            stage="ingest",
+        _ws(
+            stage=Stage.SCHEMA_VALIDATE,
+            event_type=StageEvent.FAILED,
             status="failed",
             input_ref=s3_input_path,
             error=err_msg,
         )
         set_file_state(pg, s3_input_path, run_id, "failed", error_reason=err_msg)
+        _emit(run_id, domain, dataset, business_date_str, "failed",
+              file_id=_file_id, file_md5=_md5, s3_raw_path=s3_input_path,
+              error_summary=err_msg)
         pg.close()
         spark.stop()
         return 1
 
-    # Step 8 — schema_validated (no separate log row needed; progress tracked via run_log)
+    # Step 8 — schema validated successfully
+    _ws(
+        stage=Stage.SCHEMA_VALIDATE,
+        event_type=StageEvent.COMPLETED,
+        status="succeeded",
+        input_ref=s3_input_path,
+        metrics={"schema_id": schema_id, "schema_version": schema_version},
+    )
 
     # ------------------------------------------------------------------
     # Step 9 — Run DQ rules
@@ -312,6 +368,18 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int:
         pg_dsn, run_id,
         record_count_dq_pass=dq_pass_count,
         record_count_dq_fail=failing_count,
+    )
+    _dq_has_issues = bool(warnings or failing_count > 0)
+    dq_status = "warned" if _dq_has_issues else "succeeded"
+    _ws(
+        stage=Stage.DQ_CHECK,
+        event_type=StageEvent.WARNED if _dq_has_issues else StageEvent.COMPLETED,
+        status=dq_status,
+        input_ref=s3_input_path,
+        record_count_in=source_count,
+        record_count_out=dq_pass_count,
+        metrics={"failing_count": failing_count, "warnings": warnings or []},
+        error=json.dumps(warnings) if warnings else None,
     )
 
     # ------------------------------------------------------------------
@@ -347,16 +415,23 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int:
             f"(source={source_count} - failed={failing_count})"
         )
         update_run_fields(pg_dsn, run_id, status="failed", error_summary=err)
-        write_stage_row(
-            pg_dsn,
-            run_id=run_id,
-            stage="ingest",
+        _ws(
+            stage=Stage.CURATED_WRITE,
+            event_type=StageEvent.FAILED,
             status="failed",
             input_ref=s3_input_path,
             record_count_in=source_count,
             error=err,
         )
         set_file_state(pg, s3_input_path, run_id, "failed", error_reason=err)
+        _emit(run_id, domain, dataset, business_date_str, "failed",
+              record_count_source=source_count,
+              record_count_dq_pass=dq_pass_count,
+              record_count_dq_fail=failing_count,
+              error_summary=err,
+              file_id=_file_id,
+              file_md5=_md5,
+              s3_raw_path=s3_input_path)
         pg.close()
         spark.stop()
         return 1
@@ -371,15 +446,25 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int:
         _cur.execute(
             "UPDATE pipeline.file_catalogue "
             "SET s3_curated_path=%s, state='curated', state_updated_at=NOW() "
-            "WHERE domain=%s AND dataset=%s AND business_date=%s AND file_md5=%s",
-            (curated_output_ref, domain, dataset, business_date_str, _md5),
+            "WHERE file_id=%s",
+            (curated_output_ref, _file_id),
         )
     pg.commit()
 
-    write_stage_row(
+    # Write raw→curated lineage edge
+    write_lineage_edge(
         pg_dsn,
-        run_id=run_id,
-        stage="ingest",
+        child_run_id=run_id,
+        parent_file_id=_file_id,
+        edge_type="raw_to_curated",
+        source_ref=s3_input_path,
+        target_ref=curated_output_ref,
+        record_count=written_count,
+    )
+
+    _ws(
+        stage=Stage.CURATED_WRITE,
+        event_type=StageEvent.COMPLETED,
         status="succeeded",
         input_ref=s3_input_path,
         output_ref=curated_output_ref,
@@ -402,6 +487,18 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int:
         record_count=written_count,
     )
 
+    # Fetch s3_raw_path for event enrichment
+    _s3_raw = s3_input_path
+
+    _emit(run_id, domain, dataset, business_date_str, "succeeded",
+          file_id=_file_id,
+          s3_raw_path=_s3_raw,
+          s3_curated_path=curated_output_ref,
+          file_md5=_md5,
+          record_count_source=source_count,
+          record_count_dq_pass=written_count,
+          record_count_dq_fail=failing_count)
+
     pg.close()
     spark.stop()
     return 0
@@ -418,6 +515,12 @@ def _parse_args(argv=None):
     parser.add_argument("--dataset", required=True, help="Dataset name, e.g. policies")
     parser.add_argument("--s3_input_path", required=True,
                         help="S3 path to input CSV, e.g. s3://ods-raw-local/...")
+    parser.add_argument("--file_id", default=None,
+                        help="Explicit file_id UUID from file_catalogue (passed by DAG)")
+    parser.add_argument("--airflow_dag_id", default=None,
+                        help="Airflow DAG id for CloudWatch/Airflow correlation")
+    parser.add_argument("--airflow_run_id", default=None,
+                        help="Airflow run id (dag_run.run_id) for CloudWatch/Airflow correlation")
     return parser.parse_args(argv)
 
 
@@ -429,5 +532,8 @@ if __name__ == "__main__":
             domain=args.domain,
             dataset=args.dataset,
             s3_input_path=args.s3_input_path,
+            file_id=args.file_id,
+            airflow_dag_id=args.airflow_dag_id,
+            airflow_run_id=args.airflow_run_id,
         )
     )
