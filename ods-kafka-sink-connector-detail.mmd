@@ -1,0 +1,73 @@
+sequenceDiagram
+    participant KAFKA as MSK Topic<br/>ods.{domain}.{dataset}
+    participant ICEBERG_CON as Iceberg Sink Connector
+    participant JDBC_CON as JDBC Sink Connector
+    participant SR as Glue Schema Registry<br/>ods-schema-registry-{env}
+    participant S3I as S3 Iceberg Table<br/>ods-iceberg-{env}
+    participant PG as PostgreSQL<br/>ods_{env}
+    participant PG_REG as PostgreSQL<br/>pipeline.sink_connector_registry
+    participant CAT as Glue Data Catalog<br/>ods_{domain}
+    participant DLQ as S3 DLQ<br/>ods-dlq-{env}
+
+    Note over KAFKA,PG_REG: Startup — connector registration (on deploy or restart)
+    ICEBERG_CON->>PG_REG: UPSERT connector (name · topic · sink_type=iceberg · status=running)
+    JDBC_CON->>PG_REG: UPSERT connector (name · topic · sink_type=jdbc · status=running · write_mode from config)
+
+    Note over KAFKA,SR: Phase 1 — Poll & Deserialise (Iceberg shown · JDBC identical)
+    ICEBERG_CON->>KAFKA: Poll up to batch.size records (or poll.interval.ms elapsed)
+    KAFKA-->>ICEBERG_CON: Records — Confluent wire format per record:<br/>0x00 (magic byte) + 4-byte schema ID + Avro binary payload
+    loop For each record in batch
+        ICEBERG_CON->>ICEBERG_CON: Extract schema ID from record header (bytes 1–4)
+        alt Schema ID in connector-local cache
+            ICEBERG_CON->>ICEBERG_CON: Deserialise using cached schema (no registry call)
+        else Schema ID not cached
+            ICEBERG_CON->>SR: GET schema by ID
+            SR-->>ICEBERG_CON: Avro schema (stored in cache — no TTL · lives for connector lifetime)
+            ICEBERG_CON->>ICEBERG_CON: Deserialise record using fetched schema
+        end
+        alt Deserialised record incompatible with current Iceberg table schema
+            ICEBERG_CON->>DLQ: Route record (reason=schema_incompatible · offset · partition · key)
+            Note over ICEBERG_CON: Batch continues — remaining records processed
+        else Record valid
+            ICEBERG_CON->>ICEBERG_CON: Add to in-memory batch buffer
+        end
+    end
+
+    Note over ICEBERG_CON,CAT: Phase 2 — Iceberg Flush
+    ICEBERG_CON->>ICEBERG_CON: Check flush condition — whichever is first:<br/>buffer.size.bytes threshold OR flush.timeout.ms elapsed
+    ICEBERG_CON->>S3I: Write Parquet data files<br/>(ods-iceberg-{env}/{domain}/{dataset}/data/date={date}/{uuid}.parquet)
+    alt Data file write failure (S3 unavailable · permissions · capacity)
+        ICEBERG_CON->>DLQ: Route batch (reason=s3_write_failure · batch metadata)
+        ICEBERG_CON->>PG_REG: UPDATE status=paused · error_detail=s3_write_failure
+        ICEBERG_CON->>ICEBERG_CON: Pause connector — requires manual investigation and resume
+    else Data files written
+        S3I-->>ICEBERG_CON: S3 write confirmed (data file paths)
+        ICEBERG_CON->>S3I: Write manifest file (lists new data file paths + row counts)
+        ICEBERG_CON->>S3I: Write snapshot file (timestamp · manifest pointer · parent snapshot ID)
+        ICEBERG_CON->>S3I: Atomic metadata.json swap — pointer updated to new snapshot
+        alt Snapshot commit failure (metadata.json swap failure)
+            Note over ICEBERG_CON: Orphaned data files exist on S3 but are NOT visible to readers<br/>Iceberg expiry process cleans them up — no data corruption
+            ICEBERG_CON->>DLQ: Route batch (reason=snapshot_commit_failure · batch metadata)
+            ICEBERG_CON->>PG_REG: UPDATE status=paused · error_detail=snapshot_commit_failure
+            ICEBERG_CON->>ICEBERG_CON: Pause connector — requires manual investigation and resume
+        else Snapshot committed
+            S3I-->>ICEBERG_CON: Snapshot ID confirmed — records now visible to all readers
+            ICEBERG_CON->>CAT: Sync table definition (columns · partition spec · current snapshot ID)
+            ICEBERG_CON->>ICEBERG_CON: Trigger Glue Crawler async (no wait)<br/>Note: crawler failure is silent — monitor Glue Crawler logs separately.<br/>If crawler fails, run MSCK REPAIR TABLE in Athena to fix stale partitions.
+            ICEBERG_CON->>KAFKA: Commit MSK consumer group offsets (processed up to offset N)<br/>Offset commit happens AFTER snapshot confirmed — ensures at-least-once with Iceberg dedup
+            ICEBERG_CON->>PG_REG: UPDATE last_offset · last_record_at · batch_latency_ms · status=running
+        end
+    end
+
+    Note over JDBC_CON,PG: Phase 3 — JDBC Write (runs independently of Phase 2)
+    JDBC_CON->>JDBC_CON: Map Avro fields → PostgreSQL column names<br/>(field mapping from connector config JSON — write.mode: insert | upsert)
+    JDBC_CON->>PG: Execute batch INSERT or UPSERT<br/>INSERT: append-only · suitable for immutable events<br/>UPSERT: merge on primary key · suitable for entity records
+    alt PostgreSQL write failure (unavailable · constraint violation · pool exhausted)
+        JDBC_CON->>DLQ: Route batch (reason=jdbc_write_failure · batch metadata)
+        JDBC_CON->>PG_REG: UPDATE status=paused · error_detail · failure_count +1
+        JDBC_CON->>JDBC_CON: Pause connector — requires manual investigation and resume
+    else Write confirmed
+        PG-->>JDBC_CON: Rows affected count
+        JDBC_CON->>KAFKA: Commit MSK consumer group offsets
+        JDBC_CON->>PG_REG: UPDATE last_offset · last_record_at · batch_latency_ms · status=running
+    end

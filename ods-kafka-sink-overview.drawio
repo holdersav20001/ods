@@ -1,0 +1,73 @@
+<mxfile host="Claude">
+  <diagram id="kafka-sink-ov" name="ODS Kafka Sink — Overview">
+    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1050" pageHeight="1000" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/><mxCell id="1" parent="0"/>
+
+        <!-- TITLE -->
+        <mxCell id="10" value="ODS Kafka Sink — MSK to Iceberg + PostgreSQL (Overview)" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=14;fontStyle=1;fontColor=#1F5C8B;" vertex="1" parent="1"><mxGeometry x="20" y="15" width="1010" height="35" as="geometry"/></mxCell>
+
+        <!-- NAV BAR -->
+        <mxCell id="11" value="↑ Upstream: ods-s3-kafka-overview · ods-kafka-canonical-overview  ·  ↔ Sequence: ods-kafka-sink-sequence" style="text;html=1;strokeColor=#856404;fillColor=#fff3cd;align=center;verticalAlign=middle;fontSize=8;fontColor=#533f03;fontStyle=3;rounded=1;" vertex="1" parent="1"><mxGeometry x="20" y="52" width="1010" height="22" as="geometry"/></mxCell>
+
+        <!-- KAFKA (source) -->
+        <mxCell id="101" value="MSK Topic&#xa;ods.{domain}.{dataset} · Avro · canonical" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8BBD9;strokeColor=#880E4F;fontColor=#880E4F;fontSize=9;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="390" y="82" width="270" height="50" as="geometry"/></mxCell>
+
+        <!-- ===== 1 · CONSUME & DESERIALISE ===== -->
+        <mxCell id="102" value="1 · Consume &amp; Deserialise (connectors run independently)" style="rounded=1;arcSize=3;html=1;fillColor=#FFFDE7;strokeColor=#F9A825;fontColor=#F57F17;fontSize=10;fontStyle=1;verticalAlign=top;" vertex="1" parent="1"><mxGeometry x="80" y="140" width="890" height="155" as="geometry"/></mxCell>
+        <mxCell id="103" value="Glue Schema Registry&#xa;ods-schema-registry-{env}&#xa;Avro · Confluent wire format" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#cce5ff;strokeColor=#004085;fontColor=#004085;fontSize=9;" vertex="1" parent="1"><mxGeometry x="100" y="180" width="230" height="65" as="geometry"/></mxCell>
+        <mxCell id="104" value="Iceberg Sink Connector&#xa;ods-iceberg-sink-{dataset}&#xa;consumer group: own" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d4edda;strokeColor=#28a745;fontColor=#155724;fontSize=9;" vertex="1" parent="1"><mxGeometry x="380" y="180" width="230" height="65" as="geometry"/></mxCell>
+        <mxCell id="105" value="JDBC Sink Connector&#xa;ods-jdbc-sink-{dataset}&#xa;consumer group: own" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d4edda;strokeColor=#28a745;fontColor=#155724;fontSize=9;" vertex="1" parent="1"><mxGeometry x="660" y="180" width="230" height="65" as="geometry"/></mxCell>
+
+        <!-- ===== 2a · ICEBERG WRITE ===== -->
+        <mxCell id="106" value="2a · Iceberg Write" style="rounded=1;arcSize=3;html=1;fillColor=#E8EAF6;strokeColor=#3949AB;fontColor=#1A237E;fontSize=10;fontStyle=1;verticalAlign=top;" vertex="1" parent="1"><mxGeometry x="80" y="330" width="440" height="230" as="geometry"/></mxCell>
+        <mxCell id="107" value="S3 Iceberg Table&#xa;ods-iceberg-{env}&#xa;Parquet · partitioned by date" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#cce5ff;strokeColor=#004085;fontColor=#004085;fontSize=9;" vertex="1" parent="1"><mxGeometry x="100" y="370" width="390" height="55" as="geometry"/></mxCell>
+        <mxCell id="108" value="Glue Data Catalog&#xa;ods_{domain}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e2e3e5;strokeColor=#6c757d;fontColor=#383d41;fontSize=9;" vertex="1" parent="1"><mxGeometry x="100" y="455" width="185" height="50" as="geometry"/></mxCell>
+        <mxCell id="109" value="Glue Crawler · async" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e2e3e5;strokeColor=#6c757d;fontColor=#383d41;fontSize=9;" vertex="1" parent="1"><mxGeometry x="305" y="455" width="185" height="50" as="geometry"/></mxCell>
+
+        <!-- ===== 2b · JDBC WRITE ===== -->
+        <mxCell id="110" value="2b · JDBC Write" style="rounded=1;arcSize=3;html=1;fillColor=#F3E5F5;strokeColor=#8E24AA;fontColor=#6A1B9A;fontSize=10;fontStyle=1;verticalAlign=top;" vertex="1" parent="1"><mxGeometry x="560" y="330" width="410" height="130" as="geometry"/></mxCell>
+        <mxCell id="111" value="PostgreSQL&#xa;ods_{env} · {domain}.{dataset}&#xa;write mode: TBD per dataset" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#cce5ff;strokeColor=#004085;fontColor=#004085;fontSize=9;" vertex="1" parent="1"><mxGeometry x="580" y="370" width="370" height="55" as="geometry"/></mxCell>
+
+        <!-- ===== 3 · POST-WRITE ===== -->
+        <mxCell id="112" value="3 · Post-Write" style="rounded=1;arcSize=3;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;fontColor=#1B5E20;fontSize=10;fontStyle=1;verticalAlign=top;" vertex="1" parent="1"><mxGeometry x="80" y="600" width="890" height="145" as="geometry"/></mxCell>
+        <mxCell id="113" value="MSK Audit Topic&#xa;ods.pipeline.audit" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8BBD9;strokeColor=#880E4F;fontColor=#880E4F;fontSize=9;" vertex="1" parent="1"><mxGeometry x="100" y="640" width="230" height="50" as="geometry"/></mxCell>
+        <mxCell id="114" value="S3 DLQ&#xa;ods-dlq-{env}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8d7da;strokeColor=#dc3545;fontColor=#721c24;fontSize=9;" vertex="1" parent="1"><mxGeometry x="400" y="640" width="250" height="50" as="geometry"/></mxCell>
+        <mxCell id="115" value="PostgreSQL&#xa;pipeline.sink_connector_registry&#xa;connector status · offset · latency" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#cce5ff;strokeColor=#004085;fontColor=#004085;fontSize=9;" vertex="1" parent="1"><mxGeometry x="710" y="640" width="240" height="55" as="geometry"/></mxCell>
+
+        <!-- ===== EDGES — HAPPY PATH ===== -->
+        <!-- KAFKA → ICEBERG_CON -->
+        <mxCell id="201" value="poll · own consumer group" style="endArrow=block;endFill=1;strokeColor=#880E4F;strokeWidth=1.5;" edge="1" source="101" target="104" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <!-- KAFKA → JDBC_CON -->
+        <mxCell id="202" value="poll · own consumer group" style="endArrow=block;endFill=1;strokeColor=#880E4F;strokeWidth=1.5;" edge="1" source="101" target="105" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <!-- SR → ICEBERG_CON -->
+        <mxCell id="203" value="schema by ID · cached" style="endArrow=block;endFill=1;strokeColor=#004085;strokeWidth=1.5;" edge="1" source="103" target="104" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <!-- SR → JDBC_CON -->
+        <mxCell id="204" value="schema by ID · cached" style="endArrow=block;endFill=1;strokeColor=#004085;strokeWidth=1.5;" edge="1" source="103" target="105" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <!-- ICEBERG_CON → S3I -->
+        <mxCell id="205" value="flush Parquet batch" style="endArrow=block;endFill=1;strokeColor=#28a745;strokeWidth=1.5;" edge="1" source="104" target="107" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <!-- S3I → CAT -->
+        <mxCell id="206" value="atomic snapshot commit" style="endArrow=block;endFill=1;strokeColor=#004085;strokeWidth=1.5;" edge="1" source="107" target="108" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <!-- CAT → CRAWLER -->
+        <mxCell id="207" value="async" style="endArrow=open;endFill=0;dashed=1;strokeColor=#6c757d;strokeWidth=1.5;" edge="1" source="108" target="109" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <!-- JDBC_CON → PG -->
+        <mxCell id="208" value="batch insert / upsert" style="endArrow=block;endFill=1;strokeColor=#28a745;strokeWidth=1.5;" edge="1" source="105" target="111" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <!-- ICEBERG_CON → AUDIT -->
+        <mxCell id="209" value="offset commit then audit" style="endArrow=block;endFill=1;strokeColor=#28a745;strokeWidth=1.5;" edge="1" source="104" target="113" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <!-- JDBC_CON → AUDIT -->
+        <mxCell id="210" value="offset commit then audit" style="endArrow=block;endFill=1;strokeColor=#28a745;strokeWidth=1.5;" edge="1" source="105" target="113" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <!-- ICEBERG_CON → REG -->
+        <mxCell id="211" value="update status · offset" style="endArrow=block;endFill=1;strokeColor=#6c757d;strokeWidth=1.5;" edge="1" source="104" target="115" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <!-- JDBC_CON → REG -->
+        <mxCell id="212" value="update status · offset" style="endArrow=block;endFill=1;strokeColor=#6c757d;strokeWidth=1.5;" edge="1" source="105" target="115" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- ===== EDGES — FAILURE ===== -->
+        <mxCell id="213" value="schema incompatible · record to DLQ" style="endArrow=block;endFill=1;dashed=1;strokeColor=#dc3545;strokeWidth=1.5;" edge="1" source="104" target="114" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="214" value="S3 write failure · connector pauses" style="endArrow=block;endFill=1;dashed=1;strokeColor=#dc3545;strokeWidth=1.5;" edge="1" source="104" target="114" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="215" value="schema incompatible · record to DLQ" style="endArrow=block;endFill=1;dashed=1;strokeColor=#dc3545;strokeWidth=1.5;" edge="1" source="105" target="114" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="216" value="PG write failure · connector pauses" style="endArrow=block;endFill=1;dashed=1;strokeColor=#dc3545;strokeWidth=1.5;" edge="1" source="105" target="114" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

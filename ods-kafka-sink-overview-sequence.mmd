@@ -1,0 +1,59 @@
+sequenceDiagram
+    participant KAFKA as MSK Topic<br/>ods.{domain}.{dataset}
+    participant SR as Glue Schema Registry<br/>ods-schema-registry-{env}
+    participant ICEBERG_CON as Iceberg Sink Connector<br/>ods-iceberg-sink-{dataset}
+    participant JDBC_CON as JDBC Sink Connector<br/>ods-jdbc-sink-{dataset}
+    participant S3I as S3 Iceberg Table<br/>ods-iceberg-{env}
+    participant CAT as Glue Data Catalog<br/>ods_{domain}
+    participant CRAWLER as Glue Crawler<br/>ods-{dataset}-crawler
+    participant PG as PostgreSQL<br/>ods_{env} · {domain}.{dataset}
+    participant REG as PostgreSQL<br/>pipeline.sink_connector_registry
+    participant AUDIT as MSK Audit Topic<br/>ods.pipeline.audit
+    participant DLQ as S3 DLQ<br/>ods-dlq-{env}
+
+    Note over KAFKA,SR: Phase 1 · Consume & Deserialise (connectors run independently)
+    par Iceberg consumer group
+        ICEBERG_CON->>KAFKA: ❶ Poll batch (consumer group: ods-iceberg-sink-{dataset})
+        KAFKA-->>ICEBERG_CON: Avro records · Confluent wire format (magic byte + schema ID + payload)
+        ICEBERG_CON->>SR: ❷ Fetch Avro schema by ID (cached after first fetch)
+        SR-->>ICEBERG_CON: Avro schema
+    and JDBC consumer group
+        JDBC_CON->>KAFKA: ❸ Poll batch (consumer group: ods-jdbc-sink-{dataset})
+        KAFKA-->>JDBC_CON: Avro records · Confluent wire format (magic byte + schema ID + payload)
+        JDBC_CON->>SR: ❹ Fetch Avro schema by ID (cached after first fetch)
+        SR-->>JDBC_CON: Avro schema
+    end
+
+    Note over ICEBERG_CON,CRAWLER: Phase 2 · Iceberg Write
+    ICEBERG_CON->>ICEBERG_CON: ❺ Buffer + convert records to Parquet format
+    alt Schema incompatible with Iceberg table
+        ICEBERG_CON-->>DLQ: Route incompatible record to DLQ · batch continues
+    else S3 write failure
+        ICEBERG_CON-->>DLQ: Route failed batch to DLQ · connector pauses
+        ICEBERG_CON-->>REG: UPDATE status=failed · error_detail
+    else Flush threshold reached
+        ICEBERG_CON->>S3I: ❻ Write Parquet data files to S3 (partitioned by date)
+        S3I-->>ICEBERG_CON: S3 write confirmed
+        ICEBERG_CON->>S3I: ❼ Commit Iceberg snapshot (manifest → snapshot → metadata.json atomic swap)
+        ICEBERG_CON->>CAT: ❽ Sync table definition to Glue Data Catalog
+        ICEBERG_CON->>CRAWLER: ❾ Trigger Glue Crawler to refresh partitions (async · no wait)
+        ICEBERG_CON->>KAFKA: ❿ Commit MSK consumer group offsets (after snapshot confirmed)
+        ICEBERG_CON->>REG: Update last_offset · last_record_at · batch_latency_ms
+    end
+
+    Note over JDBC_CON,PG: Phase 3 · JDBC Write
+    alt Schema incompatible with PostgreSQL table
+        JDBC_CON-->>DLQ: Route incompatible record to DLQ · batch continues
+    else PostgreSQL write failure
+        JDBC_CON-->>DLQ: Route failed batch to DLQ · connector pauses
+        JDBC_CON-->>REG: UPDATE status=failed · error_detail
+    else Batch ready
+        JDBC_CON->>PG: ⓫ Batch insert / upsert records (write mode: TBD per dataset)
+        PG-->>JDBC_CON: Write confirmed (rows affected)
+        JDBC_CON->>KAFKA: ⓬ Commit MSK consumer group offsets
+        JDBC_CON->>REG: Update last_offset · last_record_at · batch_latency_ms
+    end
+
+    Note over ICEBERG_CON,AUDIT: Phase 4 · Post-Write
+    ICEBERG_CON->>AUDIT: ⓭ Emit audit event (sink_type=iceberg · record_count · offset_range · batch_latency_ms)
+    JDBC_CON->>AUDIT: ⓮ Emit audit event (sink_type=jdbc · record_count · offset_range · batch_latency_ms)

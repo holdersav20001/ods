@@ -116,6 +116,8 @@ def init_run() -> dict:
         "config_version_id": config_version_id,
         "s3_raw_path": s3_raw_path,
         "s3_curated_path": s3_curated_path,
+        "airflow_dag_id": dag_run.dag_id,
+        "airflow_run_id": dag_run.run_id,
     }
 
 
@@ -136,10 +138,13 @@ def wait_sinks(ctx: dict) -> dict:
                 write_stage(
                     conn,
                     run_id=ctx["run_id"],
-                    stage="sink_pg",
+                    stage="sink_pg_wait",
                     status="failed",
+                    event_type="stage_failed",
                     output_ref=None,
                     error=f"wait_sinks aborted: {exc}",
+                    airflow_dag_id=ctx.get("airflow_dag_id"),
+                    airflow_run_id=ctx.get("airflow_run_id"),
                 )
             except Exception:
                 pass
@@ -171,10 +176,13 @@ def _wait_sinks_inner(conn, ctx: dict) -> dict:
         write_stage(
             conn,
             run_id=ctx["run_id"],
-            stage="sink_pg",
+            stage="sink_pg_wait",
             status="failed",
+            event_type="stage_failed",
             output_ref=None,
             error="kafka_topic/offset_end missing — publish stage did not run",
+            airflow_dag_id=ctx.get("airflow_dag_id"),
+            airflow_run_id=ctx.get("airflow_run_id"),
         )
         raise RuntimeError(
             f"run_log row for {ctx['run_id']} missing kafka_topic/offset_end"
@@ -187,18 +195,24 @@ def _wait_sinks_inner(conn, ctx: dict) -> dict:
     write_stage(
         conn,
         run_id=ctx["run_id"],
-        stage="sink_pg",
+        stage="sink_pg_wait",
         status="succeeded" if ok_jdbc else "failed",
+        event_type="stage_completed" if ok_jdbc else "stage_failed",
         output_ref=f"kafka://{topic}#consumed",
         error=None if ok_jdbc else "jdbc sink did not advance",
+        airflow_dag_id=ctx.get("airflow_dag_id"),
+        airflow_run_id=ctx.get("airflow_run_id"),
     )
     write_stage(
         conn,
         run_id=ctx["run_id"],
-        stage="sink_s3",
+        stage="sink_s3_wait",
         status="succeeded" if ok_s3 else "failed",
+        event_type="stage_completed" if ok_s3 else "stage_failed",
         output_ref=f"kafka://{topic}#consumed",
         error=None if ok_s3 else "s3 sink did not advance",
+        airflow_dag_id=ctx.get("airflow_dag_id"),
+        airflow_run_id=ctx.get("airflow_run_id"),
     )
 
     if not (ok_jdbc and ok_s3):
@@ -258,7 +272,10 @@ with DAG(
             "--run_id {{ ti.xcom_pull(task_ids='init_run')['run_id'] }} "
             "--domain {{ ti.xcom_pull(task_ids='init_run')['domain'] }} "
             "--dataset {{ ti.xcom_pull(task_ids='init_run')['dataset'] }} "
-            "--s3_input_path {{ ti.xcom_pull(task_ids='init_run')['s3_raw_path'] }}"
+            "--s3_input_path {{ ti.xcom_pull(task_ids='init_run')['s3_raw_path'] }} "
+            "--file_id {{ ti.xcom_pull(task_ids='init_run')['file_id'] }} "
+            "--airflow_dag_id {{ dag.dag_id }} "
+            "--airflow_run_id {{ run_id }}"
         ),
         environment=GLUE_ENV,
         mounts=[Mount(source=GLUE_JOBS_PATH, target="/home/glue_user/workspace/jobs", type="bind")],
@@ -278,7 +295,10 @@ with DAG(
             "--run_id {{ ti.xcom_pull(task_ids='init_run')['run_id'] }} "
             "--domain {{ ti.xcom_pull(task_ids='init_run')['domain'] }} "
             "--dataset {{ ti.xcom_pull(task_ids='init_run')['dataset'] }} "
-            "--s3_input_path {{ ti.xcom_pull(task_ids='init_run')['s3_curated_path'] }}"
+            "--s3_input_path {{ ti.xcom_pull(task_ids='init_run')['s3_curated_path'] }} "
+            "--file_id {{ ti.xcom_pull(task_ids='init_run')['file_id'] }} "
+            "--airflow_dag_id {{ dag.dag_id }} "
+            "--airflow_run_id {{ run_id }}"
         ),
         environment=GLUE_ENV,
         mounts=[Mount(source=GLUE_JOBS_PATH, target="/home/glue_user/workspace/jobs", type="bind")],

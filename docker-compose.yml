@@ -27,6 +27,7 @@ x-airflow-common: &airflow-common
     KAFKA_BOOTSTRAP: broker:29092
   volumes:
     - ./airflow/dags:/opt/airflow/dags
+    - ./datasets:/opt/airflow/datasets
     - /var/run/docker.sock:/var/run/docker.sock
     - airflow-logs:/opt/airflow/logs
   depends_on:
@@ -130,7 +131,7 @@ services:
   airflow-init:
     <<: *airflow-common
     command: >
-      bash -c "pip install --quiet apache-airflow-providers-docker apache-airflow-providers-postgres paramiko boto3 requests psycopg2-binary confluent-kafka && airflow db migrate && airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@local.dev || true"
+      bash -c "pip install --quiet apache-airflow-providers-docker apache-airflow-providers-postgres paramiko boto3 requests psycopg2-binary confluent-kafka fastavro \"httpx>=0.24.0\" && airflow db migrate && airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@local.dev || true"
     depends_on:
       postgres:
         condition: service_healthy
@@ -150,7 +151,7 @@ services:
       airflow-init:
         condition: service_completed_successfully
     command: >
-      bash -c "pip install --quiet apache-airflow-providers-docker apache-airflow-providers-postgres paramiko boto3 requests psycopg2-binary confluent-kafka && airflow webserver"
+      bash -c "pip install --quiet apache-airflow-providers-docker apache-airflow-providers-postgres paramiko boto3 requests psycopg2-binary confluent-kafka fastavro \"httpx>=0.24.0\" && airflow webserver"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
@@ -168,7 +169,7 @@ services:
       airflow-init:
         condition: service_completed_successfully
     command: >
-      bash -c "pip install --quiet apache-airflow-providers-docker apache-airflow-providers-postgres paramiko boto3 requests psycopg2-binary confluent-kafka && airflow scheduler"
+      bash -c "pip install --quiet apache-airflow-providers-docker apache-airflow-providers-postgres paramiko boto3 requests psycopg2-binary confluent-kafka fastavro \"httpx>=0.24.0\" && airflow scheduler"
     restart: on-failure
     healthcheck:
       test: ["CMD-SHELL", "airflow jobs check --job-type SchedulerJob --limit 5"]

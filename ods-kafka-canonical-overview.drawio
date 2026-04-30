@@ -1,0 +1,107 @@
+<mxfile host="Claude">
+  <diagram id="kafka-canonical-ov" name="ODS CDC to Canonical Kafka — Overview">
+    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="960" pageHeight="1180" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/><mxCell id="1" parent="0"/>
+
+        <!-- TITLE -->
+        <mxCell id="10" value="ODS CDC Pipeline — Raw Kafka to Canonical Kafka (Overview)" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=14;fontStyle=1;fontColor=#1F5C8B;" vertex="1" parent="1"><mxGeometry x="20" y="15" width="920" height="35" as="geometry"/></mxCell>
+
+        <!-- NAV BAR -->
+        <mxCell id="11" value="↑ Upstream: openflow_extraction (CDC capture → K1)  ·  → Detail: ods-kafka-canonical-sequence  ·  ↓ Downstream: ods-kafka-sink-overview" style="text;html=1;strokeColor=#856404;fillColor=#fff3cd;align=center;verticalAlign=middle;fontSize=8;fontColor=#533f03;fontStyle=3;rounded=1;" vertex="1" parent="1"><mxGeometry x="20" y="52" width="920" height="22" as="geometry"/></mxCell>
+
+        <!-- ===== PHASE 0 · CDC SOURCE ===== -->
+        <mxCell id="100" value="CDC Source&#xa;(OpenFlow · Debezium)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#BBDEFB;strokeColor=#1565C0;fontColor=#0D47A1;fontSize=10;fontStyle=1;arcSize=15;" vertex="1" parent="1"><mxGeometry x="380" y="100" width="200" height="50" as="geometry"/></mxCell>
+
+        <!-- ===== PHASE 1 · RAW CAPTURE ===== -->
+        <mxCell id="200" value="1 · Raw Capture" style="rounded=1;arcSize=3;html=1;fillColor=#FFF3E0;strokeColor=#E65100;fontColor=#E65100;fontSize=10;fontStyle=1;verticalAlign=top;" vertex="1" parent="1"><mxGeometry x="80" y="180" width="800" height="110" as="geometry"/></mxCell>
+        <mxCell id="201" value="MSK Raw Topic&#xa;ods.raw.{domain}.{dataset}&#xa;non-canonical · JSON CDC envelope · delete policy" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#E65100;fontColor=#BF360C;fontSize=9;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="290" y="220" width="380" height="55" as="geometry"/></mxCell>
+
+        <!-- ===== PHASE 2 · CANONICALIZE ===== -->
+        <mxCell id="300" value="2 · Canonicalize" style="rounded=1;arcSize=3;html=1;fillColor=#E0F2F1;strokeColor=#00695C;fontColor=#00695C;fontSize=10;fontStyle=1;verticalAlign=top;" vertex="1" parent="1"><mxGeometry x="80" y="320" width="800" height="320" as="geometry"/></mxCell>
+
+        <!-- ECS service box -->
+        <mxCell id="301" value="ECS Kafka Streams Service&#xa;ods-kafka-canonicalize-{dataset}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#B2DFDB;strokeColor=#00695C;fontColor=#004D40;fontSize=10;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="110" y="358" width="260" height="50" as="geometry"/></mxCell>
+
+        <!-- Config -->
+        <mxCell id="302" value="S3 Config&#xa;field-mapping YAML · schema pins" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#388E3C;fontColor=#1B5E20;fontSize=9;" vertex="1" parent="1"><mxGeometry x="110" y="440" width="200" height="45" as="geometry"/></mxCell>
+
+        <!-- Schema Registry -->
+        <mxCell id="303" value="Glue Schema Registry&#xa;ods-schema-registry-{env}&#xa;canonical Avro schema" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8EAF6;strokeColor=#3949AB;fontColor=#1A237E;fontSize=9;" vertex="1" parent="1"><mxGeometry x="620" y="358" width="230" height="55" as="geometry"/></mxCell>
+
+        <!-- RocksDB state -->
+        <mxCell id="304" value="RocksDB State Store&#xa;local SCD / dedup window" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EDE7F6;strokeColor=#512DA8;fontColor=#311B92;fontSize=9;" vertex="1" parent="1"><mxGeometry x="620" y="440" width="230" height="45" as="geometry"/></mxCell>
+
+        <!-- Changelog topic -->
+        <mxCell id="305" value="MSK Changelog Topic&#xa;ods.raw.{dataset}.changelog&#xa;state replication" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3E5F5;strokeColor=#7B1FA2;fontColor=#4A148C;fontSize=9;" vertex="1" parent="1"><mxGeometry x="620" y="510" width="230" height="45" as="geometry"/></mxCell>
+
+        <!-- Internal steps -->
+        <mxCell id="306" value="① Poll raw topic · deserialise JSON CDC envelope&#xa;② Fetch canonical Avro schema from Schema Registry (cached per schema ID)&#xa;③ beginTransaction() — EOS v2 exactly-once semantics&#xa;④ Map CDC fields → canonical schema (YAML config) · DQ validation · SCD classification&#xa;⑤ produce() canonical Avro record → canonical topic&#xa;⑥ sendOffsetsToTransaction() + commitTransaction() — offset + produce atomic" style="text;html=1;strokeColor=#cccccc;fillColor=#f8f9fa;align=left;verticalAlign=middle;fontSize=8;fontColor=#37474F;rounded=1;" vertex="1" parent="1"><mxGeometry x="110" y="510" width="490" height="110" as="geometry"/></mxCell>
+
+        <!-- ===== PHASE 3 · FAILURE ROUTING ===== -->
+        <mxCell id="400" value="3 · Failure Routing" style="rounded=1;arcSize=3;html=1;fillColor=#FBE9E7;strokeColor=#BF360C;fontColor=#BF360C;fontSize=10;fontStyle=1;verticalAlign=top;" vertex="1" parent="1"><mxGeometry x="80" y="670" width="800" height="90" as="geometry"/></mxCell>
+
+        <mxCell id="401" value="Quarantine Topic (Replayable)&#xa;ods.raw.{dataset}.quarantine&#xa;DQ hard-block · schema incompatible · original record preserved" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE0B2;strokeColor=#E65100;fontColor=#BF360C;fontSize=9;" vertex="1" parent="1"><mxGeometry x="110" y="705" width="330" height="45" as="geometry"/></mxCell>
+
+        <mxCell id="402" value="S3 DLQ&#xa;ods-dlq-{env}&#xa;unrecoverable failures" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFCCBC;strokeColor=#BF360C;fontColor=#BF360C;fontSize=9;" vertex="1" parent="1"><mxGeometry x="510" y="705" width="340" height="45" as="geometry"/></mxCell>
+
+        <!-- ===== PHASE 4 · CANONICAL OUTPUT ===== -->
+        <mxCell id="500" value="4 · Canonical Output" style="rounded=1;arcSize=3;html=1;fillColor=#FCE4EC;strokeColor=#880E4F;fontColor=#880E4F;fontSize=10;fontStyle=1;verticalAlign=top;" vertex="1" parent="1"><mxGeometry x="80" y="790" width="800" height="110" as="geometry"/></mxCell>
+
+        <mxCell id="501" value="MSK Canonical Topic&#xa;ods.{domain}.{dataset}&#xa;canonical Avro · Schema Registry enforced · compact,delete" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8BBD9;strokeColor=#880E4F;fontColor=#880E4F;fontSize=9;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="120" y="830" width="320" height="55" as="geometry"/></mxCell>
+
+        <mxCell id="502" value="MSK Audit Topic&#xa;ods.pipeline.audit" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8BBD9;strokeColor=#880E4F;fontColor=#880E4F;fontSize=9;" vertex="1" parent="1"><mxGeometry x="520" y="830" width="200" height="50" as="geometry"/></mxCell>
+
+        <!-- Observability -->
+        <mxCell id="503" value="CloudWatch Metrics + Alarms&#xa;lag · DQ fail rate · error rate" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ECEFF1;strokeColor=#546E7A;fontColor=#263238;fontSize=9;" vertex="1" parent="1"><mxGeometry x="740" y="830" width="120" height="50" as="geometry"/></mxCell>
+
+        <!-- HANDOFF NOTE -->
+        <mxCell id="600" value="↓ Consumed by ods-kafka-sink-connector → Iceberg (S3) + PostgreSQL  (see ods-kafka-sink-overview)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff3cd;strokeColor=#856404;fontColor=#533f03;fontSize=9;fontStyle=3;" vertex="1" parent="1"><mxGeometry x="80" y="930" width="800" height="35" as="geometry"/></mxCell>
+
+        <!-- RAW TOPIC NOTE -->
+        <mxCell id="601" value="⚠ ods.raw.{domain}.{dataset} — raw/staging topics use delete cleanup policy · short retention (24h) · not registered in schema registry · not available for general consumption" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#E65100;fontColor=#BF360C;fontSize=8;fontStyle=2;" vertex="1" parent="1"><mxGeometry x="80" y="975" width="800" height="30" as="geometry"/></mxCell>
+
+        <!-- EOS NOTE -->
+        <mxCell id="602" value="⚙ EOS v2 exactly-once: produce to canonical topic and commit raw topic offset are atomic within a single Kafka transaction — no duplicates, no data loss" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E0F2F1;strokeColor=#00695C;fontColor=#004D40;fontSize=8;fontStyle=2;" vertex="1" parent="1"><mxGeometry x="80" y="1013" width="800" height="30" as="geometry"/></mxCell>
+
+        <!-- ===== EDGES — HAPPY PATH ===== -->
+        <!-- CDC Source → Raw Topic -->
+        <mxCell id="701" value="CDC change events · JSON envelope" style="endArrow=block;endFill=1;strokeColor=#1565C0;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="480" y="150" as="sourcePoint"/><mxPoint x="480" y="220" as="targetPoint"/></mxGeometry></mxCell>
+
+        <!-- Raw Topic → ECS -->
+        <mxCell id="702" value="poll · consumer group ods-cdc-canonicalize-{dataset}" style="endArrow=block;endFill=1;strokeColor=#E65100;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="340" y="275" as="sourcePoint"/><mxPoint x="240" y="358" as="targetPoint"/></mxGeometry></mxCell>
+
+        <!-- ECS ↔ Config -->
+        <mxCell id="703" value="load mapping config" style="endArrow=block;endFill=1;strokeColor=#388E3C;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="240" y="408" as="sourcePoint"/><mxPoint x="210" y="440" as="targetPoint"/></mxGeometry></mxCell>
+
+        <!-- ECS ↔ Schema Registry -->
+        <mxCell id="704" value="fetch canonical schema" style="endArrow=block;endFill=1;strokeColor=#3949AB;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="370" y="375" as="sourcePoint"/><mxPoint x="620" y="380" as="targetPoint"/></mxGeometry></mxCell>
+
+        <!-- ECS ↔ RocksDB -->
+        <mxCell id="705" value="SCD state lookup/update" style="endArrow=block;endFill=1;strokeColor=#512DA8;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="370" y="460" as="sourcePoint"/><mxPoint x="620" y="460" as="targetPoint"/></mxGeometry></mxCell>
+
+        <!-- RocksDB → Changelog -->
+        <mxCell id="706" value="state replication" style="endArrow=block;endFill=1;dashed=1;strokeColor=#7B1FA2;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="735" y="485" as="sourcePoint"/><mxPoint x="735" y="510" as="targetPoint"/></mxGeometry></mxCell>
+
+        <!-- ECS → Quarantine -->
+        <mxCell id="707" value="DQ hard-block · schema incompatible" style="endArrow=block;endFill=1;dashed=1;strokeColor=#E65100;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="200" y="640" as="sourcePoint"/><mxPoint x="275" y="705" as="targetPoint"/></mxGeometry></mxCell>
+
+        <!-- ECS → DLQ -->
+        <mxCell id="708" value="unrecoverable failure" style="endArrow=block;endFill=1;dashed=1;strokeColor=#BF360C;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="340" y="640" as="sourcePoint"/><mxPoint x="680" y="705" as="targetPoint"/></mxGeometry></mxCell>
+
+        <!-- ECS → Canonical Topic -->
+        <mxCell id="709" value="publish canonical Avro · EOS v2 transaction" style="endArrow=block;endFill=1;strokeColor=#00695C;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="240" y="640" as="sourcePoint"/><mxPoint x="280" y="830" as="targetPoint"/></mxGeometry></mxCell>
+
+        <!-- ECS → Audit -->
+        <mxCell id="710" value="emit audit event" style="endArrow=block;endFill=1;strokeColor=#880E4F;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="340" y="640" as="sourcePoint"/><mxPoint x="620" y="830" as="targetPoint"/></mxGeometry></mxCell>
+
+        <!-- ECS → CloudWatch -->
+        <mxCell id="711" value="metrics" style="endArrow=block;endFill=1;strokeColor=#546E7A;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="370" y="620" as="sourcePoint"/><mxPoint x="800" y="830" as="targetPoint"/></mxGeometry></mxCell>
+
+        <!-- Canonical Topic → handoff -->
+        <mxCell id="712" value="" style="endArrow=block;endFill=1;strokeColor=#880E4F;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="280" y="885" as="sourcePoint"/><mxPoint x="340" y="930" as="targetPoint"/></mxGeometry></mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

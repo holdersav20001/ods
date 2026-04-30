@@ -7,6 +7,38 @@ from datetime import date
 import psycopg2
 
 
+# ---------------------------------------------------------------------------
+# Stage vocabulary — shared constants for run_stage_log.stage
+# ---------------------------------------------------------------------------
+
+class Stage:
+    """Canonical stage names for pipeline.run_stage_log.stage."""
+    RAW_READ        = "raw_read"        # ingestion: read CSV/file from S3 raw
+    SCHEMA_VALIDATE = "schema_validate" # validate columns against schema registry
+    DQ_CHECK        = "dq_check"        # data quality rules evaluation
+    CURATED_WRITE   = "curated_write"   # write Parquet to S3 curated
+    CURATED_READ    = "curated_read"    # publish: read curated Parquet
+    KAFKA_PUBLISH   = "kafka_publish"   # produce Avro messages to Kafka topic
+    RECON_T0        = "recon_t0"        # T0 offset reconciliation check
+    SINK_PG_WAIT    = "sink_pg_wait"    # wait for JDBC sink to consume offsets
+    SINK_S3_WAIT    = "sink_s3_wait"    # wait for S3 sink to consume offsets
+    FINALISE        = "finalise"        # DAG finalise: mark run succeeded
+
+
+class StageEvent:
+    """event_type values for pipeline.run_stage_log.event_type.
+
+    Filtering convention:
+        terminal events  = stage_completed | stage_failed | stage_skipped | stage_warned
+        in-progress      = stage_started
+    """
+    STARTED   = "stage_started"
+    COMPLETED = "stage_completed"
+    FAILED    = "stage_failed"
+    SKIPPED   = "stage_skipped"
+    WARNED    = "stage_warned"   # completed with warnings (e.g. DQ soft blocks)
+
+
 def extract_business_date(filename: str, pattern: str) -> date:
     match = re.search(pattern, filename)
     if not match:
@@ -132,21 +164,81 @@ def update_run_fields(pg_dsn, run_id, **fields):
 
 
 def write_stage_row(pg_dsn, *, run_id, stage, status,
+                    event_type=None,
+                    attempt_number=1,
                     input_ref=None, output_ref=None,
                     record_count_in=None, record_count_out=None,
-                    metrics=None, error=None):
+                    metrics=None, error=None,
+                    airflow_dag_id=None, airflow_run_id=None, spark_app_id=None):
     with psycopg2.connect(pg_dsn) as conn, conn.cursor() as cur:
         cur.execute(
             """
             INSERT INTO pipeline.run_stage_log
-                (run_id, stage, status, started_at, ended_at,
-                 input_ref, output_ref, record_count_in, record_count_out, metrics, error)
-            VALUES (%s,%s,%s, NOW(), NOW(), %s,%s,%s,%s,%s,%s)
+                (run_id, stage, status, event_type, attempt_number,
+                 started_at, ended_at,
+                 input_ref, output_ref, record_count_in, record_count_out, metrics, error,
+                 airflow_dag_id, airflow_run_id, spark_app_id)
+            VALUES (%s,%s,%s,%s,%s, NOW(), NOW(), %s,%s,%s,%s,%s,%s, %s,%s,%s)
             """,
-            (run_id, stage, status, input_ref, output_ref,
+            (run_id, stage, status, event_type, attempt_number,
+             input_ref, output_ref,
              record_count_in, record_count_out,
-             json.dumps(metrics) if metrics else None, error),
+             json.dumps(metrics) if metrics else None, error,
+             airflow_dag_id, airflow_run_id, spark_app_id),
         )
+
+
+def write_lineage_edge(pg_dsn, *, child_run_id, edge_type,
+                       parent_run_id=None, parent_file_id=None,
+                       source_ref=None, target_ref=None, record_count=None):
+    """Insert one row into pipeline.lineage_edge."""
+    with psycopg2.connect(pg_dsn) as conn, conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO pipeline.lineage_edge
+                (child_run_id, parent_run_id, parent_file_id,
+                 edge_type, source_ref, target_ref, record_count)
+            VALUES (%s,%s,%s, %s,%s,%s,%s)
+            """,
+            (child_run_id, parent_run_id, parent_file_id,
+             edge_type, source_ref, target_ref, record_count),
+        )
+
+
+def upsert_file_catalogue(pg_dsn, *, domain, dataset, business_date,
+                          file_md5, s3_raw_path=None, sftp_path=None,
+                          s3_curated_path=None, file_size_bytes=None,
+                          source_row_count=None, state="ingested",
+                          last_run_id=None) -> str:
+    """Upsert a file_catalogue row keyed on (domain, dataset, file_md5).
+
+    Returns the file_id UUID as a string.
+    """
+    import uuid as _uuid
+    with psycopg2.connect(pg_dsn) as conn, conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO pipeline.file_catalogue
+                (file_id, domain, dataset, business_date, file_md5,
+                 s3_raw_path, sftp_path, s3_curated_path,
+                 file_size_bytes, source_row_count, state, last_run_id)
+            VALUES (%s,%s,%s,%s,%s, %s,%s,%s, %s,%s,%s,%s)
+            ON CONFLICT (domain, dataset, file_md5) DO UPDATE SET
+                state          = EXCLUDED.state,
+                s3_raw_path    = COALESCE(EXCLUDED.s3_raw_path,    pipeline.file_catalogue.s3_raw_path),
+                s3_curated_path= COALESCE(EXCLUDED.s3_curated_path,pipeline.file_catalogue.s3_curated_path),
+                sftp_path      = COALESCE(EXCLUDED.sftp_path,      pipeline.file_catalogue.sftp_path),
+                file_size_bytes= COALESCE(EXCLUDED.file_size_bytes, pipeline.file_catalogue.file_size_bytes),
+                source_row_count=COALESCE(EXCLUDED.source_row_count,pipeline.file_catalogue.source_row_count),
+                last_run_id    = EXCLUDED.last_run_id,
+                state_updated_at = NOW()
+            RETURNING file_id
+            """,
+            (str(_uuid.uuid4()), domain, dataset, business_date, file_md5,
+             s3_raw_path, sftp_path, s3_curated_path,
+             file_size_bytes, source_row_count, state, last_run_id),
+        )
+        return str(cur.fetchone()[0])
 
 
 def write_recon_row(pg_dsn, *, check_type, run_id, domain, dataset, business_date,

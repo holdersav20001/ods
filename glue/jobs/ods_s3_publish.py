@@ -28,16 +28,36 @@ from confluent_kafka.serialization import MessageField, SerializationContext, St
 from pyspark.sql import SparkSession
 
 from utils import (
+    Stage, StageEvent,
     generate_message_key,
     get_file_state,
     load_dataset_config,
     set_file_state,
     update_run_fields,
     upsert_run_header,
+    write_lineage_edge,
     write_recon_row,
     write_stage_row,
 )
 from dq import evaluate_dq_rules
+
+import sys as _sys
+_PRODUCER_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "airflow", "dags", "common")
+if _PRODUCER_PATH not in _sys.path:
+    _sys.path.insert(0, os.path.abspath(_PRODUCER_PATH))
+try:
+    from run_event_producer import produce_run_event as _produce_run_event
+except ImportError:
+    _produce_run_event = None
+
+
+def _emit_publish(run_id, domain, dataset, business_date, status, **kwargs):
+    if _produce_run_event:
+        _produce_run_event(
+            "publish.completed", run_id, domain, dataset,
+            business_date or "", status,
+            pipeline_type="publish", **kwargs,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -121,14 +141,25 @@ def _coerce_for_avro(row_dict: dict, schema_str: str) -> dict:
                     return branch.get("logicalType")
         return None
 
+    def _union_contains_string(field_type):
+        return isinstance(field_type, list) and "string" in field_type
+
     fields = schema.get("fields", []) if isinstance(schema, dict) else []
     out = dict(row_dict)
     for fld in fields:
         name = fld.get("name")
         if name not in out or out[name] is None:
             continue
-        logical = _logical_for(fld.get("type"))
+        field_type = fld.get("type")
+        logical = _logical_for(field_type)
         v = out[name]
+        # Coerce datetime/date to ISO string for ["null","string"] union fields
+        if logical is None and _union_contains_string(field_type):
+            if isinstance(v, datetime):
+                out[name] = v.isoformat()[:10]
+            elif isinstance(v, date):
+                out[name] = v.isoformat()
+            continue
         if logical == "date":
             # Convert datetime -> date; string YYYY-MM-DD -> date; Decimal/int passthrough
             if isinstance(v, datetime):
@@ -185,11 +216,17 @@ def _write_dlq(spark, failing_df, domain: str, dataset: str,
 # Main publish logic
 # ---------------------------------------------------------------------------
 
-def run(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int:
+def run(run_id: str, domain: str, dataset: str, s3_input_path: str,
+        file_id: str | None = None,
+        airflow_dag_id: str | None = None,
+        airflow_run_id: str | None = None) -> int:
     """Top-level entry: guarantees run_log.status='failed' on any unhandled error."""
     pg_dsn = _pg_dsn()
     try:
-        return _run_impl(run_id, domain, dataset, s3_input_path)
+        return _run_impl(run_id, domain, dataset, s3_input_path,
+                         file_id=file_id,
+                         airflow_dag_id=airflow_dag_id,
+                         airflow_run_id=airflow_run_id)
     except Exception as exc:
         # Best-effort: mark the run as failed before propagating.
         try:
@@ -201,11 +238,24 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int:
         raise
 
 
-def _run_impl(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int:
+def _run_impl(run_id: str, domain: str, dataset: str, s3_input_path: str,
+              file_id: str | None = None,
+              airflow_dag_id: str | None = None,
+              airflow_run_id: str | None = None) -> int:
     """Execute the publish pipeline. Returns process exit code."""
 
     pg_dsn = _pg_dsn()
     pg = _get_pg_conn()
+
+    # spark_app_id starts None; updated once Spark is running.
+    # _ws closes over it by reference so post-Spark calls see the real value.
+    spark_app_id: str | None = None
+
+    def _ws(**kw):
+        write_stage_row(pg_dsn, run_id=run_id,
+                        airflow_dag_id=airflow_dag_id,
+                        airflow_run_id=airflow_run_id,
+                        spark_app_id=spark_app_id, **kw)
 
     bootstrap = os.environ.get("KAFKA_BOOTSTRAP_SERVERS",
                                os.environ.get("KAFKA_BOOTSTRAP", "localhost:9092"))
@@ -257,8 +307,9 @@ def _run_impl(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int
     except RuntimeError as exc:
         err_msg = str(exc)
         update_run_fields(pg_dsn, run_id, status="failed", error_summary=err_msg)
-        write_stage_row(pg_dsn, run_id=run_id, stage="schema_fetch",
-                        status="failed", error=err_msg)
+        _ws(stage=Stage.SCHEMA_VALIDATE,
+            event_type=StageEvent.FAILED,
+            status="failed", error=err_msg)
         set_file_state(pg, s3_input_path, run_id, "failed",
                        error_reason="schema_fetch_failed")
         pg.close()
@@ -268,6 +319,8 @@ def _run_impl(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int
     # Step 5 — Build Spark + read Parquet
     # ------------------------------------------------------------------
     spark = _build_spark(dataset)
+    spark_app_id = spark.sparkContext.applicationId  # updates the cell _ws closes over
+
     s3a_path = s3_input_path.replace("s3://", "s3a://")
     df = spark.read.parquet(s3a_path)
     source_count = df.count()
@@ -279,13 +332,27 @@ def _run_impl(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int
         if first_row and first_row[0] is not None:
             business_date = str(first_row[0])
 
-    # Back-fill business_date in run_log now that we know it
+    # Back-fill business_date + file_id in run_log now that we know them
+    _file_id: str | None = file_id  # use explicit arg when provided
     if business_date:
-        update_run_fields(pg_dsn, run_id, business_date=business_date)
+        if _file_id is None:
+            # Fallback: look up by date — only when --file_id not passed (backward compat)
+            with pg.cursor() as _cur:
+                _cur.execute(
+                    "SELECT file_id FROM pipeline.file_catalogue "
+                    "WHERE domain=%s AND dataset=%s AND business_date=%s "
+                    "ORDER BY first_seen_at DESC LIMIT 1",
+                    (domain, dataset, business_date),
+                )
+                _row = _cur.fetchone()
+            _file_id = str(_row[0]) if _row else None
+        update_run_fields(pg_dsn, run_id, business_date=business_date,
+                          file_id=_file_id)
 
-    write_stage_row(pg_dsn, run_id=run_id, stage="read_parquet",
-                    status="succeeded", input_ref=s3a_path,
-                    record_count_in=source_count, record_count_out=source_count)
+    _ws(stage=Stage.CURATED_READ,
+        event_type=StageEvent.COMPLETED,
+        status="succeeded", input_ref=s3a_path,
+        record_count_in=source_count, record_count_out=source_count)
 
     # ------------------------------------------------------------------
     # Step 6 — Run DQ rules
@@ -305,14 +372,17 @@ def _run_impl(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int
         _write_dlq(spark, failing_df, domain, dataset,
                    business_date or "unknown", run_id)
 
-    dq_status = "dq_warned" if (warnings or failing_count > 0) else "succeeded"
-    write_stage_row(pg_dsn, run_id=run_id, stage="dq_check",
-                    status=dq_status,
-                    record_count_in=source_count,
-                    record_count_out=dq_pass_count,
-                    metrics={"failing_count": failing_count,
-                             "warnings": warnings or []},
-                    error=json.dumps(warnings) if warnings else None)
+    _dq_has_issues = bool(warnings or failing_count > 0)
+    dq_status = "warned" if _dq_has_issues else "succeeded"
+    _ws(stage=Stage.DQ_CHECK,
+        event_type=StageEvent.WARNED if _dq_has_issues else StageEvent.COMPLETED,
+        status=dq_status,
+        input_ref=s3a_path,
+        record_count_in=source_count,
+        record_count_out=dq_pass_count,
+        metrics={"failing_count": failing_count,
+                 "warnings": warnings or []},
+        error=json.dumps(warnings) if warnings else None)
 
     update_run_fields(pg_dsn, run_id,
                       record_count_source=source_count,
@@ -346,8 +416,9 @@ def _run_impl(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int
     except Exception as exc:
         err_msg = f"Failed to read start offsets: {exc}"
         update_run_fields(pg_dsn, run_id, status="failed", error_summary=err_msg)
-        write_stage_row(pg_dsn, run_id=run_id, stage="publish",
-                        status="failed", error=err_msg)
+        _ws(stage=Stage.KAFKA_PUBLISH,
+            status="failed", event_type=StageEvent.FAILED,
+            error=err_msg)
         set_file_state(pg, s3_input_path, run_id, "failed",
                        error_reason="offset_read_failed")
         pg.close()
@@ -361,6 +432,7 @@ def _run_impl(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int
     try:
         for row in rows:
             row_dict = row.asDict()
+            row_dict["_ods_file_id"] = _file_id or ""
             coerced = _coerce_for_avro(row_dict, avro_schema_str)
             msg_key = generate_message_key(key_fields, coerced)
             producer.produce(
@@ -378,12 +450,12 @@ def _run_impl(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int
     except Exception as exc:
         err_msg = str(exc)
         update_run_fields(pg_dsn, run_id, status="failed", error_summary=err_msg)
-        write_stage_row(pg_dsn, run_id=run_id, stage="publish",
-                        status="failed",
-                        input_ref=s3a_path,
-                        output_ref=f"kafka://{target_topic}",
-                        record_count_in=dq_pass_count,
-                        error=err_msg)
+        _ws(stage=Stage.KAFKA_PUBLISH,
+            status="failed", event_type=StageEvent.FAILED,
+            input_ref=s3a_path,
+            output_ref=f"kafka://{target_topic}",
+            record_count_in=dq_pass_count,
+            error=err_msg)
         set_file_state(pg, s3_input_path, run_id, "failed",
                        error_reason="kafka_publish_failed")
         pg.close()
@@ -430,11 +502,10 @@ def _run_impl(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int
     final_status = "succeeded" if t0_passed else "failed"
     error_summary = None if t0_passed else f"T0 mismatch: {discrepancy}"
 
-    write_stage_row(
-        pg_dsn,
-        run_id=run_id,
-        stage="publish",
+    _ws(
+        stage=Stage.KAFKA_PUBLISH,
         status=final_status,
+        event_type=StageEvent.COMPLETED if t0_passed else StageEvent.FAILED,
         input_ref=s3a_path,
         output_ref=f"kafka://{target_topic}",
         record_count_in=dq_pass_count,
@@ -455,13 +526,38 @@ def _run_impl(run_id: str, domain: str, dataset: str, s3_input_path: str) -> int
     )
 
     # ------------------------------------------------------------------
-    # Step 13 — Update file_state
+    # Step 13 — Write curated→kafka lineage edge (on success)
+    # ------------------------------------------------------------------
+    if t0_passed and _file_id:
+        write_lineage_edge(
+            pg_dsn,
+            child_run_id=run_id,
+            parent_file_id=_file_id,
+            edge_type="curated_to_kafka",
+            source_ref=s3_input_path,
+            target_ref=f"kafka://{target_topic}",
+            record_count=published_count,
+        )
+
+    # ------------------------------------------------------------------
+    # Step 14 — Update file_state
     # ------------------------------------------------------------------
     set_file_state(
         pg, s3_input_path, run_id,
         "completed" if t0_passed else "failed",
         record_count=published_count,
         error_reason=error_summary,
+    )
+
+    _emit_publish(
+        run_id, domain, dataset, business_date, final_status,
+        record_count_published=published_count,
+        kafka_topic=target_topic,
+        kafka_offset_start=offset_start,
+        kafka_offset_end=offset_end,
+        error_summary=error_summary,
+        file_id=_file_id,
+        s3_curated_path=s3_input_path,
     )
 
     pg.close()
@@ -489,6 +585,13 @@ def _parse_args(argv=None):
     parser.add_argument("--s3_input_path", required=True,
                         help="S3 path to curated Parquet prefix, "
                              "e.g. s3://ods-curated-local/insurance/policies/date=2026-05-01/")
+    parser.add_argument("--file_id", required=False, default=None,
+                        help="UUID from file_catalogue — explicit lineage contract. "
+                             "When provided, skips date-scoped catalogue lookup.")
+    parser.add_argument("--airflow_dag_id", default=None,
+                        help="Airflow DAG id for CloudWatch/Airflow correlation")
+    parser.add_argument("--airflow_run_id", default=None,
+                        help="Airflow run id (dag_run.run_id) for CloudWatch/Airflow correlation")
     return parser.parse_args(argv)
 
 
@@ -500,5 +603,8 @@ if __name__ == "__main__":
             domain=args.domain,
             dataset=args.dataset,
             s3_input_path=args.s3_input_path,
+            file_id=args.file_id,
+            airflow_dag_id=args.airflow_dag_id,
+            airflow_run_id=args.airflow_run_id,
         )
     )

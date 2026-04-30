@@ -60,21 +60,27 @@ def update_run_header(conn, run_id, **fields):
 
 
 def write_stage(conn, *, run_id, stage, status,
+                event_type=None, attempt_number=1,
                 input_ref=None, output_ref=None,
                 record_count_in=None, record_count_out=None,
-                metrics=None, error=None):
+                metrics=None, error=None,
+                airflow_dag_id=None, airflow_run_id=None):
     try:
         with conn.cursor() as cur:
             cur.execute(
                 """
                 INSERT INTO pipeline.run_stage_log
-                    (run_id, stage, status, started_at, ended_at,
-                     input_ref, output_ref, record_count_in, record_count_out, metrics, error)
-                VALUES (%s,%s,%s, NOW(), NOW(), %s,%s,%s,%s,%s,%s)
+                    (run_id, stage, status, event_type, attempt_number,
+                     started_at, ended_at,
+                     input_ref, output_ref, record_count_in, record_count_out, metrics, error,
+                     airflow_dag_id, airflow_run_id)
+                VALUES (%s,%s,%s,%s,%s, NOW(), NOW(), %s,%s,%s,%s,%s,%s, %s,%s)
                 """,
-                (run_id, stage, status, input_ref, output_ref,
+                (run_id, stage, status, event_type, attempt_number,
+                 input_ref, output_ref,
                  record_count_in, record_count_out,
-                 json.dumps(metrics) if metrics else None, error),
+                 json.dumps(metrics) if metrics else None, error,
+                 airflow_dag_id, airflow_run_id),
             )
         conn.commit()
     except Exception:

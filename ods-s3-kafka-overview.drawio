@@ -1,0 +1,65 @@
+<mxfile host="Claude">
+  <diagram id="s3-kafka-ov" name="ODS Publish Pipeline — S3 to Kafka Overview">
+    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="900" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/><mxCell id="1" parent="0"/>
+
+        <!-- TITLE -->
+        <mxCell id="10" value="ODS Publish Pipeline — S3 Curated to MSK Kafka (Overview)" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=14;fontStyle=1;fontColor=#1F5C8B;" vertex="1" parent="1"><mxGeometry x="20" y="15" width="860" height="35" as="geometry"/></mxCell>
+
+        <!-- NAV BAR -->
+        <mxCell id="11" value="↑ Upstream: ods-ingestion-overview  ·  ↔ Sequence: ods-s3-kafka-sequence  ·  ↓ Downstream: ods-kafka-sink-overview" style="text;html=1;strokeColor=#856404;fillColor=#fff3cd;align=center;verticalAlign=middle;fontSize=8;fontColor=#533f03;fontStyle=3;rounded=1;" vertex="1" parent="1"><mxGeometry x="20" y="52" width="860" height="22" as="geometry"/></mxCell>
+
+        <!-- S3 CURATED (trigger source) -->
+        <mxCell id="101" value="S3 Curated Zone&#xa;ods-curated-{env}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#cce5ff;strokeColor=#004085;fontColor=#004085;fontSize=9;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="330" y="82" width="220" height="50" as="geometry"/></mxCell>
+
+        <!-- ===== 1 · DETECT & GUARD ===== -->
+        <mxCell id="102" value="1 · Detect &amp; Guard" style="rounded=1;arcSize=3;html=1;fillColor=#FFFDE7;strokeColor=#F9A825;fontColor=#F57F17;fontSize=10;fontStyle=1;verticalAlign=top;" vertex="1" parent="1"><mxGeometry x="100" y="145" width="680" height="145" as="geometry"/></mxCell>
+        <mxCell id="103" value="EventBridge&#xa;ods-curated-file-rule-{env}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e2e3e5;strokeColor=#6c757d;fontColor=#383d41;fontSize=9;" vertex="1" parent="1"><mxGeometry x="130" y="185" width="220" height="50" as="geometry"/></mxCell>
+        <mxCell id="104" value="PostgreSQL&#xa;pipeline.file_state · idempotency guard" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#cce5ff;strokeColor=#004085;fontColor=#004085;fontSize=9;" vertex="1" parent="1"><mxGeometry x="440" y="185" width="300" height="50" as="geometry"/></mxCell>
+
+        <!-- ===== 2 · ORCHESTRATE ===== -->
+        <mxCell id="105" value="2 · Orchestrate" style="rounded=1;arcSize=3;html=1;fillColor=#F3E5F5;strokeColor=#8E24AA;fontColor=#6A1B9A;fontSize=10;fontStyle=1;verticalAlign=top;" vertex="1" parent="1"><mxGeometry x="100" y="320" width="680" height="145" as="geometry"/></mxCell>
+        <mxCell id="106" value="Airflow DAG (MWAA)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e2e3e5;strokeColor=#6c757d;fontColor=#383d41;fontSize=9;" vertex="1" parent="1"><mxGeometry x="130" y="360" width="220" height="50" as="geometry"/></mxCell>
+        <mxCell id="107" value="S3 Config · versioned&#xa;pin version on trigger" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#cce5ff;strokeColor=#004085;fontColor=#004085;fontSize=9;" vertex="1" parent="1"><mxGeometry x="440" y="360" width="300" height="50" as="geometry"/></mxCell>
+
+        <!-- ===== 3 · GLUE PROCESSING ===== -->
+        <mxCell id="108" value="3 · Glue Processing" style="rounded=1;arcSize=3;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;fontColor=#1B5E20;fontSize=10;fontStyle=1;verticalAlign=top;" vertex="1" parent="1"><mxGeometry x="100" y="495" width="680" height="285" as="geometry"/></mxCell>
+        <mxCell id="109" value="Schema Validation&#xa;Glue Schema Registry" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d4edda;strokeColor=#28a745;fontColor=#155724;fontSize=9;" vertex="1" parent="1"><mxGeometry x="140" y="530" width="220" height="50" as="geometry"/></mxCell>
+        <mxCell id="110" value="Data Quality&#xa;hard block · soft warn" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d4edda;strokeColor=#28a745;fontColor=#155724;fontSize=9;" vertex="1" parent="1"><mxGeometry x="140" y="612" width="220" height="50" as="geometry"/></mxCell>
+        <mxCell id="111" value="Publish to MSK&#xa;ods.{domain}.{dataset}&#xa;Kafka transactions · acks=all" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d4edda;strokeColor=#28a745;fontColor=#155724;fontSize=9;" vertex="1" parent="1"><mxGeometry x="140" y="694" width="220" height="55" as="geometry"/></mxCell>
+
+        <!-- ===== 4 · POST-PUBLISH ===== -->
+        <mxCell id="112" value="4 · Post-Publish" style="rounded=1;arcSize=3;html=1;fillColor=#E3F2FD;strokeColor=#1565C0;fontColor=#0D47A1;fontSize=10;fontStyle=1;verticalAlign=top;" vertex="1" parent="1"><mxGeometry x="100" y="810" width="680" height="145" as="geometry"/></mxCell>
+        <mxCell id="113" value="Glue Data Catalog" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e2e3e5;strokeColor=#6c757d;fontColor=#383d41;fontSize=9;" vertex="1" parent="1"><mxGeometry x="130" y="850" width="185" height="50" as="geometry"/></mxCell>
+        <mxCell id="114" value="Glue Crawler · async" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e2e3e5;strokeColor=#6c757d;fontColor=#383d41;fontSize=9;" vertex="1" parent="1"><mxGeometry x="335" y="850" width="185" height="50" as="geometry"/></mxCell>
+        <mxCell id="115" value="MSK Audit Topic&#xa;ods.pipeline.audit" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#cce5ff;strokeColor=#004085;fontColor=#004085;fontSize=9;" vertex="1" parent="1"><mxGeometry x="540" y="850" width="210" height="50" as="geometry"/></mxCell>
+
+        <!-- Failure exits -->
+        <mxCell id="116" value="already processed · exit" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f8d7da;strokeColor=#dc3545;fontColor=#721c24;fontSize=9;" vertex="1" parent="1"><mxGeometry x="310" y="990" width="200" height="50" as="geometry"/></mxCell>
+        <mxCell id="117" value="S3 DLQ&#xa;ods-dlq-{env}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8d7da;strokeColor=#dc3545;fontColor=#721c24;fontSize=9;" vertex="1" parent="1"><mxGeometry x="590" y="990" width="190" height="50" as="geometry"/></mxCell>
+
+        <!-- ===== EDGES — HAPPY PATH ===== -->
+        <mxCell id="201" value="Object Created event" style="endArrow=block;endFill=1;strokeColor=#004085;strokeWidth=1.5;" edge="1" source="101" target="103" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="202" value="trigger DAG" style="endArrow=block;endFill=1;strokeColor=#6c757d;strokeWidth=1.5;" edge="1" source="103" target="106" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="203" value="idempotency check" style="endArrow=block;endFill=1;strokeColor=#6c757d;strokeWidth=1.5;" edge="1" source="106" target="104" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="204" value="state=new · proceed" style="endArrow=block;endFill=1;dashed=1;strokeColor=#6c757d;strokeWidth=1.5;" edge="1" source="104" target="106" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="205" value="load versioned config" style="endArrow=block;endFill=1;strokeColor=#6c757d;strokeWidth=1.5;" edge="1" source="106" target="107" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="206" value="config + version ID" style="endArrow=block;endFill=1;dashed=1;strokeColor=#6c757d;strokeWidth=1.5;" edge="1" source="107" target="106" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="207" value="trigger Glue job" style="endArrow=block;endFill=1;strokeColor=#6c757d;strokeWidth=1.5;" edge="1" source="106" target="109" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="208" value="valid" style="endArrow=block;endFill=1;strokeColor=#28a745;strokeWidth=1.5;" edge="1" source="109" target="110" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="209" value="pass" style="endArrow=block;endFill=1;strokeColor=#28a745;strokeWidth=1.5;" edge="1" source="110" target="111" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="210" value="" style="endArrow=block;endFill=1;strokeColor=#28a745;strokeWidth=1.5;" edge="1" source="111" target="113" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="211" value="async" style="endArrow=open;endFill=0;dashed=1;strokeColor=#6c757d;strokeWidth=1.5;" edge="1" source="113" target="114" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="212" value="success" style="endArrow=block;endFill=1;strokeColor=#28a745;strokeWidth=1.5;" edge="1" source="111" target="115" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- ===== EDGES — FAILURE ===== -->
+        <mxCell id="213" value="state=completed · skip" style="endArrow=block;endFill=1;dashed=1;strokeColor=#dc3545;strokeWidth=1.5;" edge="1" source="104" target="116" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="214" value="breaking change" style="endArrow=block;endFill=1;dashed=1;strokeColor=#dc3545;strokeWidth=1.5;" edge="1" source="109" target="117" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="215" value="hard block" style="endArrow=block;endFill=1;dashed=1;strokeColor=#dc3545;strokeWidth=1.5;" edge="1" source="110" target="117" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="216" value="count mismatch" style="endArrow=block;endFill=1;dashed=1;strokeColor=#dc3545;strokeWidth=1.5;" edge="1" source="111" target="117" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

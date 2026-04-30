@@ -1,0 +1,53 @@
+flowchart TD
+    KAFKA[("MSK Topic\nods.{domain}.{dataset}\nAvro · canonical")]
+
+    subgraph CONSUME["1 · Consume & Deserialise"]
+        SR[("Glue Schema Registry\nods-schema-registry-{env}\nAvro · Confluent wire format")]
+        ICEBERG_CON["Iceberg Sink Connector\nods-iceberg-sink-{dataset}\nconsumer group: own"]
+        JDBC_CON["JDBC Sink Connector\nods-jdbc-sink-{dataset}\nconsumer group: own"]
+    end
+
+    subgraph ICEBERG_SINK["2a · Iceberg Write"]
+        S3I[("S3 Iceberg Table\nods-iceberg-{env}\nParquet · partitioned by date")]
+        CAT["Glue Data Catalog\nods_{domain}"]
+        CRAWLER["Glue Crawler · async"]
+    end
+
+    subgraph JDBC_SINK["2b · JDBC Write"]
+        PG[("PostgreSQL\nods_{env} · {domain}.{dataset}\nwrite mode: TBD per dataset")]
+    end
+
+    subgraph POST["3 · Post-Write"]
+        AUDIT[("MSK Audit Topic\nods.pipeline.audit")]
+        DLQ[("S3 DLQ\nods-dlq-{env}")]
+        REG[("PostgreSQL\npipeline.sink_connector_registry\nconnector status · offset · latency")]
+    end
+
+    %% Happy path
+    KAFKA -->|poll · own consumer group| ICEBERG_CON
+    KAFKA -->|poll · own consumer group| JDBC_CON
+    SR -->|schema by ID · cached| ICEBERG_CON
+    SR -->|schema by ID · cached| JDBC_CON
+    ICEBERG_CON -->|flush Parquet batch| S3I
+    S3I -->|atomic snapshot commit| CAT
+    CAT -->|async| CRAWLER
+    JDBC_CON -->|batch insert / upsert| PG
+    ICEBERG_CON -->|offset commit then audit| AUDIT
+    JDBC_CON -->|offset commit then audit| AUDIT
+    ICEBERG_CON -->|update status · offset| REG
+    JDBC_CON -->|update status · offset| REG
+
+    %% Failure exits — schema: batch continues; write failure: connector pauses
+    ICEBERG_CON -->|schema incompatible · record to DLQ| DLQ
+    ICEBERG_CON -->|S3 write failure · connector pauses| DLQ
+    JDBC_CON -->|schema incompatible · record to DLQ| DLQ
+    JDBC_CON -->|PG write failure · connector pauses| DLQ
+
+    classDef happy fill:#d4edda,stroke:#28a745,color:#155724
+    classDef store fill:#cce5ff,stroke:#004085,color:#004085
+    classDef failure fill:#f8d7da,stroke:#dc3545,color:#721c24
+    classDef control fill:#e2e3e5,stroke:#6c757d,color:#383d41
+
+    class ICEBERG_CON,JDBC_CON happy
+    class KAFKA,SR,S3I,PG,AUDIT,DLQ,REG store
+    class CAT,CRAWLER control

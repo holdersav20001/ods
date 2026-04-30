@@ -1,0 +1,215 @@
+<mxfile host="Claude">
+  <diagram id="ods-ingestion" name="ODS Ingestion Pipeline — SFTP to S3 Curated">
+    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2300" pageHeight="2100" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/><mxCell id="1" parent="0"/>
+
+        <!-- TITLE -->
+        <mxCell id="10" value="ODS Ingestion Pipeline — SFTP to S3 Curated" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=15;fontStyle=1;fontColor=#1F5C8B;" vertex="1" parent="1"><mxGeometry x="0" y="20" width="2260" height="44" as="geometry"/></mxCell>
+
+        <!-- NAV BAR -->
+        <mxCell id="999" value="↑ Overview: ods-ingestion-overview  ·  ↓ Downstream: ods-s3-kafka-sequence" style="text;html=1;strokeColor=#856404;fillColor=#fff3cd;align=center;verticalAlign=middle;fontSize=8;fontColor=#533f03;fontStyle=3;rounded=1;" vertex="1" parent="1"><mxGeometry x="20" y="66" width="2220" height="20" as="geometry"/></mxCell>
+
+        <!-- PARTICIPANT BOXES (w=120, center-to-center=160) -->
+        <!-- centers: 120,280,440,600,760,920,1080,1240,1400,1560,1720,1880,2040,2200 -->
+        <mxCell id="101" value="Internal SFTP&#xa;Server" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#BBDEFB;strokeColor=#1565C0;fontSize=10;fontStyle=1;arcSize=15;" vertex="1" parent="1"><mxGeometry x="60" y="80" width="120" height="50" as="geometry"/></mxCell>
+        <mxCell id="102" value="Airflow&#xa;SFTP Sensor" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#E65100;fontSize=10;fontStyle=1;arcSize=15;" vertex="1" parent="1"><mxGeometry x="220" y="80" width="120" height="50" as="geometry"/></mxCell>
+        <mxCell id="103" value="PostgreSQL&#xa;pipeline.*" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3E5F5;strokeColor=#7B1FA2;fontSize=10;fontStyle=1;arcSize=15;" vertex="1" parent="1"><mxGeometry x="380" y="80" width="120" height="50" as="geometry"/></mxCell>
+        <mxCell id="104" value="Airflow DAG 1&#xa;(Transfer)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#E65100;fontSize=10;fontStyle=1;arcSize=15;" vertex="1" parent="1"><mxGeometry x="540" y="80" width="120" height="50" as="geometry"/></mxCell>
+        <mxCell id="105" value="S3 Raw Zone&#xa;ods-raw-{env}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;fontSize=10;fontStyle=1;arcSize=15;" vertex="1" parent="1"><mxGeometry x="700" y="80" width="120" height="50" as="geometry"/></mxCell>
+        <mxCell id="106" value="EventBridge&#xa;ods-raw-file-rule" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FCE4EC;strokeColor=#C62828;fontSize=10;fontStyle=1;arcSize=15;" vertex="1" parent="1"><mxGeometry x="860" y="80" width="120" height="50" as="geometry"/></mxCell>
+        <mxCell id="107" value="Airflow DAG 2&#xa;(ETL)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#E65100;fontSize=10;fontStyle=1;arcSize=15;" vertex="1" parent="1"><mxGeometry x="1020" y="80" width="120" height="50" as="geometry"/></mxCell>
+        <mxCell id="108" value="S3 Config&#xa;ods-config-{env}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;fontSize=10;fontStyle=1;arcSize=15;" vertex="1" parent="1"><mxGeometry x="1180" y="80" width="120" height="50" as="geometry"/></mxCell>
+        <mxCell id="109" value="Glue ETL Job" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8EAF6;strokeColor=#3949AB;fontSize=10;fontStyle=1;arcSize=15;" vertex="1" parent="1"><mxGeometry x="1340" y="80" width="120" height="50" as="geometry"/></mxCell>
+        <mxCell id="110" value="S3 Curated Zone&#xa;ods-curated-{env}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;fontSize=10;fontStyle=1;arcSize=15;" vertex="1" parent="1"><mxGeometry x="1500" y="80" width="120" height="50" as="geometry"/></mxCell>
+        <mxCell id="111" value="Glue Data Catalog&#xa;ods_{domain}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8EAF6;strokeColor=#3949AB;fontSize=10;fontStyle=1;arcSize=15;" vertex="1" parent="1"><mxGeometry x="1660" y="80" width="120" height="50" as="geometry"/></mxCell>
+        <mxCell id="112" value="MSK Audit Topic&#xa;ods.pipeline.audit" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8BBD9;strokeColor=#880E4F;fontSize=10;fontStyle=1;arcSize=15;" vertex="1" parent="1"><mxGeometry x="1820" y="80" width="120" height="50" as="geometry"/></mxCell>
+        <mxCell id="113" value="S3 Quarantine&#xa;ods-quarantine-{env}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF8E1;strokeColor=#F57F17;fontSize=10;fontStyle=1;arcSize=15;" vertex="1" parent="1"><mxGeometry x="1980" y="80" width="120" height="50" as="geometry"/></mxCell>
+        <mxCell id="114" value="S3 DLQ&#xa;ods-dlq-{env}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFCCBC;strokeColor=#BF360C;fontSize=10;fontStyle=1;arcSize=15;" vertex="1" parent="1"><mxGeometry x="2140" y="80" width="120" height="50" as="geometry"/></mxCell>
+
+        <!-- LIFELINES -->
+        <mxCell id="201" value="" style="endArrow=none;dashed=1;strokeColor=#1565C0;strokeWidth=1;opacity=35;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="120" y="130" as="sourcePoint"/><mxPoint x="120" y="2040" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="202" value="" style="endArrow=none;dashed=1;strokeColor=#E65100;strokeWidth=1;opacity=35;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="280" y="130" as="sourcePoint"/><mxPoint x="280" y="2040" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="203" value="" style="endArrow=none;dashed=1;strokeColor=#7B1FA2;strokeWidth=1;opacity=35;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="440" y="130" as="sourcePoint"/><mxPoint x="440" y="2040" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="204" value="" style="endArrow=none;dashed=1;strokeColor=#E65100;strokeWidth=1;opacity=35;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="600" y="130" as="sourcePoint"/><mxPoint x="600" y="2040" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="205" value="" style="endArrow=none;dashed=1;strokeColor=#2E7D32;strokeWidth=1;opacity=35;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="760" y="130" as="sourcePoint"/><mxPoint x="760" y="2040" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="206" value="" style="endArrow=none;dashed=1;strokeColor=#C62828;strokeWidth=1;opacity=35;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="920" y="130" as="sourcePoint"/><mxPoint x="920" y="2040" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="207" value="" style="endArrow=none;dashed=1;strokeColor=#E65100;strokeWidth=1;opacity=35;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="1080" y="130" as="sourcePoint"/><mxPoint x="1080" y="2040" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="208" value="" style="endArrow=none;dashed=1;strokeColor=#2E7D32;strokeWidth=1;opacity=35;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="1240" y="130" as="sourcePoint"/><mxPoint x="1240" y="2040" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="209" value="" style="endArrow=none;dashed=1;strokeColor=#3949AB;strokeWidth=1;opacity=35;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="1400" y="130" as="sourcePoint"/><mxPoint x="1400" y="2040" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="210" value="" style="endArrow=none;dashed=1;strokeColor=#2E7D32;strokeWidth=1;opacity=35;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="1560" y="130" as="sourcePoint"/><mxPoint x="1560" y="2040" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="211" value="" style="endArrow=none;dashed=1;strokeColor=#3949AB;strokeWidth=1;opacity=35;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="1720" y="130" as="sourcePoint"/><mxPoint x="1720" y="2040" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="212" value="" style="endArrow=none;dashed=1;strokeColor=#880E4F;strokeWidth=1;opacity=35;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="1880" y="130" as="sourcePoint"/><mxPoint x="1880" y="2040" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="213" value="" style="endArrow=none;dashed=1;strokeColor=#F57F17;strokeWidth=1;opacity=35;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="2040" y="130" as="sourcePoint"/><mxPoint x="2040" y="2040" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="214" value="" style="endArrow=none;dashed=1;strokeColor=#BF360C;strokeWidth=1;opacity=35;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="2200" y="130" as="sourcePoint"/><mxPoint x="2200" y="2040" as="targetPoint"/></mxGeometry></mxCell>
+
+        <!-- ===== PHASE 1: DETECT & VALIDATE ===== -->
+        <mxCell id="701" value="Phase 1 · DAG 1 — Detect &amp; Validate" style="text;html=1;strokeColor=#cccccc;fillColor=#f0f4f8;align=center;verticalAlign=middle;fontSize=9;fontColor=#37474F;fontStyle=3;rounded=1;" vertex="1" parent="1"><mxGeometry x="62" y="155" width="540" height="22" as="geometry"/></mxCell>
+
+        <!-- Step 1: SENSOR→SFTP poll y=205 -->
+        <mxCell id="301" value="1" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1"><mxGeometry x="30" y="193" width="24" height="24" as="geometry"/></mxCell>
+        <mxCell id="401" value="" style="endArrow=block;endFill=1;strokeColor=#E65100;strokeWidth=2;exitX=0.5;exitY=0.5;entryX=0.5;entryY=0.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="280" y="205" as="sourcePoint"/><mxPoint x="120" y="205" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="501" value="&lt;b&gt;Poll for new CSV files&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=9;fontColor=#E65100;" vertex="1" parent="1"><mxGeometry x="125" y="181" width="150" height="22" as="geometry"/></mxCell>
+        <mxCell id="601" value="every 5 min (Airflow sensor)" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;fontSize=8;fontColor=#666666;fontStyle=2;" vertex="1" parent="1"><mxGeometry x="125" y="211" width="150" height="18" as="geometry"/></mxCell>
+
+        <!-- Step 2: SFTP→SENSOR file detected y=280 -->
+        <mxCell id="302" value="2" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1"><mxGeometry x="30" y="268" width="24" height="24" as="geometry"/></mxCell>
+        <mxCell id="402" value="" style="endArrow=block;endFill=1;dashed=1;strokeColor=#AAAAAA;strokeWidth=2;exitX=0.5;exitY=0.5;entryX=0.5;entryY=0.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="120" y="280" as="sourcePoint"/><mxPoint x="280" y="280" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="502" value="&lt;b&gt;New file detected&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=9;fontColor=#AAAAAA;" vertex="1" parent="1"><mxGeometry x="125" y="256" width="150" height="22" as="geometry"/></mxCell>
+        <mxCell id="602" value="filename + path" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;fontSize=8;fontColor=#666666;fontStyle=2;" vertex="1" parent="1"><mxGeometry x="125" y="286" width="150" height="18" as="geometry"/></mxCell>
+
+        <!-- Step 3: SENSOR→PG catalogue check y=355 -->
+        <mxCell id="303" value="3" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1"><mxGeometry x="30" y="343" width="24" height="24" as="geometry"/></mxCell>
+        <mxCell id="403" value="" style="endArrow=block;endFill=1;strokeColor=#E65100;strokeWidth=2;exitX=0.5;exitY=0.5;entryX=0.5;entryY=0.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="280" y="355" as="sourcePoint"/><mxPoint x="440" y="355" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="503" value="&lt;b&gt;Check file_catalogue — is this file approved?&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=9;fontColor=#E65100;" vertex="1" parent="1"><mxGeometry x="285" y="331" width="150" height="22" as="geometry"/></mxCell>
+
+        <!-- Step 4: PG→SENSOR approved y=430 -->
+        <mxCell id="304" value="4" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1"><mxGeometry x="30" y="418" width="24" height="24" as="geometry"/></mxCell>
+        <mxCell id="404" value="" style="endArrow=block;endFill=1;dashed=1;strokeColor=#AAAAAA;strokeWidth=2;exitX=0.5;exitY=0.5;entryX=0.5;entryY=0.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="440" y="430" as="sourcePoint"/><mxPoint x="280" y="430" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="504" value="&lt;b&gt;Approved — domain, dataset, config ref&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=9;fontColor=#AAAAAA;" vertex="1" parent="1"><mxGeometry x="285" y="406" width="150" height="22" as="geometry"/></mxCell>
+
+        <!-- Failure A: not approved → QUAR y=465 -->
+        <mxCell id="451" value="" style="endArrow=block;endFill=1;dashed=1;strokeColor=#BF360C;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="280" y="465" as="sourcePoint"/><mxPoint x="2040" y="465" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="551" value="&lt;b&gt;if not approved → Quarantine file + emit alert&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=8;fontColor=#BF360C;" vertex="1" parent="1"><mxGeometry x="600" y="441" width="840" height="22" as="geometry"/></mxCell>
+
+        <!-- Step 5: SENSOR→PG file_state check y=520 -->
+        <mxCell id="305" value="5" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1"><mxGeometry x="30" y="508" width="24" height="24" as="geometry"/></mxCell>
+        <mxCell id="405" value="" style="endArrow=block;endFill=1;strokeColor=#E65100;strokeWidth=2;exitX=0.5;exitY=0.5;entryX=0.5;entryY=0.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="280" y="520" as="sourcePoint"/><mxPoint x="440" y="520" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="505" value="&lt;b&gt;Check ingestion_file_state — already processed?&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=9;fontColor=#E65100;" vertex="1" parent="1"><mxGeometry x="285" y="496" width="150" height="22" as="geometry"/></mxCell>
+
+        <!-- Step 6: PG→SENSOR status=new y=595 -->
+        <mxCell id="306" value="6" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1"><mxGeometry x="30" y="583" width="24" height="24" as="geometry"/></mxCell>
+        <mxCell id="406" value="" style="endArrow=block;endFill=1;dashed=1;strokeColor=#AAAAAA;strokeWidth=2;exitX=0.5;exitY=0.5;entryX=0.5;entryY=0.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="440" y="595" as="sourcePoint"/><mxPoint x="280" y="595" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="506" value="&lt;b&gt;status=new → proceed&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=9;fontColor=#AAAAAA;" vertex="1" parent="1"><mxGeometry x="285" y="571" width="150" height="22" as="geometry"/></mxCell>
+        <mxCell id="606" value="if status=completed → skip" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;fontSize=8;fontColor=#666666;fontStyle=2;" vertex="1" parent="1"><mxGeometry x="285" y="601" width="150" height="18" as="geometry"/></mxCell>
+
+        <!-- ===== PHASE 2: TRIGGER ===== -->
+        <mxCell id="702" value="Phase 2 · DAG 1 — Trigger" style="text;html=1;strokeColor=#cccccc;fillColor=#f0f4f8;align=center;verticalAlign=middle;fontSize=9;fontColor=#37474F;fontStyle=3;rounded=1;" vertex="1" parent="1"><mxGeometry x="62" y="632" width="700" height="22" as="geometry"/></mxCell>
+
+        <!-- Step 7: SENSOR→DAG1 trigger y=677 -->
+        <mxCell id="307" value="7" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1"><mxGeometry x="30" y="665" width="24" height="24" as="geometry"/></mxCell>
+        <mxCell id="407" value="" style="endArrow=block;endFill=1;strokeColor=#E65100;strokeWidth=2;exitX=0.5;exitY=0.5;entryX=0.5;entryY=0.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="280" y="677" as="sourcePoint"/><mxPoint x="600" y="677" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="507" value="&lt;b&gt;Trigger DAG 1&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=9;fontColor=#E65100;" vertex="1" parent="1"><mxGeometry x="285" y="653" width="310" height="22" as="geometry"/></mxCell>
+        <mxCell id="607" value="file path + catalogue ref" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;fontSize=8;fontColor=#666666;fontStyle=2;" vertex="1" parent="1"><mxGeometry x="285" y="683" width="310" height="18" as="geometry"/></mxCell>
+
+        <!-- Step 8: DAG1→PG set detected y=752 -->
+        <mxCell id="308" value="8" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1"><mxGeometry x="30" y="740" width="24" height="24" as="geometry"/></mxCell>
+        <mxCell id="408" value="" style="endArrow=block;endFill=1;strokeColor=#E65100;strokeWidth=2;exitX=0.5;exitY=0.5;entryX=0.5;entryY=0.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="600" y="752" as="sourcePoint"/><mxPoint x="440" y="752" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="508" value="&lt;b&gt;Set file state → detected&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=9;fontColor=#E65100;" vertex="1" parent="1"><mxGeometry x="445" y="728" width="150" height="22" as="geometry"/></mxCell>
+
+        <!-- ===== PHASE 3: TRANSFER ===== -->
+        <mxCell id="703" value="Phase 3 · DAG 1 — Transfer" style="text;html=1;strokeColor=#cccccc;fillColor=#f0f4f8;align=center;verticalAlign=middle;fontSize=9;fontColor=#37474F;fontStyle=3;rounded=1;" vertex="1" parent="1"><mxGeometry x="62" y="787" width="820" height="22" as="geometry"/></mxCell>
+
+        <!-- Step 9: DAG1→SFTP SFTPToS3Operator y=832 -->
+        <mxCell id="309" value="9" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1"><mxGeometry x="30" y="820" width="24" height="24" as="geometry"/></mxCell>
+        <mxCell id="409" value="" style="endArrow=block;endFill=1;strokeColor=#E65100;strokeWidth=2;exitX=0.5;exitY=0.5;entryX=0.5;entryY=0.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="600" y="832" as="sourcePoint"/><mxPoint x="120" y="832" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="509" value="&lt;b&gt;SFTPToS3Operator — copy CSV to S3 Raw&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=9;fontColor=#E65100;" vertex="1" parent="1"><mxGeometry x="125" y="808" width="470" height="22" as="geometry"/></mxCell>
+
+        <!-- Step 10: SFTP→S3R file transferred y=907 -->
+        <mxCell id="310" value="10" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1"><mxGeometry x="30" y="895" width="24" height="24" as="geometry"/></mxCell>
+        <mxCell id="410" value="" style="endArrow=block;endFill=1;dashed=1;strokeColor=#AAAAAA;strokeWidth=2;exitX=0.5;exitY=0.5;entryX=0.5;entryY=0.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="120" y="907" as="sourcePoint"/><mxPoint x="760" y="907" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="510" value="&lt;b&gt;File transferred to S3 Raw&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=9;fontColor=#AAAAAA;" vertex="1" parent="1"><mxGeometry x="125" y="883" width="630" height="22" as="geometry"/></mxCell>
+
+        <!-- Step 11: DAG1→S3R verify MD5 y=982 -->
+        <mxCell id="311" value="11" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1"><mxGeometry x="30" y="970" width="24" height="24" as="geometry"/></mxCell>
+        <mxCell id="411" value="" style="endArrow=block;endFill=1;strokeColor=#E65100;strokeWidth=2;exitX=0.5;exitY=0.5;entryX=0.5;entryY=0.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="600" y="982" as="sourcePoint"/><mxPoint x="760" y="982" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="511" value="&lt;b&gt;Verify MD5 checksum&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=9;fontColor=#E65100;" vertex="1" parent="1"><mxGeometry x="605" y="958" width="150" height="22" as="geometry"/></mxCell>
+
+        <!-- Failure B: checksum mismatch → QUAR y=1017 -->
+        <mxCell id="452" value="" style="endArrow=block;endFill=1;dashed=1;strokeColor=#BF360C;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="600" y="1017" as="sourcePoint"/><mxPoint x="2040" y="1017" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="552" value="&lt;b&gt;if checksum mismatch → Route corrupt file to Quarantine&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=8;fontColor=#BF360C;" vertex="1" parent="1"><mxGeometry x="605" y="993" width="1000" height="22" as="geometry"/></mxCell>
+
+        <!-- Failure C: DAG1→PG set failed y=1047 -->
+        <mxCell id="453" value="" style="endArrow=block;endFill=1;dashed=1;strokeColor=#BF360C;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="600" y="1047" as="sourcePoint"/><mxPoint x="440" y="1047" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="553" value="&lt;b&gt;Set file state → failed (checksum)&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=8;fontColor=#BF360C;" vertex="1" parent="1"><mxGeometry x="445" y="1023" width="150" height="22" as="geometry"/></mxCell>
+
+        <!-- Failure D: DAG1→AUDIT emit y=1077 -->
+        <mxCell id="454" value="" style="endArrow=block;endFill=1;dashed=1;strokeColor=#BF360C;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="600" y="1077" as="sourcePoint"/><mxPoint x="1880" y="1077" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="554" value="&lt;b&gt;Emit audit event (status=failed · reason=checksum)&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=8;fontColor=#BF360C;" vertex="1" parent="1"><mxGeometry x="605" y="1053" width="1000" height="22" as="geometry"/></mxCell>
+
+        <!-- Step 12: DAG1→PG set transferred y=1122 -->
+        <mxCell id="312" value="12" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1"><mxGeometry x="30" y="1110" width="24" height="24" as="geometry"/></mxCell>
+        <mxCell id="412" value="" style="endArrow=block;endFill=1;strokeColor=#E65100;strokeWidth=2;exitX=0.5;exitY=0.5;entryX=0.5;entryY=0.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="600" y="1122" as="sourcePoint"/><mxPoint x="440" y="1122" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="512" value="&lt;b&gt;Set file state → transferred&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=9;fontColor=#E65100;" vertex="1" parent="1"><mxGeometry x="445" y="1098" width="150" height="22" as="geometry"/></mxCell>
+
+        <!-- ===== PHASE 4: EVENTBRIDGE HANDOFF ===== -->
+        <mxCell id="704" value="Phase 4 · EventBridge Handoff" style="text;html=1;strokeColor=#cccccc;fillColor=#f0f4f8;align=center;verticalAlign=middle;fontSize=9;fontColor=#37474F;fontStyle=3;rounded=1;" vertex="1" parent="1"><mxGeometry x="62" y="1157" width="1020" height="22" as="geometry"/></mxCell>
+
+        <!-- Step 13: S3R→EB Object Created y=1202 -->
+        <mxCell id="313" value="13" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1"><mxGeometry x="30" y="1190" width="24" height="24" as="geometry"/></mxCell>
+        <mxCell id="413" value="" style="endArrow=block;endFill=1;strokeColor=#2E7D32;strokeWidth=2;exitX=0.5;exitY=0.5;entryX=0.5;entryY=0.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="760" y="1202" as="sourcePoint"/><mxPoint x="920" y="1202" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="513" value="&lt;b&gt;Object Created event&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=9;fontColor=#2E7D32;" vertex="1" parent="1"><mxGeometry x="765" y="1178" width="150" height="22" as="geometry"/></mxCell>
+        <mxCell id="613" value="new CSV in S3 Raw" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;fontSize=8;fontColor=#666666;fontStyle=2;" vertex="1" parent="1"><mxGeometry x="765" y="1208" width="150" height="18" as="geometry"/></mxCell>
+
+        <!-- Step 14: EB→DAG2 trigger y=1277 -->
+        <mxCell id="314" value="14" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1"><mxGeometry x="30" y="1265" width="24" height="24" as="geometry"/></mxCell>
+        <mxCell id="414" value="" style="endArrow=block;endFill=1;strokeColor=#C62828;strokeWidth=2;exitX=0.5;exitY=0.5;entryX=0.5;entryY=0.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="920" y="1277" as="sourcePoint"/><mxPoint x="1080" y="1277" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="514" value="&lt;b&gt;Trigger DAG 2 — ETL&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=9;fontColor=#C62828;" vertex="1" parent="1"><mxGeometry x="925" y="1253" width="150" height="22" as="geometry"/></mxCell>
+        <mxCell id="614" value="file path from event" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;fontSize=8;fontColor=#666666;fontStyle=2;" vertex="1" parent="1"><mxGeometry x="925" y="1283" width="150" height="18" as="geometry"/></mxCell>
+
+        <!-- ===== PHASE 5: GLUE ETL ===== -->
+        <mxCell id="705" value="Phase 5 · DAG 2 — Glue ETL (schema · CSV→Parquet)" style="text;html=1;strokeColor=#cccccc;fillColor=#f0f4f8;align=center;verticalAlign=middle;fontSize=9;fontColor=#37474F;fontStyle=3;rounded=1;" vertex="1" parent="1"><mxGeometry x="62" y="1312" width="1500" height="22" as="geometry"/></mxCell>
+
+        <!-- Step 15: DAG2→CFG load config y=1357 -->
+        <mxCell id="315" value="15" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1"><mxGeometry x="30" y="1345" width="24" height="24" as="geometry"/></mxCell>
+        <mxCell id="415" value="" style="endArrow=block;endFill=1;strokeColor=#E65100;strokeWidth=2;exitX=0.5;exitY=0.5;entryX=0.5;entryY=0.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="1080" y="1357" as="sourcePoint"/><mxPoint x="1240" y="1357" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="515" value="&lt;b&gt;Load config (resolve pinned S3 version ID)&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=9;fontColor=#E65100;" vertex="1" parent="1"><mxGeometry x="1085" y="1333" width="150" height="22" as="geometry"/></mxCell>
+
+        <!-- Step 16: CFG→DAG2 return y=1432 -->
+        <mxCell id="316" value="16" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1"><mxGeometry x="30" y="1420" width="24" height="24" as="geometry"/></mxCell>
+        <mxCell id="416" value="" style="endArrow=block;endFill=1;dashed=1;strokeColor=#AAAAAA;strokeWidth=2;exitX=0.5;exitY=0.5;entryX=0.5;entryY=0.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="1240" y="1432" as="sourcePoint"/><mxPoint x="1080" y="1432" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="516" value="&lt;b&gt;schema ref · output path · key fields&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=9;fontColor=#AAAAAA;" vertex="1" parent="1"><mxGeometry x="1085" y="1408" width="150" height="22" as="geometry"/></mxCell>
+
+        <!-- Step 17: DAG2→GLUE trigger y=1507 -->
+        <mxCell id="317" value="17" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1"><mxGeometry x="30" y="1495" width="24" height="24" as="geometry"/></mxCell>
+        <mxCell id="417" value="" style="endArrow=block;endFill=1;strokeColor=#E65100;strokeWidth=2;exitX=0.5;exitY=0.5;entryX=0.5;entryY=0.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="1080" y="1507" as="sourcePoint"/><mxPoint x="1400" y="1507" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="517" value="&lt;b&gt;Trigger Glue ETL job&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=9;fontColor=#E65100;" vertex="1" parent="1"><mxGeometry x="1085" y="1483" width="310" height="22" as="geometry"/></mxCell>
+        <mxCell id="617" value="config ref + S3 version ID" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;fontSize=8;fontColor=#666666;fontStyle=2;" vertex="1" parent="1"><mxGeometry x="1085" y="1513" width="310" height="18" as="geometry"/></mxCell>
+
+        <!-- Step 18: GLUE→S3R read CSV y=1582 -->
+        <mxCell id="318" value="18" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1"><mxGeometry x="30" y="1570" width="24" height="24" as="geometry"/></mxCell>
+        <mxCell id="418" value="" style="endArrow=block;endFill=1;strokeColor=#3949AB;strokeWidth=2;exitX=0.5;exitY=0.5;entryX=0.5;entryY=0.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="1400" y="1582" as="sourcePoint"/><mxPoint x="760" y="1582" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="518" value="&lt;b&gt;Read CSV file (source path from config)&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=9;fontColor=#3949AB;" vertex="1" parent="1"><mxGeometry x="765" y="1558" width="630" height="22" as="geometry"/></mxCell>
+
+        <!-- Failure E: GLUE→DLQ failed records y=1617 -->
+        <mxCell id="455" value="" style="endArrow=block;endFill=1;dashed=1;strokeColor=#BF360C;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="1400" y="1617" as="sourcePoint"/><mxPoint x="2200" y="1617" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="555" value="&lt;b&gt;if ETL failed → Failed records routed to DLQ with reason&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=8;fontColor=#BF360C;" vertex="1" parent="1"><mxGeometry x="1405" y="1593" width="780" height="22" as="geometry"/></mxCell>
+
+        <!-- Failure F: DAG2→PG set failed y=1647 -->
+        <mxCell id="456" value="" style="endArrow=block;endFill=1;dashed=1;strokeColor=#BF360C;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="1080" y="1647" as="sourcePoint"/><mxPoint x="440" y="1647" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="556" value="&lt;b&gt;Set file state → failed&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=8;fontColor=#BF360C;" vertex="1" parent="1"><mxGeometry x="445" y="1623" width="630" height="22" as="geometry"/></mxCell>
+
+        <!-- Failure G: DAG2→AUDIT emit failed y=1677 -->
+        <mxCell id="457" value="" style="endArrow=block;endFill=1;dashed=1;strokeColor=#BF360C;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="1080" y="1677" as="sourcePoint"/><mxPoint x="1880" y="1677" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="557" value="&lt;b&gt;Emit audit event (status=failed · reason · dataset)&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=8;fontColor=#BF360C;" vertex="1" parent="1"><mxGeometry x="1085" y="1653" width="790" height="22" as="geometry"/></mxCell>
+
+        <!-- Step 19: GLUE→S3C write Parquet y=1732 -->
+        <mxCell id="319" value="19" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1"><mxGeometry x="30" y="1720" width="24" height="24" as="geometry"/></mxCell>
+        <mxCell id="419" value="" style="endArrow=block;endFill=1;strokeColor=#3949AB;strokeWidth=2;exitX=0.5;exitY=0.5;entryX=0.5;entryY=0.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="1400" y="1732" as="sourcePoint"/><mxPoint x="1560" y="1732" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="519" value="&lt;b&gt;Parquet written (partitioned by date)&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=9;fontColor=#3949AB;" vertex="1" parent="1"><mxGeometry x="1405" y="1708" width="150" height="22" as="geometry"/></mxCell>
+
+        <!-- ===== PHASE 6: POST-ETL ===== -->
+        <mxCell id="706" value="Phase 6 · DAG 2 — Post-ETL" style="text;html=1;strokeColor=#cccccc;fillColor=#f0f4f8;align=center;verticalAlign=middle;fontSize=9;fontColor=#37474F;fontStyle=3;rounded=1;" vertex="1" parent="1"><mxGeometry x="62" y="1767" width="1900" height="22" as="geometry"/></mxCell>
+
+        <!-- Step 20: DAG2→CAT register y=1812 -->
+        <mxCell id="320" value="20" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1"><mxGeometry x="30" y="1800" width="24" height="24" as="geometry"/></mxCell>
+        <mxCell id="420" value="" style="endArrow=block;endFill=1;strokeColor=#E65100;strokeWidth=2;exitX=0.5;exitY=0.5;entryX=0.5;entryY=0.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="1080" y="1812" as="sourcePoint"/><mxPoint x="1720" y="1812" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="520" value="&lt;b&gt;Register dataset in Glue Data Catalog&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=9;fontColor=#E65100;" vertex="1" parent="1"><mxGeometry x="1085" y="1788" width="630" height="22" as="geometry"/></mxCell>
+
+        <!-- Step 21: DAG2→PG set completed y=1887 -->
+        <mxCell id="321" value="21" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1"><mxGeometry x="30" y="1875" width="24" height="24" as="geometry"/></mxCell>
+        <mxCell id="421" value="" style="endArrow=block;endFill=1;strokeColor=#E65100;strokeWidth=2;exitX=0.5;exitY=0.5;entryX=0.5;entryY=0.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="1080" y="1887" as="sourcePoint"/><mxPoint x="440" y="1887" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="521" value="&lt;b&gt;Set file state → completed&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=9;fontColor=#E65100;" vertex="1" parent="1"><mxGeometry x="445" y="1863" width="630" height="22" as="geometry"/></mxCell>
+
+        <!-- Step 22: DAG2→AUDIT emit success y=1962 -->
+        <mxCell id="322" value="22" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1"><mxGeometry x="30" y="1950" width="24" height="24" as="geometry"/></mxCell>
+        <mxCell id="422" value="" style="endArrow=block;endFill=1;strokeColor=#E65100;strokeWidth=2;exitX=0.5;exitY=0.5;entryX=0.5;entryY=0.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="1080" y="1962" as="sourcePoint"/><mxPoint x="1880" y="1962" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="522" value="&lt;b&gt;Emit audit event (status=success · record_count · dataset)&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=9;fontColor=#E65100;" vertex="1" parent="1"><mxGeometry x="1085" y="1938" width="790" height="22" as="geometry"/></mxCell>
+
+        <!-- FOOTER NOTE -->
+        <mxCell id="800" value="Parquet in S3 Curated triggers Publish Pipeline EventBridge rule — handoff to ods-s3-kafka-sequence" style="text;html=1;strokeColor=#2E7D32;fillColor=#E8F5E9;align=center;verticalAlign=middle;fontSize=9;fontColor=#2E7D32;fontStyle=3;rounded=1;" vertex="1" parent="1"><mxGeometry x="62" y="2002" width="1900" height="22" as="geometry"/></mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

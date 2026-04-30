@@ -1,0 +1,65 @@
+flowchart TD
+    SFTP["Internal SFTP Server\n(connectivity TBD)"]
+
+    subgraph DAG1["1 · Detect & Transfer"]
+        SENSOR["Airflow SFTP Sensor\npoll interval: 5 min"]
+        CAT_PG[("PostgreSQL\nfile_catalogue · approved whitelist")]
+        STATE_PG[("PostgreSQL\ningestion_file_state · idempotency guard")]
+        OP["SFTPToS3Operator"]
+        CHK["MD5 Checksum\nVerification"]
+        S3R[("S3 Raw Zone\nods-raw-{env} · permanent archive")]
+        QUAR[("S3 Quarantine\nods-quarantine-{env}")]
+    end
+
+    EB["AWS EventBridge\nObject Created trigger"]
+
+    subgraph DAG2["2 · ETL"]
+        CFG[("S3 Config · versioned\npin version on trigger")]
+        GLUE["Glue ETL Job\nSchema · CSV→Parquet"]
+        S3C[("S3 Curated Zone\nods-curated-{env} · partitioned by date")]
+        CATALOG["Glue Data Catalog\nods_{domain}"]
+    end
+
+    subgraph POST["3 · Post-ETL"]
+        AUDIT[("MSK Audit Topic\nods.pipeline.audit")]
+        DLQ[("S3 DLQ\nods-dlq-{env}")]
+    end
+
+    EB2["AWS EventBridge\nods-curated-file-rule-{env}\nObject Created trigger"]
+    PUBLISH["→ Publish Pipeline\nods-s3-kafka-overview"]
+
+    %% Happy path
+    SFTP -->|new CSV file| SENSOR
+    SENSOR -->|check approved?| CAT_PG
+    CAT_PG -->|approved| STATE_PG
+    STATE_PG -->|state=new · proceed| OP
+    OP -->|copy CSV| S3R
+    S3R -->|verify integrity| CHK
+    CHK -->|state=transferred| STATE_PG
+    S3R -->|Object Created event| EB
+    EB -->|trigger DAG 2| CFG
+    CFG -->|trigger| GLUE
+    GLUE -->|read CSV| S3R
+    GLUE -->|write Parquet| S3C
+    GLUE -->|register| CATALOG
+    GLUE -->|success| AUDIT
+    S3C -->|Object Created event| EB2
+    EB2 -->|trigger Publish DAG| PUBLISH
+
+    %% Failure exits
+    CAT_PG -->|not approved| QUAR
+    STATE_PG -->|state=completed · skip| DONE(((already processed\nexit)))
+    CHK -->|mismatch| QUAR
+    GLUE -->|schema fail| DLQ
+
+    classDef happy fill:#d4edda,stroke:#28a745,color:#155724
+    classDef store fill:#cce5ff,stroke:#004085,color:#004085
+    classDef failure fill:#f8d7da,stroke:#dc3545,color:#721c24
+    classDef control fill:#e2e3e5,stroke:#6c757d,color:#383d41
+    classDef handoff fill:#fff3cd,stroke:#856404,color:#533f03
+
+    class GLUE,CHK,OP happy
+    class S3R,S3C,CAT_PG,STATE_PG,CFG,AUDIT,DLQ,QUAR store
+    class DONE failure
+    class SFTP,SENSOR,EB,EB2,CATALOG,DAG1,DAG2 control
+    class PUBLISH handoff
