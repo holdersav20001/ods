@@ -1,0 +1,286 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net">
+  <diagram name="Pipeline Data Model" id="aviva-ods-pipeline-erd">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1654" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- ── Section labels ── -->
+        <mxCell id="lbl1" value="Core Pipeline" style="text;fontStyle=1;fontSize=14;fillColor=none;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="40" y="8" width="160" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="lbl2" value="Audit / Observability" style="text;fontStyle=1;fontSize=14;fillColor=none;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="310" y="448" width="200" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="lbl3" value="Slot Staging (multi-file)" style="text;fontStyle=1;fontSize=14;fillColor=none;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="40" y="810" width="240" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="lbl4" value="Multi-File Merge" style="text;fontStyle=1;fontSize=14;fillColor=none;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="640" y="810" width="200" height="26" as="geometry" />
+        </mxCell>
+
+        <!-- =========================================== -->
+        <!-- pipeline.dataset_config  x=40 y=40 w=260   -->
+        <!-- =========================================== -->
+        <mxCell id="t_dc" value="pipeline.dataset_config" style="swimlane;fontStyle=1;align=center;startSize=28;container=1;collapsible=0;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="40" y="40" width="260" height="380" as="geometry" />
+        </mxCell>
+        <mxCell id="c_dc_id"       value="PK  id : integer"                       style="text;strokeColor=#d6b656;fillColor=#fff2cc;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_dc"><mxGeometry y="28"  width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_dc_domain"   value="    domain : varchar NN"                style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_dc"><mxGeometry y="50"  width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_dc_dataset"  value="    dataset : varchar NN"               style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_dc"><mxGeometry y="72"  width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_dc_src"      value="    source_type : varchar NN"           style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_dc"><mxGeometry y="94"  width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_dc_wm"       value="    write_mode : varchar NN"            style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_dc"><mxGeometry y="116" width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_dc_fp"       value="    filename_pattern : varchar NN"      style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_dc"><mxGeometry y="138" width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_dc_topic"    value="    target_topic : varchar NN"          style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_dc"><mxGeometry y="160" width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_dc_sid"      value="    schema_id : varchar NN"             style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_dc"><mxGeometry y="182" width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_dc_sdef"     value="    schema_def : jsonb"                 style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_dc"><mxGeometry y="204" width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_dc_kf"       value="    key_fields : jsonb NN"              style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_dc"><mxGeometry y="226" width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_dc_dq"       value="    dq_rules : jsonb NN"                style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_dc"><mxGeometry y="248" width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_dc_pgt"      value="    postgres_target_table : varchar"    style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_dc"><mxGeometry y="270" width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_dc_s3c"      value="    s3_curated_path : varchar"          style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_dc"><mxGeometry y="292" width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_dc_ver"      value="    version : integer NN"               style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_dc"><mxGeometry y="314" width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_dc_act"      value="    active : boolean"                   style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_dc"><mxGeometry y="336" width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_dc_cv"       value="    config_version_id : bigint NN"      style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_dc"><mxGeometry y="358" width="260" height="22" as="geometry"/></mxCell>
+
+        <!-- =========================================== -->
+        <!-- pipeline.file_catalogue  x=350 y=40 w=260  -->
+        <!-- =========================================== -->
+        <mxCell id="t_fc" value="pipeline.file_catalogue" style="swimlane;fontStyle=1;align=center;startSize=28;container=1;collapsible=0;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="350" y="40" width="260" height="314" as="geometry" />
+        </mxCell>
+        <mxCell id="c_fc_fid"   value="PK  file_id : uuid"                   style="text;strokeColor=#d6b656;fillColor=#fff2cc;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_fc"><mxGeometry y="28"  width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_fc_dom"   value="    domain : varchar NN"              style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_fc"><mxGeometry y="50"  width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_fc_ds"    value="    dataset : varchar NN"             style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_fc"><mxGeometry y="72"  width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_fc_bd"    value="    business_date : date NN"          style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_fc"><mxGeometry y="94"  width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_fc_sftp"  value="    sftp_path : varchar"              style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_fc"><mxGeometry y="116" width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_fc_raw"   value="    s3_raw_path : varchar"            style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_fc"><mxGeometry y="138" width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_fc_cur"   value="    s3_curated_path : varchar"        style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_fc"><mxGeometry y="160" width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_fc_md5"   value="    file_md5 : char(32) NN"           style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_fc"><mxGeometry y="182" width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_fc_fsz"   value="    file_size_bytes : bigint"         style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_fc"><mxGeometry y="204" width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_fc_src"   value="    source_row_count : bigint"        style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_fc"><mxGeometry y="226" width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_fc_st"    value="    state : varchar NN"               style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_fc"><mxGeometry y="248" width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_fc_fsa"   value="    first_seen_at : timestamp NN"     style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_fc"><mxGeometry y="270" width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_fc_lrid"  value="    last_run_id : uuid"               style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_fc"><mxGeometry y="292" width="260" height="22" as="geometry"/></mxCell>
+
+        <!-- =========================================== -->
+        <!-- pipeline.run_log  x=660 y=40 w=280         -->
+        <!-- =========================================== -->
+        <mxCell id="t_rl" value="pipeline.run_log" style="swimlane;fontStyle=1;align=center;startSize=28;container=1;collapsible=0;fillColor=#ffe6cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="660" y="40" width="280" height="402" as="geometry" />
+        </mxCell>
+        <mxCell id="c_rl_rid"    value="PK  run_id : uuid"                      style="text;strokeColor=#d6b656;fillColor=#fff2cc;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_rl"><mxGeometry y="28"  width="280" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_rl_pt"     value="    pipeline_type : varchar NN"          style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_rl"><mxGeometry y="50"  width="280" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_rl_dom"    value="    domain : varchar NN"                 style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_rl"><mxGeometry y="72"  width="280" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_rl_ds"     value="    dataset : varchar NN"                style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_rl"><mxGeometry y="94"  width="280" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_rl_bd"     value="    business_date : date"                style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_rl"><mxGeometry y="116" width="280" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_rl_fid"    value="FK  file_id : uuid → file_catalogue"     style="text;strokeColor=#ae4132;fillColor=#f8cecc;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_rl"><mxGeometry y="138" width="280" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_rl_st"     value="    status : varchar NN"                 style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_rl"><mxGeometry y="160" width="280" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_rl_sa"     value="    started_at : timestamp NN"           style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_rl"><mxGeometry y="182" width="280" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_rl_ea"     value="    ended_at : timestamp"                style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_rl"><mxGeometry y="204" width="280" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_rl_rcs"    value="    record_count_source : bigint"        style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_rl"><mxGeometry y="226" width="280" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_rl_rcp"    value="    record_count_dq_pass : bigint"       style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_rl"><mxGeometry y="248" width="280" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_rl_rcf"    value="    record_count_dq_fail : bigint"       style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_rl"><mxGeometry y="270" width="280" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_rl_rcpub"  value="    record_count_published : bigint"     style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_rl"><mxGeometry y="292" width="280" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_rl_kt"     value="    kafka_topic : varchar"               style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_rl"><mxGeometry y="314" width="280" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_rl_kos"    value="    kafka_offset_start : bigint"         style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_rl"><mxGeometry y="336" width="280" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_rl_koe"    value="    kafka_offset_end : bigint"           style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_rl"><mxGeometry y="358" width="280" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_rl_err"    value="    error_summary : text"                style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_rl"><mxGeometry y="380" width="280" height="22" as="geometry"/></mxCell>
+
+        <!-- =========================================== -->
+        <!-- pipeline.run_stage_log  x=990 y=40 w=260   -->
+        <!-- =========================================== -->
+        <mxCell id="t_rsl" value="pipeline.run_stage_log" style="swimlane;fontStyle=1;align=center;startSize=28;container=1;collapsible=0;fillColor=#ffe6cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="990" y="40" width="260" height="270" as="geometry" />
+        </mxCell>
+        <mxCell id="c_rsl_id"    value="PK  id : bigint"                    style="text;strokeColor=#d6b656;fillColor=#fff2cc;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_rsl"><mxGeometry y="28"  width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_rsl_rid"   value="FK  run_id : uuid → run_log"        style="text;strokeColor=#ae4132;fillColor=#f8cecc;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_rsl"><mxGeometry y="50"  width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_rsl_stg"   value="    stage : varchar NN"             style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_rsl"><mxGeometry y="72"  width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_rsl_st"    value="    status : varchar NN"            style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_rsl"><mxGeometry y="94"  width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_rsl_sa"    value="    started_at : timestamp NN"      style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_rsl"><mxGeometry y="116" width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_rsl_ea"    value="    ended_at : timestamp"           style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_rsl"><mxGeometry y="138" width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_rsl_in"    value="    input_ref : text"               style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_rsl"><mxGeometry y="160" width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_rsl_out"   value="    output_ref : text"              style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_rsl"><mxGeometry y="182" width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_rsl_rci"   value="    record_count_in : bigint"       style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_rsl"><mxGeometry y="204" width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_rsl_rco"   value="    record_count_out : bigint"      style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_rsl"><mxGeometry y="226" width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_rsl_err"   value="    error : text"                   style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_rsl"><mxGeometry y="248" width="260" height="22" as="geometry"/></mxCell>
+
+        <!-- =========================================== -->
+        <!-- pipeline.file_state  x=40 y=470 w=220      -->
+        <!-- =========================================== -->
+        <mxCell id="t_fs" value="pipeline.file_state" style="swimlane;fontStyle=1;align=center;startSize=28;container=1;collapsible=0;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="40" y="470" width="220" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="c_fs_id"   value="PK  id : integer"              style="text;strokeColor=#d6b656;fillColor=#fff2cc;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_fs"><mxGeometry y="28"  width="220" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_fs_s3"   value="    s3_path : varchar NN"      style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_fs"><mxGeometry y="50"  width="220" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_fs_rid"  value="    run_id : uuid NN"          style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_fs"><mxGeometry y="72"  width="220" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_fs_st"   value="    status : varchar NN"       style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_fs"><mxGeometry y="94"  width="220" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_fs_rc"   value="    record_count : integer"    style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_fs"><mxGeometry y="116" width="220" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_fs_er"   value="    error_reason : varchar"    style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_fs"><mxGeometry y="138" width="220" height="22" as="geometry"/></mxCell>
+
+        <!-- =========================================== -->
+        <!-- pipeline.reconciliation_log  x=310 y=470   -->
+        <!-- =========================================== -->
+        <mxCell id="t_rec" value="pipeline.reconciliation_log" style="swimlane;fontStyle=1;align=center;startSize=28;container=1;collapsible=0;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="310" y="470" width="280" height="314" as="geometry" />
+        </mxCell>
+        <mxCell id="c_rec_id"   value="PK  id : bigint"                     style="text;strokeColor=#d6b656;fillColor=#fff2cc;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_rec"><mxGeometry y="28"  width="280" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_rec_rid"  value="~FK run_id : uuid (→ run_log)"       style="text;strokeColor=#9673a6;fillColor=#e1d5e7;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_rec"><mxGeometry y="50"  width="280" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_rec_ct"   value="    check_type : varchar NN"         style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_rec"><mxGeometry y="72"  width="280" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_rec_dom"  value="    domain : varchar NN"             style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_rec"><mxGeometry y="94"  width="280" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_rec_ds"   value="    dataset : varchar NN"            style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_rec"><mxGeometry y="116" width="280" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_rec_bd"   value="    business_date : date"            style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_rec"><mxGeometry y="138" width="280" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_rec_sc"   value="    source_count : bigint"           style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_rec"><mxGeometry y="160" width="280" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_rec_kc"   value="    kafka_count : bigint"            style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_rec"><mxGeometry y="182" width="280" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_rec_pc"   value="    postgres_count : bigint"         style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_rec"><mxGeometry y="204" width="280" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_rec_dc"   value="    discrepancy_count : bigint"      style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_rec"><mxGeometry y="226" width="280" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_rec_dp"   value="    discrepancy_pct : numeric"       style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_rec"><mxGeometry y="248" width="280" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_rec_st"   value="    status : varchar NN"             style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_rec"><mxGeometry y="270" width="280" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_rec_det"  value="    detail : text"                   style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_rec"><mxGeometry y="292" width="280" height="22" as="geometry"/></mxCell>
+
+        <!-- =========================================== -->
+        <!-- pipeline.run_events  x=640 y=470 w=260     -->
+        <!-- =========================================== -->
+        <mxCell id="t_re" value="pipeline.run_events" style="swimlane;fontStyle=1;align=center;startSize=28;container=1;collapsible=0;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="640" y="470" width="260" height="248" as="geometry" />
+        </mxCell>
+        <mxCell id="c_re_id"   value="PK  id : bigint"                    style="text;strokeColor=#d6b656;fillColor=#fff2cc;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_re"><mxGeometry y="28"  width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_re_rid"  value="~FK run_id : varchar (→ run_log)"   style="text;strokeColor=#9673a6;fillColor=#e1d5e7;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_re"><mxGeometry y="50"  width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_re_et"   value="    event_type : varchar NN"        style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_re"><mxGeometry y="72"  width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_re_dom"  value="    domain : varchar NN"            style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_re"><mxGeometry y="94"  width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_re_ds"   value="    dataset : varchar NN"           style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_re"><mxGeometry y="116" width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_re_bd"   value="    business_date : varchar NN"     style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_re"><mxGeometry y="138" width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_re_st"   value="    status : varchar NN"            style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_re"><mxGeometry y="160" width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_re_rcp"  value="    record_count_published : int"   style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_re"><mxGeometry y="182" width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_re_kt"   value="    kafka_topic : varchar"          style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_re"><mxGeometry y="204" width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_re_oa"   value="    occurred_at : timestamp NN"     style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_re"><mxGeometry y="226" width="260" height="22" as="geometry"/></mxCell>
+
+        <!-- =========================================== -->
+        <!-- slot_staging_core  x=40 y=840 w=240        -->
+        <!-- =========================================== -->
+        <mxCell id="t_ssc" value="pipeline.slot_staging_core" style="swimlane;fontStyle=1;align=center;startSize=28;container=1;collapsible=0;fillColor=#f0e6ff;strokeColor=#7d4eab;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="40" y="840" width="240" height="182" as="geometry" />
+        </mxCell>
+        <mxCell id="c_ssc_pid"  value="PK  policy_id : varchar"              style="text;strokeColor=#d6b656;fillColor=#fff2cc;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_ssc"><mxGeometry y="28"  width="240" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_ssc_bd"   value="PK  _ods_business_date : date"        style="text;strokeColor=#d6b656;fillColor=#fff2cc;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_ssc"><mxGeometry y="50"  width="240" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_ssc_st"   value="    status : varchar"                 style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_ssc"><mxGeometry y="72"  width="240" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_ssc_pr"   value="    premium : numeric"                style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_ssc"><mxGeometry y="94"  width="240" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_ssc_ed"   value="    effective_date : date"             style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_ssc"><mxGeometry y="116" width="240" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_ssc_rid"  value="    _ods_run_id : varchar NN"         style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_ssc"><mxGeometry y="138" width="240" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_ssc_sa"   value="    _ods_staged_at : timestamp NN"    style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_ssc"><mxGeometry y="160" width="240" height="22" as="geometry"/></mxCell>
+
+        <!-- =========================================== -->
+        <!-- slot_staging_enrichment  x=330 y=840 w=240 -->
+        <!-- =========================================== -->
+        <mxCell id="t_sse" value="pipeline.slot_staging_enrichment" style="swimlane;fontStyle=1;align=center;startSize=28;container=1;collapsible=0;fillColor=#f0e6ff;strokeColor=#7d4eab;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="330" y="840" width="240" height="182" as="geometry" />
+        </mxCell>
+        <mxCell id="c_sse_pid"  value="PK  policy_id : varchar"              style="text;strokeColor=#d6b656;fillColor=#fff2cc;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_sse"><mxGeometry y="28"  width="240" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_sse_bd"   value="PK  _ods_business_date : date"        style="text;strokeColor=#d6b656;fillColor=#fff2cc;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_sse"><mxGeometry y="50"  width="240" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_sse_ac"   value="    agent_code : varchar"              style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_sse"><mxGeometry y="72"  width="240" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_sse_pc"   value="    postcode : varchar"                style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_sse"><mxGeometry y="94"  width="240" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_sse_rs"   value="    risk_score : numeric"              style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_sse"><mxGeometry y="116" width="240" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_sse_ch"   value="    channel : varchar"                 style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_sse"><mxGeometry y="138" width="240" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_sse_rid"  value="    _ods_run_id : varchar NN"         style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_sse"><mxGeometry y="160" width="240" height="22" as="geometry"/></mxCell>
+
+        <!-- =========================================== -->
+        <!-- merge_run_log  x=640 y=840 w=260           -->
+        <!-- =========================================== -->
+        <mxCell id="t_mrl" value="pipeline.merge_run_log" style="swimlane;fontStyle=1;align=center;startSize=28;container=1;collapsible=0;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="640" y="840" width="260" height="226" as="geometry" />
+        </mxCell>
+        <mxCell id="c_mrl_id"   value="PK  merge_run_id : uuid"           style="text;strokeColor=#d6b656;fillColor=#fff2cc;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_mrl"><mxGeometry y="28"  width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_mrl_dom"  value="    domain : varchar NN"           style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_mrl"><mxGeometry y="50"  width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_mrl_ds"   value="    dataset : varchar NN"          style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_mrl"><mxGeometry y="72"  width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_mrl_bd"   value="    business_date : date NN"       style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_mrl"><mxGeometry y="94"  width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_mrl_st"   value="    status : varchar NN"           style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_mrl"><mxGeometry y="116" width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_mrl_rco"  value="    record_count_out : bigint"     style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_mrl"><mxGeometry y="138" width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_mrl_sa"   value="    started_at : timestamp NN"     style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_mrl"><mxGeometry y="160" width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_mrl_ea"   value="    ended_at : timestamp"          style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_mrl"><mxGeometry y="182" width="260" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_mrl_err"  value="    error_summary : text"          style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_mrl"><mxGeometry y="204" width="260" height="22" as="geometry"/></mxCell>
+
+        <!-- =========================================== -->
+        <!-- merge_contribution_log  x=950 y=840 w=280  -->
+        <!-- =========================================== -->
+        <mxCell id="t_mcl" value="pipeline.merge_contribution_log" style="swimlane;fontStyle=1;align=center;startSize=28;container=1;collapsible=0;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="950" y="840" width="280" height="204" as="geometry" />
+        </mxCell>
+        <mxCell id="c_mcl_id"   value="PK  id : bigint"                         style="text;strokeColor=#d6b656;fillColor=#fff2cc;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_mcl"><mxGeometry y="28"  width="280" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_mcl_mrid" value="FK  merge_run_id : uuid → merge_run_log" style="text;strokeColor=#ae4132;fillColor=#f8cecc;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_mcl"><mxGeometry y="50"  width="280" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_mcl_sn"   value="    slot_name : varchar NN"              style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_mcl"><mxGeometry y="72"  width="280" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_mcl_srid" value="    slot_run_id : varchar NN"            style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_mcl"><mxGeometry y="94"  width="280" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_mcl_fid"  value="    file_id : uuid"                      style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_mcl"><mxGeometry y="116" width="280" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_mcl_s3"   value="    s3_raw_path : varchar NN"            style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_mcl"><mxGeometry y="138" width="280" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_mcl_cw"   value="    columns_written : array NN"          style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_mcl"><mxGeometry y="160" width="280" height="22" as="geometry"/></mxCell>
+        <mxCell id="c_mcl_rc"   value="    record_count : bigint"               style="text;strokeColor=#d1d1d1;fillColor=#ffffff;align=left;spacingLeft=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=10;" vertex="1" parent="t_mcl"><mxGeometry y="182" width="280" height="22" as="geometry"/></mxCell>
+
+        <!-- =========================================== -->
+        <!-- FK EDGES                                    -->
+        <!-- =========================================== -->
+
+        <!-- run_log.file_id → file_catalogue.file_id (hard FK) -->
+        <mxCell id="fk_rl_fc" style="edgeStyle=orthogonalEdgeStyle;endArrow=ERmandOne;startArrow=ERzeroToMany;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#ae4132;strokeWidth=2;" edge="1" source="c_rl_fid" target="c_fc_fid" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- run_stage_log.run_id → run_log.run_id (hard FK) -->
+        <mxCell id="fk_rsl_rl" style="edgeStyle=orthogonalEdgeStyle;endArrow=ERmandOne;startArrow=ERzeroToMany;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#ae4132;strokeWidth=2;" edge="1" source="c_rsl_rid" target="c_rl_rid" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- merge_contribution_log.merge_run_id → merge_run_log.merge_run_id (hard FK) -->
+        <mxCell id="fk_mcl_mrl" style="edgeStyle=orthogonalEdgeStyle;endArrow=ERmandOne;startArrow=ERzeroToMany;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#ae4132;strokeWidth=2;" edge="1" source="c_mcl_mrid" target="c_mrl_id" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- reconciliation_log.run_id → run_log.run_id (soft ref, dashed) -->
+        <mxCell id="fk_rec_rl" style="edgeStyle=orthogonalEdgeStyle;endArrow=open;startArrow=none;dashed=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#9673a6;strokeWidth=1;" edge="1" source="c_rec_rid" target="c_rl_rid" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- run_events.run_id → run_log.run_id (soft ref, dashed) -->
+        <mxCell id="fk_re_rl" style="edgeStyle=orthogonalEdgeStyle;endArrow=open;startArrow=none;dashed=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#9673a6;strokeWidth=1;" edge="1" source="c_re_rid" target="c_rl_rid" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- =========================================== -->
+        <!-- LEGEND                                      -->
+        <!-- =========================================== -->
+        <mxCell id="leg_box" value="" style="rounded=1;whiteSpace=wrap;strokeColor=#666;fillColor=#f5f5f5;" vertex="1" parent="1">
+          <mxGeometry x="960" y="470" width="310" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="leg_title" value="Legend" style="text;fontStyle=1;fontSize=12;fillColor=none;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="970" y="476" width="80" height="22" as="geometry" />
+        </mxCell>
+        <mxCell id="leg_pk" value="" style="rounded=0;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="970" y="504" width="30" height="16" as="geometry" />
+        </mxCell>
+        <mxCell id="leg_pk_t" value="Primary Key" style="text;fontSize=10;fillColor=none;strokeColor=none;align=left;" vertex="1" parent="1">
+          <mxGeometry x="1008" y="502" width="100" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="leg_fk" value="" style="rounded=0;fillColor=#f8cecc;strokeColor=#ae4132;" vertex="1" parent="1">
+          <mxGeometry x="970" y="528" width="30" height="16" as="geometry" />
+        </mxCell>
+        <mxCell id="leg_fk_t" value="Foreign Key (hard)" style="text;fontSize=10;fillColor=none;strokeColor=none;align=left;" vertex="1" parent="1">
+          <mxGeometry x="1008" y="526" width="140" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="leg_sfk" value="" style="rounded=0;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="970" y="552" width="30" height="16" as="geometry" />
+        </mxCell>
+        <mxCell id="leg_sfk_t" value="Soft reference (no FK constraint)" style="text;fontSize=10;fillColor=none;strokeColor=none;align=left;" vertex="1" parent="1">
+          <mxGeometry x="1008" y="550" width="230" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="leg_reg" value="" style="rounded=0;fillColor=#ffffff;strokeColor=#d1d1d1;" vertex="1" parent="1">
+          <mxGeometry x="970" y="576" width="30" height="16" as="geometry" />
+        </mxCell>
+        <mxCell id="leg_reg_t" value="Regular column" style="text;fontSize=10;fillColor=none;strokeColor=none;align=left;" vertex="1" parent="1">
+          <mxGeometry x="1008" y="574" width="140" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="leg_nn" value="NN = NOT NULL" style="text;fontSize=10;fillColor=none;strokeColor=none;align=left;" vertex="1" parent="1">
+          <mxGeometry x="970" y="600" width="140" height="20" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

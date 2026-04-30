@@ -1,0 +1,61 @@
+sequenceDiagram
+    participant DAG as Airflow DAG
+    participant S3C as S3 Curated Zone<br/>ods-curated-{env}
+    participant GLUE as Glue Job<br/>ods-s3-publish-{dataset}
+    participant PG as PostgreSQL<br/>pipeline.glue_job_log
+    participant SR as Glue Schema Registry<br/>ods-schema-registry-{env}
+    participant GDQ as Glue Data Quality<br/>ods-dq-results-{env}
+    participant KAFKA as MSK Topic<br/>ods.{domain}.{dataset}
+    participant DLQ as S3 DLQ<br/>ods-dlq-{env}
+
+    DAG->>GLUE: Trigger (config ref + pinned S3 version ID)
+    GLUE->>S3C: Read Parquet file (source path from config)
+    S3C-->>GLUE: Parquet data + row count (e.g. 10,000 rows)
+    GLUE->>GLUE: Extract business_date from filename
+    GLUE->>PG: INSERT status=started (run_id · job_name · source_path · business_date)
+
+    Note over GLUE,SR: Phase 1 — Schema Validation
+    GLUE->>SR: Fetch schema (pinned schema ID from config)
+    SR-->>GLUE: Schema + compatibility rules
+    GLUE->>GLUE: Validate incoming Parquet schema
+    alt Compatible schema change detected
+        GLUE->>SR: Auto-register new schema version
+        SR-->>GLUE: New version confirmed
+    else Incompatible — breaking change
+        GLUE->>PG: INSERT status=failed (error_reason=schema_incompatible · error_detail)
+        GLUE->>DLQ: Route file to DLQ with reason
+        GLUE-->>DAG: Job failed (schema)
+    end
+    GLUE->>PG: INSERT status=schema_validated (schema_version)
+
+    Note over GLUE,GDQ: Phase 2 — Data Quality
+    GLUE->>GDQ: Run DQDL rules (completeness, uniqueness, ranges)
+    alt Dataset-level hard block fails (e.g. RowCount)
+        GLUE->>PG: INSERT status=failed (error_reason=dq_dataset_block · error_detail)
+        GLUE->>DLQ: Route file to DLQ with reason
+        GLUE-->>DAG: Job failed (data quality)
+    else Row-level hard block — some rows fail
+        GDQ-->>GLUE: Row outcomes (passed + failed rows)
+        GLUE->>DLQ: Write failed rows (partitioned: date/topic/run_id)
+        GLUE->>PG: INSERT status=dq_warned (record_count · failed_row_count · rule_name)
+        Note over GLUE: Passed rows continue to Phase 3
+    else Soft warn only
+        GDQ-->>GLUE: Warnings (field, threshold, actual)
+        GLUE->>PG: INSERT status=dq_warned (rule_name · warning_detail)
+    else All rules passed
+        GLUE->>PG: INSERT status=dq_passed (record_count)
+    end
+
+    Note over GLUE,KAFKA: Phase 3 — Publish
+    GLUE->>GLUE: Generate deterministic message keys (hash of key fields)
+    GLUE->>PG: INSERT status=publishing (record_count · target_topic)
+    GLUE->>KAFKA: Publish records (Kafka transactions · acks=all · exactly-once)
+    GLUE->>GLUE: Verify published count == source count
+    alt Count mismatch
+        GLUE->>PG: INSERT status=failed (error_reason=count_mismatch · expected · actual)
+        GLUE->>DLQ: Write undelivered records
+        GLUE-->>DAG: Job failed (count mismatch)
+    else Count verified
+        GLUE->>PG: INSERT status=completed (record_count · target_topic · business_date)
+        GLUE-->>DAG: Job completed successfully
+    end

@@ -1,0 +1,47 @@
+sequenceDiagram
+    participant S3C as S3 Curated Zone<br/>ods-curated-{env}
+    participant EB as AWS EventBridge<br/>ods-curated-file-rule-{env}
+    participant PG as PostgreSQL<br/>ods.pipeline.file_state
+    participant DAG as Airflow DAG
+    participant CFG as S3 Config<br/>ods-config-{env}
+    participant GLUE as Glue Job<br/>(see detail diagram)
+    participant KAFKA as MSK Topic<br/>ods.{domain}.{dataset}
+    participant CAT as Glue Data Catalog<br/>ods_{domain}
+    participant CRAWLER as Glue Crawler<br/>ods-{dataset}-crawler
+    participant AUDIT as MSK Audit Topic<br/>ods.pipeline.audit
+    participant DLQ as S3 DLQ<br/>ods-dlq-{env}
+
+    Note over S3C,PG: Phase 1 · Detect & Guard
+    S3C->>EB: ❶ Object Created event (new Parquet file)
+    EB->>DAG: ❷ Trigger MWAA DAG (file path from event)
+    DAG->>PG: ❸ Check file state (idempotency guard)
+    alt Already processed
+        PG-->>DAG: status=completed → skip
+    else New file
+        PG-->>DAG: status=new → proceed
+    end
+
+    Note over DAG,CFG: Phase 2 · Orchestrate
+    DAG->>CFG: ❹ Load config — resolve pinned S3 version ID
+    CFG-->>DAG: topic · key fields · schema ID · DQ rules ref
+    DAG->>PG: ❺ Set file state → processing
+
+    Note over DAG,KAFKA: Phase 3 · Glue Processing (schema · DQ · publish — see detail diagram)
+    DAG->>GLUE: ❻ Trigger Glue job (config ref + pinned S3 version ID)
+    GLUE->>S3C: ❼ Read Parquet file → capture row count (e.g. 10,000 rows)
+    alt Job failed
+        Note over GLUE,DLQ: ❽ Failure reasons (see detail diagram):<br/>a) Schema incompatible — file routed to DLQ<br/>b) DQ hard block — failing records routed to DLQ<br/>c) Count mismatch — Kafka offset delta ≠ source row count → undelivered records to DLQ
+        GLUE-->>DLQ: Failed records routed to DLQ with reason + metadata
+        GLUE-->>DAG: Job failed
+        DAG->>PG: Set file state → failed
+        DAG->>AUDIT: ❾ Emit audit event (status=failed · reason · dataset)
+    else Job succeeded
+        GLUE-->>KAFKA: Records published (all 10,000 rows confirmed)
+        GLUE-->>DAG: Job completed
+    end
+
+    Note over DAG,AUDIT: Phase 4 · Post-Publish
+    DAG->>PG: ❿ Set file state → completed
+    DAG->>CAT: ⓫ Register dataset in Glue Data Catalog
+    DAG->>CRAWLER: ⓬ Trigger Glue Crawler (async · no wait)
+    DAG->>AUDIT: ⓭ Emit audit event (status=success · record_count · schema_version · topic)

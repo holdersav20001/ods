@@ -1,0 +1,72 @@
+sequenceDiagram
+    participant SFTP as Internal SFTP Server
+    participant SENSOR as Airflow SFTP Sensor
+    participant PG as PostgreSQL<br/>pipeline.file_catalogue<br/>pipeline.ingestion_file_state
+    participant DAG1 as Airflow DAG 1<br/>Transfer
+    participant S3R as S3 Raw Zone<br/>ods-raw-{env}
+    participant EB as AWS EventBridge<br/>ods-raw-file-rule-{env}
+    participant DAG2 as Airflow DAG 2<br/>ETL
+    participant CFG as S3 Config<br/>ods-config-{env}
+    participant GLUE as Glue ETL Job<br/>(see detail diagram)
+    participant S3C as S3 Curated Zone<br/>ods-curated-{env}
+    participant CAT as Glue Data Catalog<br/>ods_{domain}
+    participant AUDIT as MSK Audit Topic<br/>ods.pipeline.audit
+    participant QUAR as S3 Quarantine<br/>ods-quarantine-{env}
+    participant DLQ as S3 DLQ<br/>ods-dlq-{env}
+
+    Note over SFTP,PG: DAG 1 · Phase 1 — Detect & Validate
+    SENSOR->>SFTP: ❶ Poll for new CSV files (every 5 min)
+    SFTP-->>SENSOR: ❷ New file detected (filename + path)
+    SENSOR->>PG: ❸ Check file_catalogue — is this file approved?
+    alt Not approved
+        PG-->>SENSOR: No match found
+        SENSOR->>QUAR: ❹ Quarantine file + emit alert
+    else Approved
+        PG-->>SENSOR: Approved — domain, dataset, config ref
+        SENSOR->>PG: ❺ Check ingestion_file_state — already processed?
+        alt Already processed
+            PG-->>SENSOR: status=completed → skip
+        else New file
+            PG-->>SENSOR: status=new → proceed
+            SENSOR->>DAG1: ❻ Trigger DAG 1 (file path + catalogue ref)
+            DAG1->>PG: ❼ Set file state → detected
+        end
+    end
+
+    Note over DAG1,S3R: DAG 1 · Phase 2 — Transfer
+    DAG1->>SFTP: ❽ SFTPToS3Operator — copy CSV to S3 Raw
+    SFTP-->>S3R: File transferred
+    DAG1->>S3R: ❾ Verify MD5 checksum
+    alt Checksum mismatch
+        DAG1->>QUAR: Route corrupt file to quarantine
+        DAG1->>PG: Set file state → failed (checksum)
+        DAG1->>AUDIT: Emit audit event (status=failed · reason=checksum)
+    else Checksum verified
+        DAG1->>PG: ❿ Set file state → transferred
+    end
+
+    Note over S3R,DAG2: EventBridge Handoff
+    S3R->>EB: ⓫ Object Created event (new CSV in S3 Raw)
+    EB->>DAG2: ⓬ Trigger DAG 2 — ETL (file path from event)
+
+    Note over DAG2,S3C: DAG 2 · Phase 3 — Glue ETL (schema · CSV→Parquet — see detail diagram)
+    DAG2->>CFG: ⓭ Load config (resolve pinned S3 version ID)
+    CFG-->>DAG2: schema ref · output path · key fields
+    DAG2->>GLUE: ⓮ Trigger Glue ETL job (config ref + S3 version ID)
+    GLUE->>S3R: ⓯ Read CSV file (source path from config)
+    S3R-->>GLUE: CSV data + row count
+    alt ETL failed (schema · conversion)
+        GLUE-->>DLQ: Failed records routed to DLQ with reason
+        GLUE-->>DAG2: Job failed
+        DAG2->>PG: Set file state → failed
+        DAG2->>AUDIT: ⓰ Emit audit event (status=failed · reason · dataset)
+    else ETL succeeded
+        GLUE-->>S3C: Parquet written (partitioned by date)
+        GLUE-->>DAG2: Job completed
+    end
+
+    Note over DAG2,AUDIT: DAG 2 · Phase 4 — Post-ETL
+    DAG2->>CAT: ⓱ Register dataset in Glue Data Catalog
+    DAG2->>PG: ⓲ Set file state → completed
+    DAG2->>AUDIT: ⓳ Emit audit event (status=success · record_count · dataset)
+    Note over S3C: ⓴ Parquet in S3 Curated triggers Publish Pipeline EventBridge rule

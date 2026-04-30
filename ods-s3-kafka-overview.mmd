@@ -1,0 +1,56 @@
+flowchart TD
+    S3C[("S3 Curated Zone\nods-curated-{env}")]
+
+    subgraph DETECT["1 · Detect & Guard"]
+        EB["AWS EventBridge\nObject Created trigger"]
+        PG[("PostgreSQL\nfile_state · idempotency guard")]
+    end
+
+    subgraph ORCH["2 · Orchestrate"]
+        DAG["Airflow DAG"]
+        CFG[("S3 Config · versioned\npin version on trigger")]
+    end
+
+    subgraph PROCESS["3 · Glue Processing"]
+        SCHEMA["Schema Validation\nGlue Schema Registry"]
+        DQ["Data Quality\nhard block · soft warn"]
+        PUBLISH["Publish to MSK\nods.{domain}.{dataset}\nKafka transactions · acks=all"]
+    end
+
+    subgraph POST["4 · Post-Publish"]
+        CAT["Glue Data Catalog"]
+        CRAWLER["Glue Crawler · async"]
+        AUDIT[("MSK Audit Topic\nods.pipeline.audit")]
+    end
+
+    DLQ[("S3 DLQ\nods-dlq-{env}")]
+
+    %% Happy path
+    S3C -->|Object Created event| EB
+    EB -->|trigger DAG| DAG
+    DAG -->|idempotency check| PG
+    PG -->|state=new · proceed| DAG
+    DAG -->|load versioned config| CFG
+    CFG -->|config + version ID| DAG
+    DAG -->|trigger Glue job| SCHEMA
+    SCHEMA -->|valid| DQ
+    DQ -->|pass| PUBLISH
+    PUBLISH --> CAT
+    CAT -->|async| CRAWLER
+    PUBLISH -->|success| AUDIT
+
+    %% Failure exits
+    PG -->|state=completed · skip| DONE(((already processed\nexit)))
+    SCHEMA -->|breaking change| DLQ
+    DQ -->|hard block| DLQ
+    PUBLISH -->|count mismatch| DLQ
+
+    classDef happy fill:#d4edda,stroke:#28a745,color:#155724
+    classDef store fill:#cce5ff,stroke:#004085,color:#004085
+    classDef failure fill:#f8d7da,stroke:#dc3545,color:#721c24
+    classDef control fill:#e2e3e5,stroke:#6c757d,color:#383d41
+
+    class PUBLISH,SCHEMA,DQ happy
+    class S3C,PG,CFG,AUDIT,DLQ store
+    class DONE failure
+    class EB,DAG,CAT,CRAWLER control

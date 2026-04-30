@@ -1,0 +1,221 @@
+<mxfile host="Claude">
+  <diagram id="kafka-canonical-seq" name="ODS ECS Kafka Streams — Canonicalization Sequence">
+    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2100" pageHeight="2250" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/><mxCell id="1" parent="0"/>
+
+        <!-- TITLE -->
+        <mxCell id="10" value="ODS ECS Kafka Streams — CDC Raw → Canonical Kafka (Sequence)" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=15;fontStyle=1;fontColor=#1F5C8B;" vertex="1" parent="1"><mxGeometry x="0" y="15" width="2060" height="36" as="geometry"/></mxCell>
+
+        <!-- NAV BAR -->
+        <mxCell id="11" value="↑ Upstream: openflow_extraction (CDC capture → K1)  ·  ↑ Overview: ods-kafka-canonical-overview  ·  ↓ Downstream: ods-kafka-sink-sequence (K2 → Iceberg + PostgreSQL)" style="text;html=1;strokeColor=#856404;fillColor=#fff3cd;align=center;verticalAlign=middle;fontSize=8;fontColor=#533f03;fontStyle=3;rounded=1;" vertex="1" parent="1"><mxGeometry x="20" y="54" width="2020" height="22" as="geometry"/></mxCell>
+
+        <!-- ===== PARTICIPANT BOXES (w=120, center-to-center=155) ===== -->
+        <!-- centers: 120 275 430 585 740 895 1050 1205 1360 1515 1670 1825 -->
+        <mxCell id="101" value="MSK Raw Topic&#xa;ods.raw.{domain}&#xa;.{dataset}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#E65100;fontColor=#BF360C;fontSize=9;fontStyle=1;arcSize=15;" vertex="1" parent="1"><mxGeometry x="60" y="90" width="120" height="55" as="geometry"/></mxCell>
+        <mxCell id="102" value="ECS Kafka Streams&#xa;ods-kafka-canonicalize&#xa;-{dataset}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#B2DFDB;strokeColor=#00695C;fontColor=#004D40;fontSize=9;fontStyle=1;arcSize=15;" vertex="1" parent="1"><mxGeometry x="215" y="90" width="120" height="55" as="geometry"/></mxCell>
+        <mxCell id="103" value="S3 Config&#xa;field-mapping YAML&#xa;schema pins" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#388E3C;fontColor=#1B5E20;fontSize=9;fontStyle=1;arcSize=15;" vertex="1" parent="1"><mxGeometry x="370" y="90" width="120" height="55" as="geometry"/></mxCell>
+        <mxCell id="104" value="Glue Schema Registry&#xa;ods-schema-registry&#xa;-{env}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8EAF6;strokeColor=#3949AB;fontColor=#1A237E;fontSize=9;fontStyle=1;arcSize=15;" vertex="1" parent="1"><mxGeometry x="525" y="90" width="120" height="55" as="geometry"/></mxCell>
+        <mxCell id="105" value="DQ Engine&#xa;(Great Expectations&#xa;· rule config)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF8E1;strokeColor=#F9A825;fontColor=#F57F17;fontSize=9;fontStyle=1;arcSize=15;" vertex="1" parent="1"><mxGeometry x="680" y="90" width="120" height="55" as="geometry"/></mxCell>
+        <mxCell id="106" value="CloudWatch&#xa;Metrics + Logs&#xa;(Observability)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ECEFF1;strokeColor=#546E7A;fontColor=#263238;fontSize=9;fontStyle=1;arcSize=15;" vertex="1" parent="1"><mxGeometry x="835" y="90" width="120" height="55" as="geometry"/></mxCell>
+        <mxCell id="107" value="RocksDB&#xa;State Store&#xa;(local SCD)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EDE7F6;strokeColor=#512DA8;fontColor=#311B92;fontSize=9;fontStyle=1;arcSize=15;" vertex="1" parent="1"><mxGeometry x="990" y="90" width="120" height="55" as="geometry"/></mxCell>
+        <mxCell id="108" value="MSK Changelog&#xa;ods.raw.{dataset}&#xa;.changelog" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3E5F5;strokeColor=#7B1FA2;fontColor=#4A148C;fontSize=9;fontStyle=1;arcSize=15;" vertex="1" parent="1"><mxGeometry x="1145" y="90" width="120" height="55" as="geometry"/></mxCell>
+        <mxCell id="109" value="MSK Canonical Topic&#xa;ods.{domain}&#xa;.{dataset}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8BBD9;strokeColor=#880E4F;fontColor=#880E4F;fontSize=9;fontStyle=1;arcSize=15;" vertex="1" parent="1"><mxGeometry x="1300" y="90" width="120" height="55" as="geometry"/></mxCell>
+        <mxCell id="110" value="S3 DLQ&#xa;ods-dlq-{env}&#xa;(unrecoverable)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFCCBC;strokeColor=#BF360C;fontColor=#BF360C;fontSize=9;fontStyle=1;arcSize=15;" vertex="1" parent="1"><mxGeometry x="1455" y="90" width="120" height="55" as="geometry"/></mxCell>
+        <mxCell id="111" value="Quarantine Topic&#xa;ods.raw.{dataset}&#xa;.quarantine" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE0B2;strokeColor=#E65100;fontColor=#BF360C;fontSize=9;fontStyle=1;arcSize=15;" vertex="1" parent="1"><mxGeometry x="1610" y="90" width="120" height="55" as="geometry"/></mxCell>
+        <mxCell id="112" value="Incident&#xa;PagerDuty&#xa;/ OPS" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFCDD2;strokeColor=#C62828;fontColor=#B71C1C;fontSize=9;fontStyle=1;arcSize=15;" vertex="1" parent="1"><mxGeometry x="1765" y="90" width="120" height="55" as="geometry"/></mxCell>
+
+        <!-- ===== LIFELINES ===== -->
+        <mxCell id="201" value="" style="endArrow=none;dashed=1;strokeColor=#E65100;strokeWidth=1;opacity=35;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="120" y="145" as="sourcePoint"/><mxPoint x="120" y="2060" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="202" value="" style="endArrow=none;dashed=1;strokeColor=#00695C;strokeWidth=1;opacity=35;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="275" y="145" as="sourcePoint"/><mxPoint x="275" y="2060" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="203" value="" style="endArrow=none;dashed=1;strokeColor=#388E3C;strokeWidth=1;opacity=35;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="430" y="145" as="sourcePoint"/><mxPoint x="430" y="2060" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="204" value="" style="endArrow=none;dashed=1;strokeColor=#3949AB;strokeWidth=1;opacity=35;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="585" y="145" as="sourcePoint"/><mxPoint x="585" y="2060" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="205" value="" style="endArrow=none;dashed=1;strokeColor=#F9A825;strokeWidth=1;opacity=35;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="740" y="145" as="sourcePoint"/><mxPoint x="740" y="2060" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="206" value="" style="endArrow=none;dashed=1;strokeColor=#546E7A;strokeWidth=1;opacity=35;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="895" y="145" as="sourcePoint"/><mxPoint x="895" y="2060" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="207" value="" style="endArrow=none;dashed=1;strokeColor=#512DA8;strokeWidth=1;opacity=35;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="1050" y="145" as="sourcePoint"/><mxPoint x="1050" y="2060" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="208" value="" style="endArrow=none;dashed=1;strokeColor=#7B1FA2;strokeWidth=1;opacity=35;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="1205" y="145" as="sourcePoint"/><mxPoint x="1205" y="2060" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="209" value="" style="endArrow=none;dashed=1;strokeColor=#880E4F;strokeWidth=1;opacity=35;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="1360" y="145" as="sourcePoint"/><mxPoint x="1360" y="2060" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="210" value="" style="endArrow=none;dashed=1;strokeColor=#BF360C;strokeWidth=1;opacity=35;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="1515" y="145" as="sourcePoint"/><mxPoint x="1515" y="2060" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="211" value="" style="endArrow=none;dashed=1;strokeColor=#E65100;strokeWidth=1;opacity=35;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="1670" y="145" as="sourcePoint"/><mxPoint x="1670" y="2060" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="212" value="" style="endArrow=none;dashed=1;strokeColor=#C62828;strokeWidth=1;opacity=35;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="1825" y="145" as="sourcePoint"/><mxPoint x="1825" y="2060" as="targetPoint"/></mxGeometry></mxCell>
+
+        <!-- ===== PHASE 1 · INITIALISATION ===== -->
+        <mxCell id="701" value="Phase 1 · Initialisation — Service Startup (once on deploy / restart)" style="text;html=1;strokeColor=#cccccc;fillColor=#f0f4f8;align=center;verticalAlign=middle;fontSize=9;fontColor=#37474F;fontStyle=3;rounded=1;" vertex="1" parent="1"><mxGeometry x="62" y="168" width="1100" height="22" as="geometry"/></mxCell>
+
+        <!-- Step 1: ECS → CFG   y=210 -->
+        <mxCell id="301" value="1" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1"><mxGeometry x="30" y="198" width="24" height="24" as="geometry"/></mxCell>
+        <mxCell id="401" value="" style="endArrow=block;endFill=1;strokeColor=#388E3C;strokeWidth=2;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="275" y="210" as="sourcePoint"/><mxPoint x="430" y="210" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="501" value="&lt;b&gt;Load field-mapping config&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=9;fontColor=#388E3C;" vertex="1" parent="1"><mxGeometry x="280" y="186" width="145" height="22" as="geometry"/></mxCell>
+        <mxCell id="601" value="dataset YAML · source→canonical field mapping · schema pin · DQ rule ref" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;fontSize=8;fontColor=#666666;fontStyle=2;" vertex="1" parent="1"><mxGeometry x="280" y="214" width="145" height="18" as="geometry"/></mxCell>
+
+        <!-- Step 2: CFG → ECS   y=280 -->
+        <mxCell id="302" value="2" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1"><mxGeometry x="30" y="268" width="24" height="24" as="geometry"/></mxCell>
+        <mxCell id="402" value="" style="endArrow=block;endFill=1;dashed=1;strokeColor=#AAAAAA;strokeWidth=2;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="430" y="280" as="sourcePoint"/><mxPoint x="275" y="280" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="502" value="&lt;b&gt;Config loaded&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=9;fontColor=#AAAAAA;" vertex="1" parent="1"><mxGeometry x="280" y="256" width="145" height="22" as="geometry"/></mxCell>
+        <mxCell id="602" value="mapping rules · pinned canonical schema ID · DQ suite name" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;fontSize=8;fontColor=#666666;fontStyle=2;" vertex="1" parent="1"><mxGeometry x="280" y="284" width="145" height="18" as="geometry"/></mxCell>
+
+        <!-- Step 3: ECS → SR (fetch + warm cache)   y=350 -->
+        <mxCell id="303" value="3" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1"><mxGeometry x="30" y="338" width="24" height="24" as="geometry"/></mxCell>
+        <mxCell id="403" value="" style="endArrow=block;endFill=1;strokeColor=#3949AB;strokeWidth=2;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="275" y="350" as="sourcePoint"/><mxPoint x="585" y="350" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="503" value="&lt;b&gt;Fetch canonical schema · warm local cache&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=9;fontColor=#3949AB;" vertex="1" parent="1"><mxGeometry x="280" y="326" width="300" height="22" as="geometry"/></mxCell>
+        <mxCell id="603" value="GET schema by pinned ID from config · cached schema lives for service lifetime (no TTL)" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;fontSize=8;fontColor=#666666;fontStyle=2;" vertex="1" parent="1"><mxGeometry x="280" y="354" width="300" height="18" as="geometry"/></mxCell>
+
+        <!-- ===== PHASE 2 · CONSUME & DESERIALISE ===== -->
+        <mxCell id="702" value="Phase 2 · Consume &amp; Deserialise — Poll Loop (continuous)" style="text;html=1;strokeColor=#cccccc;fillColor=#f0f4f8;align=center;verticalAlign=middle;fontSize=9;fontColor=#37474F;fontStyle=3;rounded=1;" vertex="1" parent="1"><mxGeometry x="62" y="388" width="1100" height="22" as="geometry"/></mxCell>
+
+        <!-- Step 4: ECS → K1 (poll)   y=428 -->
+        <mxCell id="304" value="4" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1"><mxGeometry x="30" y="416" width="24" height="24" as="geometry"/></mxCell>
+        <mxCell id="404" value="" style="endArrow=block;endFill=1;strokeColor=#E65100;strokeWidth=2;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="275" y="428" as="sourcePoint"/><mxPoint x="120" y="428" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="504" value="&lt;b&gt;Poll batch&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=9;fontColor=#E65100;" vertex="1" parent="1"><mxGeometry x="125" y="404" width="145" height="22" as="geometry"/></mxCell>
+        <mxCell id="604" value="consumer group: ods-cdc-canonicalize-{dataset} · up to max.poll.records" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;fontSize=8;fontColor=#666666;fontStyle=2;" vertex="1" parent="1"><mxGeometry x="125" y="432" width="145" height="18" as="geometry"/></mxCell>
+
+        <!-- Step 5: K1 → ECS (records)   y=498 -->
+        <mxCell id="305" value="5" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1"><mxGeometry x="30" y="486" width="24" height="24" as="geometry"/></mxCell>
+        <mxCell id="405" value="" style="endArrow=block;endFill=1;dashed=1;strokeColor=#AAAAAA;strokeWidth=2;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="120" y="498" as="sourcePoint"/><mxPoint x="275" y="498" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="505" value="&lt;b&gt;Raw CDC records&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=9;fontColor=#AAAAAA;" vertex="1" parent="1"><mxGeometry x="125" y="474" width="145" height="22" as="geometry"/></mxCell>
+        <mxCell id="605" value="Confluent wire: 0x00 (magic) + 4-byte schema ID + JSON CDC payload (before · after · op · ts_ms)" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;fontSize=8;fontColor=#666666;fontStyle=2;" vertex="1" parent="1"><mxGeometry x="125" y="502" width="145" height="26" as="geometry"/></mxCell>
+
+        <!-- Step 6: ECS → SR (GET schema by ID if not cached)   y=570 -->
+        <mxCell id="306" value="6" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1"><mxGeometry x="30" y="558" width="24" height="24" as="geometry"/></mxCell>
+        <mxCell id="406" value="" style="endArrow=block;endFill=1;strokeColor=#3949AB;strokeWidth=2;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="275" y="570" as="sourcePoint"/><mxPoint x="585" y="570" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="506" value="&lt;b&gt;GET schema by ID (if not in local cache)&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=9;fontColor=#3949AB;" vertex="1" parent="1"><mxGeometry x="280" y="546" width="300" height="22" as="geometry"/></mxCell>
+        <mxCell id="606" value="schema ID extracted from bytes 1–4 of record header · cached on first fetch per ID" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;fontSize=8;fontColor=#666666;fontStyle=2;" vertex="1" parent="1"><mxGeometry x="280" y="574" width="300" height="18" as="geometry"/></mxCell>
+
+        <!-- Step 7: SR → ECS (Avro schema)   y=640 -->
+        <mxCell id="307" value="7" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1"><mxGeometry x="30" y="628" width="24" height="24" as="geometry"/></mxCell>
+        <mxCell id="407" value="" style="endArrow=block;endFill=1;dashed=1;strokeColor=#AAAAAA;strokeWidth=2;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="585" y="640" as="sourcePoint"/><mxPoint x="275" y="640" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="507" value="&lt;b&gt;Avro schema returned&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=9;fontColor=#AAAAAA;" vertex="1" parent="1"><mxGeometry x="280" y="616" width="300" height="22" as="geometry"/></mxCell>
+        <mxCell id="607" value="stored in local schema cache · subsequent records with same ID skip registry call" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;fontSize=8;fontColor=#666666;fontStyle=2;" vertex="1" parent="1"><mxGeometry x="280" y="644" width="300" height="18" as="geometry"/></mxCell>
+
+        <!-- ===== PHASE 3 · BEGIN TX + TRANSFORM + DQ ===== -->
+        <mxCell id="703" value="Phase 3 · BEGIN TRANSACTION → Transform &amp; Validate (per record, within Kafka EOS v2 transaction)" style="text;html=1;strokeColor=#cccccc;fillColor=#f0f4f8;align=center;verticalAlign=middle;fontSize=9;fontColor=#37474F;fontStyle=3;rounded=1;" vertex="1" parent="1"><mxGeometry x="62" y="678" width="1450" height="22" as="geometry"/></mxCell>
+
+        <!-- Step 8: ECS self — beginTransaction()   y=718 -->
+        <mxCell id="308" value="8" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1"><mxGeometry x="30" y="706" width="24" height="24" as="geometry"/></mxCell>
+        <mxCell id="408" value="beginTransaction() — EOS v2 · Kafka transactions API · transaction.id = ods-cdc-canonicalize-{dataset}-{partition}" style="text;html=1;strokeColor=#00695C;fillColor=#E0F2F1;align=center;verticalAlign=middle;fontSize=8;fontColor=#004D40;fontStyle=1;rounded=1;" vertex="1" parent="1"><mxGeometry x="175" y="706" width="580" height="24" as="geometry"/></mxCell>
+
+        <!-- Step 9: ECS → DQ   y=778 -->
+        <mxCell id="309" value="9" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1"><mxGeometry x="30" y="766" width="24" height="24" as="geometry"/></mxCell>
+        <mxCell id="409" value="" style="endArrow=block;endFill=1;strokeColor=#F9A825;strokeWidth=2;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="275" y="778" as="sourcePoint"/><mxPoint x="740" y="778" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="509" value="&lt;b&gt;Validate record against DQ rule suite&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=9;fontColor=#F9A825;" vertex="1" parent="1"><mxGeometry x="280" y="754" width="455" height="22" as="geometry"/></mxCell>
+        <mxCell id="609" value="null checks · type constraints · referential integrity · pattern rules · domain rules from YAML config" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;fontSize=8;fontColor=#666666;fontStyle=2;" vertex="1" parent="1"><mxGeometry x="280" y="782" width="455" height="18" as="geometry"/></mxCell>
+
+        <!-- Failure F1: DQ hard-block → Quarantine   y=818 -->
+        <mxCell id="451" value="" style="endArrow=block;endFill=1;dashed=1;strokeColor=#BF360C;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="740" y="818" as="sourcePoint"/><mxPoint x="1670" y="818" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="551" value="&lt;b&gt;if DQ hard-block → route original record to Quarantine Topic (reason=dq_hard_block · rule_id · record_key · raw_offset) · continue batch&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=8;fontColor=#BF360C;" vertex="1" parent="1"><mxGeometry x="745" y="794" width="920" height="22" as="geometry"/></mxCell>
+
+        <!-- Failure F2: Schema incompatible → Quarantine   y=840 -->
+        <mxCell id="452" value="" style="endArrow=block;endFill=1;dashed=1;strokeColor=#BF360C;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="740" y="840" as="sourcePoint"/><mxPoint x="1670" y="840" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="552" value="&lt;b&gt;if schema incompatible → route to Quarantine Topic (reason=schema_incompatible · schema_id · raw_offset) · continue batch&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=8;fontColor=#BF360C;" vertex="1" parent="1"><mxGeometry x="745" y="816" width="920" height="22" as="geometry"/></mxCell>
+
+        <!-- Step 10: DQ → ECS (pass)   y=870 -->
+        <mxCell id="310" value="10" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1"><mxGeometry x="30" y="858" width="24" height="24" as="geometry"/></mxCell>
+        <mxCell id="410" value="" style="endArrow=block;endFill=1;dashed=1;strokeColor=#AAAAAA;strokeWidth=2;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="740" y="870" as="sourcePoint"/><mxPoint x="275" y="870" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="510" value="&lt;b&gt;DQ pass · result scores returned&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=9;fontColor=#AAAAAA;" vertex="1" parent="1"><mxGeometry x="280" y="846" width="455" height="22" as="geometry"/></mxCell>
+        <mxCell id="610" value="rule_scores · DQ soft-warns emitted async to CloudWatch · record proceeds" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;fontSize=8;fontColor=#666666;fontStyle=2;" vertex="1" parent="1"><mxGeometry x="280" y="874" width="455" height="18" as="geometry"/></mxCell>
+
+        <!-- Step 11: ECS self — map CDC fields   y=940 -->
+        <mxCell id="311" value="11" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1"><mxGeometry x="30" y="928" width="24" height="24" as="geometry"/></mxCell>
+        <mxCell id="411" value="Map CDC envelope fields → canonical schema (YAML field mapping · type coercions · derived fields · _ods_op · _ods_ts_ms · _ods_source)" style="text;html=1;strokeColor=#00695C;fillColor=#E0F2F1;align=center;verticalAlign=middle;fontSize=8;fontColor=#004D40;fontStyle=1;rounded=1;" vertex="1" parent="1"><mxGeometry x="175" y="928" width="760" height="24" as="geometry"/></mxCell>
+
+        <!-- Failure F3: mapping failed → DLQ   y=965 -->
+        <mxCell id="453" value="" style="endArrow=block;endFill=1;dashed=1;strokeColor=#BF360C;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="275" y="965" as="sourcePoint"/><mxPoint x="1515" y="965" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="553" value="&lt;b&gt;if field mapping failed (config error · type mismatch) → abortTransaction() · route to S3 DLQ (reason=mapping_failure · raw_offset · source_schema_id) · alert IT&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=8;fontColor=#BF360C;" vertex="1" parent="1"><mxGeometry x="280" y="941" width="1230" height="22" as="geometry"/></mxCell>
+
+        <!-- Step 12: ECS self — classify SCD   y=1005 -->
+        <mxCell id="312" value="12" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1"><mxGeometry x="30" y="993" width="24" height="24" as="geometry"/></mxCell>
+        <mxCell id="412" value="Classify SCD event: new entity · update/change · late-arriving event (based on _ods_ts_ms vs state store watermark)" style="text;html=1;strokeColor=#00695C;fillColor=#E0F2F1;align=center;verticalAlign=middle;fontSize=8;fontColor=#004D40;fontStyle=1;rounded=1;" vertex="1" parent="1"><mxGeometry x="175" y="993" width="760" height="24" as="geometry"/></mxCell>
+
+        <!-- ===== PHASE 4 · ENRICH & SCD ===== -->
+        <mxCell id="704" value="Phase 4 · Enrich &amp; SCD — RocksDB State Lookup (per record)" style="text;html=1;strokeColor=#cccccc;fillColor=#f0f4f8;align=center;verticalAlign=middle;fontSize=9;fontColor=#37474F;fontStyle=3;rounded=1;" vertex="1" parent="1"><mxGeometry x="62" y="1033" width="1450" height="22" as="geometry"/></mxCell>
+
+        <!-- Step 13: ECS → SS (lookup state)   y=1073 -->
+        <mxCell id="313" value="13" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1"><mxGeometry x="30" y="1061" width="24" height="24" as="geometry"/></mxCell>
+        <mxCell id="413" value="" style="endArrow=block;endFill=1;strokeColor=#512DA8;strokeWidth=2;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="275" y="1073" as="sourcePoint"/><mxPoint x="1050" y="1073" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="513" value="&lt;b&gt;Lookup current entity state by business key&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=9;fontColor=#512DA8;" vertex="1" parent="1"><mxGeometry x="280" y="1049" width="765" height="22" as="geometry"/></mxCell>
+        <mxCell id="613" value="local RocksDB KeyValueStore · key = deterministic hash(business_key_fields) · O(1) disk-backed lookup" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;fontSize=8;fontColor=#666666;fontStyle=2;" vertex="1" parent="1"><mxGeometry x="280" y="1077" width="765" height="18" as="geometry"/></mxCell>
+
+        <!-- Step 14: SS → ECS (current state)   y=1143 -->
+        <mxCell id="314" value="14" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1"><mxGeometry x="30" y="1131" width="24" height="24" as="geometry"/></mxCell>
+        <mxCell id="414" value="" style="endArrow=block;endFill=1;dashed=1;strokeColor=#AAAAAA;strokeWidth=2;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="1050" y="1143" as="sourcePoint"/><mxPoint x="275" y="1143" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="514" value="&lt;b&gt;Current state returned (or null — new entity)&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=9;fontColor=#AAAAAA;" vertex="1" parent="1"><mxGeometry x="280" y="1119" width="765" height="22" as="geometry"/></mxCell>
+        <mxCell id="614" value="_ods_effective_from · _ods_scd_version · last_seen_ts_ms · entity fingerprint" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;fontSize=8;fontColor=#666666;fontStyle=2;" vertex="1" parent="1"><mxGeometry x="280" y="1147" width="765" height="18" as="geometry"/></mxCell>
+
+        <!-- Step 15: ECS self — apply SCD   y=1213 -->
+        <mxCell id="315" value="15" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1"><mxGeometry x="30" y="1201" width="24" height="24" as="geometry"/></mxCell>
+        <mxCell id="415" value="Apply SCD logic: set _ods_scd_type (1=new · 2=change · 3=late) · _ods_effective_from · _ods_scd_version · entity fingerprint" style="text;html=1;strokeColor=#00695C;fillColor=#E0F2F1;align=center;verticalAlign=middle;fontSize=8;fontColor=#004D40;fontStyle=1;rounded=1;" vertex="1" parent="1"><mxGeometry x="175" y="1201" width="870" height="24" as="geometry"/></mxCell>
+
+        <!-- Step 16: ECS → SS (write updated state)   y=1273 -->
+        <mxCell id="316" value="16" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1"><mxGeometry x="30" y="1261" width="24" height="24" as="geometry"/></mxCell>
+        <mxCell id="416" value="" style="endArrow=block;endFill=1;strokeColor=#512DA8;strokeWidth=2;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="275" y="1273" as="sourcePoint"/><mxPoint x="1050" y="1273" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="516" value="&lt;b&gt;Write updated entity state&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=9;fontColor=#512DA8;" vertex="1" parent="1"><mxGeometry x="280" y="1249" width="765" height="22" as="geometry"/></mxCell>
+        <mxCell id="616" value="new state · _ods_scd_version+1 · updated fingerprint · last_seen_ts_ms = _ods_ts_ms" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;fontSize=8;fontColor=#666666;fontStyle=2;" vertex="1" parent="1"><mxGeometry x="280" y="1277" width="765" height="18" as="geometry"/></mxCell>
+
+        <!-- Step 17: ECS → CL (replicate state)   y=1343 -->
+        <mxCell id="317" value="17" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1"><mxGeometry x="30" y="1331" width="24" height="24" as="geometry"/></mxCell>
+        <mxCell id="417" value="" style="endArrow=block;endFill=1;strokeColor=#7B1FA2;strokeWidth=2;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="275" y="1343" as="sourcePoint"/><mxPoint x="1205" y="1343" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="517" value="&lt;b&gt;Replicate state to changelog topic (async · within transaction)&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=9;fontColor=#7B1FA2;" vertex="1" parent="1"><mxGeometry x="280" y="1319" width="920" height="22" as="geometry"/></mxCell>
+        <mxCell id="617" value="Kafka Streams managed changelog · enables state restoration on restart from any replica · key = business_key_hash" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;fontSize=8;fontColor=#666666;fontStyle=2;" vertex="1" parent="1"><mxGeometry x="280" y="1347" width="920" height="18" as="geometry"/></mxCell>
+
+        <!-- ===== PHASE 5 · PRODUCE CANONICAL ===== -->
+        <mxCell id="705" value="Phase 5 · Produce Canonical — Write to K2 (within EOS v2 transaction)" style="text;html=1;strokeColor=#cccccc;fillColor=#f0f4f8;align=center;verticalAlign=middle;fontSize=9;fontColor=#37474F;fontStyle=3;rounded=1;" vertex="1" parent="1"><mxGeometry x="62" y="1383" width="1450" height="22" as="geometry"/></mxCell>
+
+        <!-- Step 18: ECS → K2 (produce)   y=1423 -->
+        <mxCell id="318" value="18" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1"><mxGeometry x="30" y="1411" width="24" height="24" as="geometry"/></mxCell>
+        <mxCell id="418" value="" style="endArrow=block;endFill=1;strokeColor=#880E4F;strokeWidth=2;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="275" y="1423" as="sourcePoint"/><mxPoint x="1360" y="1423" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="518" value="&lt;b&gt;produce() canonical Avro record (within transaction)&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=9;fontColor=#880E4F;" vertex="1" parent="1"><mxGeometry x="280" y="1399" width="1075" height="22" as="geometry"/></mxCell>
+        <mxCell id="618" value="Confluent wire format · canonical Avro · acks=all · idempotent producer · key = business_key_hash (consistent partitioning)" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;fontSize=8;fontColor=#666666;fontStyle=2;" vertex="1" parent="1"><mxGeometry x="280" y="1427" width="1075" height="18" as="geometry"/></mxCell>
+
+        <!-- Failure F4: K2 produce failed → abortTransaction → DLQ + IT   y=1463 -->
+        <mxCell id="454" value="" style="endArrow=block;endFill=1;dashed=1;strokeColor=#BF360C;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="1360" y="1463" as="sourcePoint"/><mxPoint x="1515" y="1463" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="554" value="&lt;b&gt;if produce() failed → abortTransaction() · route batch to S3 DLQ (reason=k2_produce_failure) · alert IT · ECS retries from last committed offset&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=8;fontColor=#BF360C;" vertex="1" parent="1"><mxGeometry x="280" y="1439" width="1230" height="22" as="geometry"/></mxCell>
+
+        <!-- Step 19: K2 → ECS (write confirmed)   y=1493 -->
+        <mxCell id="319" value="19" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1"><mxGeometry x="30" y="1481" width="24" height="24" as="geometry"/></mxCell>
+        <mxCell id="419" value="" style="endArrow=block;endFill=1;dashed=1;strokeColor=#AAAAAA;strokeWidth=2;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="1360" y="1493" as="sourcePoint"/><mxPoint x="275" y="1493" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="519" value="&lt;b&gt;Write confirmed (partition + provisional offset)&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=9;fontColor=#AAAAAA;" vertex="1" parent="1"><mxGeometry x="280" y="1469" width="1075" height="22" as="geometry"/></mxCell>
+        <mxCell id="619" value="record is in K2 but NOT yet visible to consumers — transaction not yet committed" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;fontSize=8;fontColor=#666666;fontStyle=2;" vertex="1" parent="1"><mxGeometry x="280" y="1497" width="1075" height="18" as="geometry"/></mxCell>
+
+        <!-- Step 20: ECS → OBS (audit log + metrics)   y=1563 -->
+        <mxCell id="320" value="20" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1"><mxGeometry x="30" y="1551" width="24" height="24" as="geometry"/></mxCell>
+        <mxCell id="420" value="" style="endArrow=block;endFill=1;strokeColor=#546E7A;strokeWidth=2;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="275" y="1563" as="sourcePoint"/><mxPoint x="895" y="1563" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="520" value="&lt;b&gt;Emit structured audit log + processing metrics&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=9;fontColor=#546E7A;" vertex="1" parent="1"><mxGeometry x="280" y="1539" width="610" height="22" as="geometry"/></mxCell>
+        <mxCell id="620" value="run_id · source_type=cdc · record_count · raw_offset · canonical_topic · scd_type · dq_scores · canonicalize_latency_ms" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;fontSize=8;fontColor=#666666;fontStyle=2;" vertex="1" parent="1"><mxGeometry x="280" y="1567" width="610" height="18" as="geometry"/></mxCell>
+
+        <!-- ===== PHASE 6 · COMMIT TRANSACTION (EOS v2) ===== -->
+        <mxCell id="706" value="Phase 6 · Commit Transaction — EOS v2 Atomic Offset + Produce Commit" style="text;html=1;strokeColor=#cccccc;fillColor=#f0f4f8;align=center;verticalAlign=middle;fontSize=9;fontColor=#37474F;fontStyle=3;rounded=1;" vertex="1" parent="1"><mxGeometry x="62" y="1603" width="1450" height="22" as="geometry"/></mxCell>
+
+        <!-- Step 21: ECS self — sendOffsetsToTransaction   y=1643 -->
+        <mxCell id="321" value="21" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1"><mxGeometry x="30" y="1631" width="24" height="24" as="geometry"/></mxCell>
+        <mxCell id="421" value="sendOffsetsToTransaction(consumerGroupMetadata, rawTopicOffsets) — associates raw topic consumer offset commit with the open transaction" style="text;html=1;strokeColor=#00695C;fillColor=#E0F2F1;align=center;verticalAlign=middle;fontSize=8;fontColor=#004D40;fontStyle=1;rounded=1;" vertex="1" parent="1"><mxGeometry x="175" y="1631" width="1080" height="24" as="geometry"/></mxCell>
+
+        <!-- Step 22: ECS self — commitTransaction   y=1703 -->
+        <mxCell id="322" value="22" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1"><mxGeometry x="30" y="1691" width="24" height="24" as="geometry"/></mxCell>
+        <mxCell id="422" value="commitTransaction() — atomic: canonical records become visible on K2 AND raw topic consumer offset advanced simultaneously · EOS v2 guarantees" style="text;html=1;strokeColor=none;fillColor=#B2DFDB;strokeColor=#00695C;align=center;verticalAlign=middle;fontSize=8;fontColor=#004D40;fontStyle=1;rounded=1;" vertex="1" parent="1"><mxGeometry x="175" y="1691" width="1080" height="24" as="geometry"/></mxCell>
+
+        <!-- Failure F5: commitTransaction failed → abortTransaction → DLQ + IT   y=1733 -->
+        <mxCell id="455" value="" style="endArrow=block;endFill=1;dashed=1;strokeColor=#BF360C;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="275" y="1733" as="sourcePoint"/><mxPoint x="1515" y="1733" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="555" value="&lt;b&gt;if commitTransaction() failed → ECS retries (idempotent) — if retry limit exceeded: route to S3 DLQ (reason=commit_failure) · alert IT · restart from last committed offset&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=8;fontColor=#BF360C;" vertex="1" parent="1"><mxGeometry x="280" y="1709" width="1230" height="22" as="geometry"/></mxCell>
+
+        <!-- Step 23: ECS → K1 (offset commit confirmed)   y=1773 -->
+        <mxCell id="323" value="23" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1"><mxGeometry x="30" y="1761" width="24" height="24" as="geometry"/></mxCell>
+        <mxCell id="423" value="" style="endArrow=block;endFill=1;strokeColor=#00695C;strokeWidth=2;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="275" y="1773" as="sourcePoint"/><mxPoint x="120" y="1773" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="523" value="&lt;b&gt;Raw topic consumer offset committed (via EOS transaction)&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=9;fontColor=#00695C;" vertex="1" parent="1"><mxGeometry x="125" y="1749" width="145" height="22" as="geometry"/></mxCell>
+        <mxCell id="623" value="offset advanced to next unprocessed record · batch complete · loop back to step 4" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;fontSize=8;fontColor=#666666;fontStyle=2;" vertex="1" parent="1"><mxGeometry x="125" y="1777" width="145" height="26" as="geometry"/></mxCell>
+
+        <!-- ===== FAILURE F6: ECS crash — restart note ===== -->
+        <mxCell id="456" value="ECS crash / restart: Kafka Streams restores RocksDB state from changelog topic · resumes from last committed offset (via EOS) · no manual intervention required for transient failures" style="text;html=1;strokeColor=#C62828;fillColor=#FFCDD2;align=center;verticalAlign=middle;fontSize=8;fontColor=#B71C1C;fontStyle=2;rounded=1;" vertex="1" parent="1"><mxGeometry x="62" y="1820" width="1450" height="26" as="geometry"/></mxCell>
+
+        <!-- ===== FOOTER NOTES ===== -->
+        <mxCell id="800" value="↓ Canonical topic ods.{domain}.{dataset} consumed by ods-kafka-sink-connector → Iceberg (S3) + PostgreSQL  (see ods-kafka-sink-sequence)" style="text;html=1;strokeColor=#880E4F;fillColor=#F8BBD9;align=center;verticalAlign=middle;fontSize=9;fontColor=#880E4F;fontStyle=3;rounded=1;" vertex="1" parent="1"><mxGeometry x="62" y="1862" width="1450" height="24" as="geometry"/></mxCell>
+
+        <mxCell id="801" value="⚙ EOS v2: steps 8 (beginTransaction) → 22 (commitTransaction) are atomic. If crash occurs mid-batch, transaction is aborted by broker. ECS restarts from last committed offset. No duplicates on K2. Quarantine records are intentionally outside the transaction to preserve originals for replay." style="text;html=1;strokeColor=#00695C;fillColor=#E0F2F1;align=center;verticalAlign=middle;fontSize=8;fontColor=#004D40;fontStyle=2;rounded=1;" vertex="1" parent="1"><mxGeometry x="62" y="1894" width="1450" height="28" as="geometry"/></mxCell>
+
+        <mxCell id="802" value="⚠ Quarantine topic (replayable): records routed here preserve the original raw CDC payload + failure context. A separate replay service can reprocess quarantined records after config/schema fixes — without re-reading from the source CDC system." style="text;html=1;strokeColor=#E65100;fillColor=#FFE0B2;align=center;verticalAlign=middle;fontSize=8;fontColor=#BF360C;fontStyle=2;rounded=1;" vertex="1" parent="1"><mxGeometry x="62" y="1930" width="1450" height="28" as="geometry"/></mxCell>
+
+        <mxCell id="803" value="↑ See ods-kafka-canonical-overview for high-level phase summary and technology map" style="text;html=1;strokeColor=#856404;fillColor=#fff3cd;align=center;verticalAlign=middle;fontSize=8;fontColor=#533f03;fontStyle=3;rounded=1;" vertex="1" parent="1"><mxGeometry x="62" y="1966" width="1450" height="22" as="geometry"/></mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

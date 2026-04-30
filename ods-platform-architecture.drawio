@@ -1,0 +1,515 @@
+<mxfile host="app.diagrams.net" modified="2026-04-16T00:00:00.000Z" agent="Claude" version="21.0" type="device">
+
+  <!-- ================================================================
+       PAGE 1: INGESTION PIPELINE
+       SFTP → S3 Raw → Glue ETL → S3 Curated → (Publish handoff)
+       ================================================================ -->
+  <diagram id="page-ingestion" name="Ingestion Pipeline">
+    <mxGraphModel dx="1422" dy="762" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1920" pageHeight="1080" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <!-- Title -->
+        <mxCell id="ing-title" value="ODS Ingestion Pipeline" style="text;html=1;align=center;verticalAlign=middle;resizable=0;strokeColor=none;fillColor=none;fontSize=22;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="620" y="10" width="380" height="42" as="geometry"/>
+        </mxCell>
+
+        <!-- Phase background boxes (visual only, not parents) -->
+        <mxCell id="ing-ph1-bg" value="1 · Detect &amp; Transfer" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#EBF3FB;strokeColor=#6C8EBF;opacity=80;fontSize=13;fontStyle=1;verticalAlign=top;pointerEvents=0;" vertex="1" parent="1">
+          <mxGeometry x="120" y="70" width="495" height="370" as="geometry"/>
+        </mxCell>
+        <mxCell id="ing-ph2-bg" value="2 · ETL" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#EBF3FB;strokeColor=#6C8EBF;opacity=80;fontSize=13;fontStyle=1;verticalAlign=top;pointerEvents=0;" vertex="1" parent="1">
+          <mxGeometry x="885" y="70" width="360" height="310" as="geometry"/>
+        </mxCell>
+
+        <!-- SFTP Server (on-premises, non-AWS) -->
+        <mxCell id="ing-sftp" value="Internal&#xa;SFTP Server&#xa;(on-prem)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="18" y="215" width="82" height="55" as="geometry"/>
+        </mxCell>
+
+        <!-- Airflow SFTP Sensor (MWAA) -->
+        <mxCell id="ing-sensor" value="Airflow&#xa;SFTP Sensor&#xa;(MWAA)" style="outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=none;fillColor=#FF9900;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;verticalLabelPosition=bottom;verticalAlign=top;resIcon=mxgraph.aws4.managed_workflows_for_apache_airflow;" vertex="1" parent="1">
+          <mxGeometry x="140" y="112" width="60" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- PostgreSQL — file_catalogue (whitelist) -->
+        <mxCell id="ing-pg-cat" value="PostgreSQL&#xa;file_catalogue&#xa;(whitelist)" style="outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=none;fillColor=#C925D1;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;verticalLabelPosition=bottom;verticalAlign=top;resIcon=mxgraph.aws4.rds;" vertex="1" parent="1">
+          <mxGeometry x="280" y="92" width="60" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- PostgreSQL — ingestion_file_state (idempotency) -->
+        <mxCell id="ing-pg-state" value="PostgreSQL&#xa;ingestion_file_state&#xa;(idempotency)" style="outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=none;fillColor=#C925D1;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;verticalLabelPosition=bottom;verticalAlign=top;resIcon=mxgraph.aws4.rds;" vertex="1" parent="1">
+          <mxGeometry x="280" y="225" width="60" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- SFTPToS3Operator + MD5 Checksum -->
+        <mxCell id="ing-op" value="SFTPToS3Operator&#xa;+ MD5 Checksum" style="outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=none;fillColor=#FF9900;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;verticalLabelPosition=bottom;verticalAlign=top;resIcon=mxgraph.aws4.managed_workflows_for_apache_airflow;" vertex="1" parent="1">
+          <mxGeometry x="435" y="162" width="60" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- S3 Quarantine (failure: not approved / checksum mismatch) -->
+        <mxCell id="ing-quar" value="S3 Quarantine&#xa;ods-quarantine-{env}" style="outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=none;fillColor=#569A31;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;verticalLabelPosition=bottom;verticalAlign=top;resIcon=mxgraph.aws4.s3;" vertex="1" parent="1">
+          <mxGeometry x="280" y="358" width="60" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- Already processed exit -->
+        <mxCell id="ing-skip" value="already processed&#xa;(skip)" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f8d7da;strokeColor=#dc3545;fontColor=#721c24;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="140" y="362" width="118" height="48" as="geometry"/>
+        </mxCell>
+
+        <!-- S3 Raw Zone -->
+        <mxCell id="ing-s3raw" value="S3 Raw Zone&#xa;ods-raw-{env}&#xa;(permanent archive)" style="outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=none;fillColor=#569A31;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;verticalLabelPosition=bottom;verticalAlign=top;resIcon=mxgraph.aws4.s3;" vertex="1" parent="1">
+          <mxGeometry x="660" y="182" width="70" height="70" as="geometry"/>
+        </mxCell>
+
+        <!-- EventBridge Rule 1 — ods-raw-file-rule -->
+        <mxCell id="ing-eb1" value="EventBridge&#xa;ods-raw-file-rule-{env}" style="outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=none;fillColor=#E7157B;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;verticalLabelPosition=bottom;verticalAlign=top;resIcon=mxgraph.aws4.eventbridge;" vertex="1" parent="1">
+          <mxGeometry x="778" y="182" width="70" height="70" as="geometry"/>
+        </mxCell>
+
+        <!-- Airflow DAG 2 (MWAA) -->
+        <mxCell id="ing-airflow2" value="Airflow DAG 2&#xa;(MWAA)" style="outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=none;fillColor=#FF9900;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;verticalLabelPosition=bottom;verticalAlign=top;resIcon=mxgraph.aws4.managed_workflows_for_apache_airflow;" vertex="1" parent="1">
+          <mxGeometry x="905" y="112" width="60" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- S3 Config (versioned) -->
+        <mxCell id="ing-s3cfg" value="S3 Config&#xa;(versioned)" style="outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=none;fillColor=#569A31;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;verticalLabelPosition=bottom;verticalAlign=top;resIcon=mxgraph.aws4.s3;" vertex="1" parent="1">
+          <mxGeometry x="1025" y="92" width="60" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- Glue ETL Job (CSV → Parquet) -->
+        <mxCell id="ing-glue" value="Glue ETL Job&#xa;CSV → Parquet" style="outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=none;fillColor=#8C4FFF;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;verticalLabelPosition=bottom;verticalAlign=top;resIcon=mxgraph.aws4.glue;" vertex="1" parent="1">
+          <mxGeometry x="1140" y="170" width="60" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- S3 DLQ (ETL schema failure) -->
+        <mxCell id="ing-dlq" value="S3 DLQ&#xa;ods-dlq-{env}" style="outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=none;fillColor=#569A31;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;verticalLabelPosition=bottom;verticalAlign=top;resIcon=mxgraph.aws4.s3;" vertex="1" parent="1">
+          <mxGeometry x="1140" y="310" width="60" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- S3 Curated Zone -->
+        <mxCell id="ing-s3cur" value="S3 Curated Zone&#xa;ods-curated-{env}" style="outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=none;fillColor=#569A31;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;verticalLabelPosition=bottom;verticalAlign=top;resIcon=mxgraph.aws4.s3;" vertex="1" parent="1">
+          <mxGeometry x="1305" y="142" width="70" height="70" as="geometry"/>
+        </mxCell>
+
+        <!-- Glue Data Catalog -->
+        <mxCell id="ing-glue-cat" value="Glue Data Catalog&#xa;ods_{domain}" style="outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=none;fillColor=#8C4FFF;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;verticalLabelPosition=bottom;verticalAlign=top;resIcon=mxgraph.aws4.glue;" vertex="1" parent="1">
+          <mxGeometry x="1305" y="272" width="60" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- MSK Audit Topic -->
+        <mxCell id="ing-msk-audit" value="MSK Audit Topic&#xa;ods.pipeline.audit" style="outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=none;fillColor=#8C4FFF;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;verticalLabelPosition=bottom;verticalAlign=top;resIcon=mxgraph.aws4.msk;" vertex="1" parent="1">
+          <mxGeometry x="1305" y="392" width="60" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- EventBridge Rule 2 — ods-curated-file-rule -->
+        <mxCell id="ing-eb2" value="EventBridge&#xa;ods-curated-file-rule-{env}" style="outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=none;fillColor=#E7157B;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;verticalLabelPosition=bottom;verticalAlign=top;resIcon=mxgraph.aws4.eventbridge;" vertex="1" parent="1">
+          <mxGeometry x="1432" y="142" width="70" height="70" as="geometry"/>
+        </mxCell>
+
+        <!-- Publish Pipeline handoff (amber) -->
+        <mxCell id="ing-pub-hoff" value="→ Publish Pipeline" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff3cd;strokeColor=#856404;fontColor=#533f03;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1562" y="157" width="155" height="42" as="geometry"/>
+        </mxCell>
+
+        <!-- ===== EDGES — Happy Path ===== -->
+        <mxCell id="e-ing-1" style="edgeStyle=orthogonalEdgeStyle;html=1;" edge="1" source="ing-sftp" target="ing-sensor" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-ing-2" value="check approved?" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" source="ing-sensor" target="ing-pg-cat" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-ing-3" value="approved" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" source="ing-pg-cat" target="ing-pg-state" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-ing-4" value="state=new" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" source="ing-pg-state" target="ing-op" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-ing-5" value="copy CSV" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" source="ing-op" target="ing-s3raw" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-ing-6" value="Object Created" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" source="ing-s3raw" target="ing-eb1" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-ing-7" value="trigger DAG 2" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" source="ing-eb1" target="ing-airflow2" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-ing-8" value="pin version" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" source="ing-airflow2" target="ing-s3cfg" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-ing-9" value="trigger" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" source="ing-s3cfg" target="ing-glue" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-ing-10" value="write Parquet" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" source="ing-glue" target="ing-s3cur" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-ing-11" value="register" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" source="ing-glue" target="ing-glue-cat" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-ing-12" value="success" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" source="ing-glue" target="ing-msk-audit" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-ing-13" value="Object Created" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" source="ing-s3cur" target="ing-eb2" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-ing-14" value="trigger Publish DAG" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" source="ing-eb2" target="ing-pub-hoff" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- ===== EDGES — Failure Paths (red) ===== -->
+        <mxCell id="e-ing-f1" value="not approved" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;strokeColor=#dc3545;fontColor=#dc3545;" edge="1" source="ing-pg-cat" target="ing-quar" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-ing-f2" value="state=completed" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;strokeColor=#dc3545;fontColor=#dc3545;" edge="1" source="ing-pg-state" target="ing-skip" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-ing-f3" value="checksum mismatch" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;strokeColor=#dc3545;fontColor=#dc3545;" edge="1" source="ing-op" target="ing-quar" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-ing-f4" value="schema fail" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;strokeColor=#dc3545;fontColor=#dc3545;" edge="1" source="ing-glue" target="ing-dlq" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- Colour legend -->
+        <mxCell id="ing-leg-title" value="Legend" style="text;html=1;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="18" y="460" width="80" height="20" as="geometry"/>
+        </mxCell>
+        <mxCell id="ing-leg-1" value="Airflow / Compute" style="rounded=1;fillColor=#FF9900;strokeColor=#E6821E;fontColor=#ffffff;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="18" y="485" width="145" height="26" as="geometry"/>
+        </mxCell>
+        <mxCell id="ing-leg-2" value="S3 Storage" style="rounded=1;fillColor=#569A31;strokeColor=#3C7A24;fontColor=#ffffff;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="18" y="517" width="145" height="26" as="geometry"/>
+        </mxCell>
+        <mxCell id="ing-leg-3" value="Analytics / Glue / MSK" style="rounded=1;fillColor=#8C4FFF;strokeColor=#6236C3;fontColor=#ffffff;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="18" y="549" width="145" height="26" as="geometry"/>
+        </mxCell>
+        <mxCell id="ing-leg-4" value="Database / PostgreSQL" style="rounded=1;fillColor=#C925D1;strokeColor=#97139B;fontColor=#ffffff;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="18" y="581" width="145" height="26" as="geometry"/>
+        </mxCell>
+        <mxCell id="ing-leg-5" value="App Integration / EventBridge" style="rounded=1;fillColor=#E7157B;strokeColor=#B50E5E;fontColor=#ffffff;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="18" y="613" width="145" height="26" as="geometry"/>
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+
+  <!-- ================================================================
+       PAGE 2: PUBLISH PIPELINE (S3 → Kafka)
+       S3 Curated → EventBridge → MWAA → Glue Validate+Publish → MSK
+       ================================================================ -->
+  <diagram id="page-publish" name="Publish Pipeline">
+    <mxGraphModel dx="1422" dy="762" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1920" pageHeight="1080" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <!-- Title -->
+        <mxCell id="pub-title" value="ODS Publish Pipeline (S3 → Kafka)" style="text;html=1;align=center;verticalAlign=middle;resizable=0;strokeColor=none;fillColor=none;fontSize=22;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="550" y="10" width="500" height="42" as="geometry"/>
+        </mxCell>
+
+        <!-- From Ingestion label -->
+        <mxCell id="pub-from-ing" value="← from Ingestion&#xa;Pipeline" style="text;html=1;align=center;fontSize=10;fontStyle=2;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="12" y="165" width="95" height="36" as="geometry"/>
+        </mxCell>
+
+        <!-- Phase background boxes -->
+        <mxCell id="pub-ph1-bg" value="1 · Detect &amp; Guard" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#EBF3FB;strokeColor=#6C8EBF;opacity=80;fontSize=13;fontStyle=1;verticalAlign=top;pointerEvents=0;" vertex="1" parent="1">
+          <mxGeometry x="120" y="70" width="295" height="360" as="geometry"/>
+        </mxCell>
+        <mxCell id="pub-ph2-bg" value="2 · Orchestrate" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#EBF3FB;strokeColor=#6C8EBF;opacity=80;fontSize=13;fontStyle=1;verticalAlign=top;pointerEvents=0;" vertex="1" parent="1">
+          <mxGeometry x="460" y="70" width="230" height="285" as="geometry"/>
+        </mxCell>
+        <mxCell id="pub-ph3-bg" value="3 · Glue Processing" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#EBF3FB;strokeColor=#6C8EBF;opacity=80;fontSize=13;fontStyle=1;verticalAlign=top;pointerEvents=0;" vertex="1" parent="1">
+          <mxGeometry x="740" y="70" width="350" height="285" as="geometry"/>
+        </mxCell>
+        <mxCell id="pub-ph4-bg" value="4 · Post-Publish" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#EBF3FB;strokeColor=#6C8EBF;opacity=80;fontSize=13;fontStyle=1;verticalAlign=top;pointerEvents=0;" vertex="1" parent="1">
+          <mxGeometry x="1240" y="70" width="340" height="370" as="geometry"/>
+        </mxCell>
+
+        <!-- S3 Curated (source — from ingestion) -->
+        <mxCell id="pub-s3cur" value="S3 Curated Zone&#xa;ods-curated-{env}" style="outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=none;fillColor=#569A31;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;verticalLabelPosition=bottom;verticalAlign=top;resIcon=mxgraph.aws4.s3;" vertex="1" parent="1">
+          <mxGeometry x="18" y="188" width="70" height="70" as="geometry"/>
+        </mxCell>
+
+        <!-- EventBridge -->
+        <mxCell id="pub-eb" value="EventBridge&#xa;ods-curated-file-rule" style="outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=none;fillColor=#E7157B;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;verticalLabelPosition=bottom;verticalAlign=top;resIcon=mxgraph.aws4.eventbridge;" vertex="1" parent="1">
+          <mxGeometry x="143" y="112" width="60" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- PostgreSQL — file_state (idempotency) -->
+        <mxCell id="pub-pg" value="PostgreSQL&#xa;file_state&#xa;(idempotency)" style="outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=none;fillColor=#C925D1;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;verticalLabelPosition=bottom;verticalAlign=top;resIcon=mxgraph.aws4.rds;" vertex="1" parent="1">
+          <mxGeometry x="293" y="112" width="60" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- Already processed exit -->
+        <mxCell id="pub-skip" value="already processed&#xa;(skip)" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f8d7da;strokeColor=#dc3545;fontColor=#721c24;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="158" y="362" width="118" height="48" as="geometry"/>
+        </mxCell>
+
+        <!-- Airflow DAG (MWAA) -->
+        <mxCell id="pub-airflow" value="Airflow DAG&#xa;(MWAA)" style="outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=none;fillColor=#FF9900;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;verticalLabelPosition=bottom;verticalAlign=top;resIcon=mxgraph.aws4.managed_workflows_for_apache_airflow;" vertex="1" parent="1">
+          <mxGeometry x="480" y="112" width="60" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- S3 Config (versioned) -->
+        <mxCell id="pub-s3cfg" value="S3 Config&#xa;(versioned)" style="outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=none;fillColor=#569A31;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;verticalLabelPosition=bottom;verticalAlign=top;resIcon=mxgraph.aws4.s3;" vertex="1" parent="1">
+          <mxGeometry x="610" y="112" width="60" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- Glue — Schema Validation (Glue Schema Registry) -->
+        <mxCell id="pub-schema" value="Glue Job&#xa;Schema Validation&#xa;(Schema Registry)" style="outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=none;fillColor=#8C4FFF;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;verticalLabelPosition=bottom;verticalAlign=top;resIcon=mxgraph.aws4.glue;" vertex="1" parent="1">
+          <mxGeometry x="760" y="108" width="60" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- Glue Schema Registry (supporting) -->
+        <mxCell id="pub-sr" value="Glue Schema Registry&#xa;ods-schema-registry-{env}" style="outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=none;fillColor=#8C4FFF;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;verticalLabelPosition=bottom;verticalAlign=top;resIcon=mxgraph.aws4.glue;" vertex="1" parent="1">
+          <mxGeometry x="760" y="225" width="60" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- Glue — Data Quality -->
+        <mxCell id="pub-dq" value="Glue Job&#xa;Data Quality&#xa;(hard block)" style="outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=none;fillColor=#8C4FFF;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;verticalLabelPosition=bottom;verticalAlign=top;resIcon=mxgraph.aws4.glue;" vertex="1" parent="1">
+          <mxGeometry x="890" y="108" width="60" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- Glue — Publish to MSK (Kafka transactions, acks=all) -->
+        <mxCell id="pub-publish" value="Glue Job&#xa;Publish to MSK&#xa;(Kafka transactions)" style="outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=none;fillColor=#8C4FFF;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;verticalLabelPosition=bottom;verticalAlign=top;resIcon=mxgraph.aws4.glue;" vertex="1" parent="1">
+          <mxGeometry x="1015" y="108" width="60" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- MSK Canonical Topic (output) -->
+        <mxCell id="pub-msk" value="MSK Canonical Topic&#xa;ods.{domain}.{dataset}&#xa;(Avro · acks=all)" style="outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=none;fillColor=#8C4FFF;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;verticalLabelPosition=bottom;verticalAlign=top;resIcon=mxgraph.aws4.msk;" vertex="1" parent="1">
+          <mxGeometry x="1148" y="175" width="70" height="70" as="geometry"/>
+        </mxCell>
+
+        <!-- Glue Data Catalog -->
+        <mxCell id="pub-glue-cat" value="Glue Data Catalog&#xa;ods_{domain}" style="outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=none;fillColor=#8C4FFF;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;verticalLabelPosition=bottom;verticalAlign=top;resIcon=mxgraph.aws4.glue;" vertex="1" parent="1">
+          <mxGeometry x="1262" y="112" width="60" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- Glue Crawler (async) -->
+        <mxCell id="pub-crawler" value="Glue Crawler&#xa;(async)" style="outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=none;fillColor=#8C4FFF;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;verticalLabelPosition=bottom;verticalAlign=top;resIcon=mxgraph.aws4.glue;" vertex="1" parent="1">
+          <mxGeometry x="1262" y="245" width="60" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- MSK Audit Topic -->
+        <mxCell id="pub-msk-audit" value="MSK Audit Topic&#xa;ods.pipeline.audit" style="outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=none;fillColor=#8C4FFF;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;verticalLabelPosition=bottom;verticalAlign=top;resIcon=mxgraph.aws4.msk;" vertex="1" parent="1">
+          <mxGeometry x="1440" y="112" width="60" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- S3 DLQ -->
+        <mxCell id="pub-dlq" value="S3 DLQ&#xa;ods-dlq-{env}" style="outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=none;fillColor=#569A31;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;verticalLabelPosition=bottom;verticalAlign=top;resIcon=mxgraph.aws4.s3;" vertex="1" parent="1">
+          <mxGeometry x="890" y="430" width="60" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- ===== EDGES — Happy Path ===== -->
+        <mxCell id="e-pub-1" value="Object Created" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" source="pub-s3cur" target="pub-eb" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-pub-2" value="trigger DAG" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" source="pub-eb" target="pub-pg" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-pub-3" value="state=new · proceed" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" source="pub-pg" target="pub-airflow" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-pub-4" value="pin version" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" source="pub-airflow" target="pub-s3cfg" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-pub-5" value="trigger Glue job" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" source="pub-s3cfg" target="pub-schema" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-pub-5b" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;dashed=1;" edge="1" source="pub-sr" target="pub-schema" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-pub-6" value="valid" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" source="pub-schema" target="pub-dq" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-pub-7" value="pass" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" source="pub-dq" target="pub-publish" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-pub-8" value="publish" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" source="pub-publish" target="pub-msk" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-pub-9" value="register" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" source="pub-publish" target="pub-glue-cat" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-pub-10" value="async" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" source="pub-glue-cat" target="pub-crawler" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-pub-11" value="success" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" source="pub-publish" target="pub-msk-audit" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- ===== EDGES — Failure Paths (red) ===== -->
+        <mxCell id="e-pub-f1" value="state=completed" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;strokeColor=#dc3545;fontColor=#dc3545;" edge="1" source="pub-pg" target="pub-skip" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-pub-f2" value="breaking change" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;strokeColor=#dc3545;fontColor=#dc3545;" edge="1" source="pub-schema" target="pub-dlq" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-pub-f3" value="hard block" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;strokeColor=#dc3545;fontColor=#dc3545;" edge="1" source="pub-dq" target="pub-dlq" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-pub-f4" value="count mismatch" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;strokeColor=#dc3545;fontColor=#dc3545;" edge="1" source="pub-publish" target="pub-dlq" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+
+  <!-- ================================================================
+       PAGE 3: KAFKA SINK PIPELINE
+       MSK Topic → MSK Connect → S3 Iceberg + PostgreSQL
+       ================================================================ -->
+  <diagram id="page-sink" name="Kafka Sink">
+    <mxGraphModel dx="1422" dy="762" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1920" pageHeight="1080" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <!-- Title -->
+        <mxCell id="snk-title" value="ODS Kafka Sink Pipeline (MSK → Iceberg + PostgreSQL)" style="text;html=1;align=center;verticalAlign=middle;resizable=0;strokeColor=none;fillColor=none;fontSize=22;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="380" y="10" width="760" height="42" as="geometry"/>
+        </mxCell>
+
+        <!-- From Publish label -->
+        <mxCell id="snk-from-pub" value="← from Publish&#xa;Pipeline" style="text;html=1;align=center;fontSize=10;fontStyle=2;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="10" y="192" width="95" height="36" as="geometry"/>
+        </mxCell>
+
+        <!-- Phase background boxes -->
+        <mxCell id="snk-ph1-bg" value="1 · Consume &amp; Deserialise" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#EBF3FB;strokeColor=#6C8EBF;opacity=80;fontSize=13;fontStyle=1;verticalAlign=top;pointerEvents=0;" vertex="1" parent="1">
+          <mxGeometry x="120" y="70" width="400" height="415" as="geometry"/>
+        </mxCell>
+        <mxCell id="snk-ph2a-bg" value="2a · Iceberg Write" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E8F8E8;strokeColor=#28A745;opacity=80;fontSize=13;fontStyle=1;verticalAlign=top;pointerEvents=0;" vertex="1" parent="1">
+          <mxGeometry x="580" y="70" width="300" height="315" as="geometry"/>
+        </mxCell>
+        <mxCell id="snk-ph2b-bg" value="2b · JDBC Write" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E8F8E8;strokeColor=#28A745;opacity=80;fontSize=13;fontStyle=1;verticalAlign=top;pointerEvents=0;" vertex="1" parent="1">
+          <mxGeometry x="580" y="445" width="220" height="190" as="geometry"/>
+        </mxCell>
+        <mxCell id="snk-ph3-bg" value="3 · Post-Write" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#EBF3FB;strokeColor=#6C8EBF;opacity=80;fontSize=13;fontStyle=1;verticalAlign=top;pointerEvents=0;" vertex="1" parent="1">
+          <mxGeometry x="960" y="70" width="390" height="575" as="geometry"/>
+        </mxCell>
+
+        <!-- MSK Canonical Topic (source) -->
+        <mxCell id="snk-msk-src" value="MSK Canonical Topic&#xa;ods.{domain}.{dataset}&#xa;(Avro · canonical)" style="outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=none;fillColor=#8C4FFF;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;verticalLabelPosition=bottom;verticalAlign=top;resIcon=mxgraph.aws4.msk;" vertex="1" parent="1">
+          <mxGeometry x="18" y="215" width="70" height="70" as="geometry"/>
+        </mxCell>
+
+        <!-- Glue Schema Registry -->
+        <mxCell id="snk-sr" value="Glue Schema Registry&#xa;ods-schema-registry-{env}&#xa;(Avro · Confluent wire)" style="outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=none;fillColor=#8C4FFF;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;verticalLabelPosition=bottom;verticalAlign=top;resIcon=mxgraph.aws4.glue;" vertex="1" parent="1">
+          <mxGeometry x="145" y="112" width="60" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- Iceberg Sink Connector (MSK Connect) -->
+        <mxCell id="snk-iceberg-con" value="MSK Connect&#xa;Iceberg Sink Connector&#xa;(own consumer group)" style="outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=none;fillColor=#8C4FFF;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;verticalLabelPosition=bottom;verticalAlign=top;resIcon=mxgraph.aws4.msk;" vertex="1" parent="1">
+          <mxGeometry x="340" y="112" width="60" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- JDBC Sink Connector (MSK Connect) -->
+        <mxCell id="snk-jdbc-con" value="MSK Connect&#xa;JDBC Sink Connector&#xa;(own consumer group)" style="outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=none;fillColor=#8C4FFF;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;verticalLabelPosition=bottom;verticalAlign=top;resIcon=mxgraph.aws4.msk;" vertex="1" parent="1">
+          <mxGeometry x="340" y="295" width="60" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- S3 Iceberg Table -->
+        <mxCell id="snk-s3i" value="S3 Iceberg Table&#xa;ods-iceberg-{env}&#xa;(Parquet · partitioned)" style="outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=none;fillColor=#569A31;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;verticalLabelPosition=bottom;verticalAlign=top;resIcon=mxgraph.aws4.s3;" vertex="1" parent="1">
+          <mxGeometry x="600" y="112" width="60" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- Glue Data Catalog -->
+        <mxCell id="snk-glue-cat" value="Glue Data Catalog&#xa;ods_{domain}" style="outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=none;fillColor=#8C4FFF;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;verticalLabelPosition=bottom;verticalAlign=top;resIcon=mxgraph.aws4.glue;" vertex="1" parent="1">
+          <mxGeometry x="750" y="112" width="60" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- Glue Crawler (async) -->
+        <mxCell id="snk-crawler" value="Glue Crawler&#xa;(async)" style="outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=none;fillColor=#8C4FFF;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;verticalLabelPosition=bottom;verticalAlign=top;resIcon=mxgraph.aws4.glue;" vertex="1" parent="1">
+          <mxGeometry x="750" y="245" width="60" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- PostgreSQL — ODS operational data -->
+        <mxCell id="snk-pg" value="PostgreSQL&#xa;ods_{env}&#xa;{domain}.{dataset}" style="outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=none;fillColor=#C925D1;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;verticalLabelPosition=bottom;verticalAlign=top;resIcon=mxgraph.aws4.rds;" vertex="1" parent="1">
+          <mxGeometry x="617" y="492" width="60" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- MSK Audit Topic -->
+        <mxCell id="snk-msk-audit" value="MSK Audit Topic&#xa;ods.pipeline.audit" style="outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=none;fillColor=#8C4FFF;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;verticalLabelPosition=bottom;verticalAlign=top;resIcon=mxgraph.aws4.msk;" vertex="1" parent="1">
+          <mxGeometry x="982" y="112" width="60" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- S3 DLQ -->
+        <mxCell id="snk-dlq" value="S3 DLQ&#xa;ods-dlq-{env}" style="outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=none;fillColor=#569A31;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;verticalLabelPosition=bottom;verticalAlign=top;resIcon=mxgraph.aws4.s3;" vertex="1" parent="1">
+          <mxGeometry x="982" y="278" width="60" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- PostgreSQL — sink_connector_registry -->
+        <mxCell id="snk-registry" value="PostgreSQL&#xa;pipeline.sink_connector_registry&#xa;(status · offset · latency)" style="outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=none;fillColor=#C925D1;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;verticalLabelPosition=bottom;verticalAlign=top;resIcon=mxgraph.aws4.rds;" vertex="1" parent="1">
+          <mxGeometry x="1185" y="112" width="60" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- ===== EDGES — Happy Path ===== -->
+        <!-- MSK Topic → both connectors -->
+        <mxCell id="e-snk-1" value="poll · own&#xa;consumer group" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" source="snk-msk-src" target="snk-iceberg-con" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-snk-2" value="poll · own&#xa;consumer group" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" source="snk-msk-src" target="snk-jdbc-con" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <!-- Schema Registry → both connectors -->
+        <mxCell id="e-snk-3" value="schema by ID · cached" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;dashed=1;" edge="1" source="snk-sr" target="snk-iceberg-con" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-snk-4" value="schema by ID · cached" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;dashed=1;" edge="1" source="snk-sr" target="snk-jdbc-con" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <!-- Iceberg connector → S3 Iceberg -->
+        <mxCell id="e-snk-5" value="flush Parquet batch" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" source="snk-iceberg-con" target="snk-s3i" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <!-- S3 Iceberg → Glue Data Catalog -->
+        <mxCell id="e-snk-6" value="atomic snapshot commit" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" source="snk-s3i" target="snk-glue-cat" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <!-- Glue Data Catalog → Crawler -->
+        <mxCell id="e-snk-7" value="async" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" source="snk-glue-cat" target="snk-crawler" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <!-- JDBC connector → PostgreSQL -->
+        <mxCell id="e-snk-8" value="batch insert / upsert" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" source="snk-jdbc-con" target="snk-pg" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <!-- Both connectors → MSK Audit -->
+        <mxCell id="e-snk-9" value="offset commit&#xa;then audit" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" source="snk-iceberg-con" target="snk-msk-audit" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-snk-10" value="offset commit&#xa;then audit" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" source="snk-jdbc-con" target="snk-msk-audit" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <!-- Both connectors → Registry -->
+        <mxCell id="e-snk-11" value="update status · offset" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" source="snk-iceberg-con" target="snk-registry" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-snk-12" value="update status · offset" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" source="snk-jdbc-con" target="snk-registry" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- ===== EDGES — Failure Paths (red) ===== -->
+        <mxCell id="e-snk-f1" value="schema incompatible&#xa;(record to DLQ)" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;strokeColor=#dc3545;fontColor=#dc3545;" edge="1" source="snk-iceberg-con" target="snk-dlq" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-snk-f2" value="S3/PG write failure&#xa;(batch to DLQ · pauses)" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;strokeColor=#dc3545;fontColor=#dc3545;" edge="1" source="snk-jdbc-con" target="snk-dlq" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- Note: at-least-once guarantee -->
+        <mxCell id="snk-note" value="Offset commit: AFTER snapshot confirmed (Iceberg)&#xa;and AFTER PostgreSQL confirms write (JDBC).&#xa;Connector restart re-reads from last committed offset — safe to reprocess." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fffde7;strokeColor=#f0d000;fontSize=10;align=left;" vertex="1" parent="1">
+          <mxGeometry x="960" y="490" width="390" height="65" as="geometry"/>
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+
+</mxfile>

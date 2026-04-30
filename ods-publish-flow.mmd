@@ -1,0 +1,31 @@
+sequenceDiagram
+    participant S3C as S3 Curated Zone
+    participant AS as Airflow Sensor
+    participant DAG as Airflow DAG
+    participant CFG as YAML Config Files
+    participant GLUE as AWS Glue Job
+    participant SR as Schema Registry
+    participant KAFKA as Kafka Topic
+
+    S3C->>AS: New curated Parquet file
+    AS->>DAG: File detected
+
+    DAG->>CFG: Load publish configuration
+    CFG-->>DAG: Dataset metadata, topic, schema ID
+
+    DAG->>GLUE: Trigger Glue job (with config reference)
+
+    GLUE->>CFG: Load Glue processing config
+    CFG-->>GLUE: Source path, topic, key fields
+
+    GLUE->>SR: Fetch latest schema version
+    SR-->>GLUE: Schema + compatibility rules
+
+    GLUE->>GLUE: Validate schema compatibility
+    alt Incompatible schema
+        GLUE-->>DAG: Fail job (schema incompatibility)
+        DAG->>DAG: Alert / Block publish
+    else Compatible schema
+        GLUE->>GLUE: Generate message keys (idempotency)
+        GLUE->>KAFKA: Publish records (exactly-once semantics)
+    end
