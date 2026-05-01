@@ -5,6 +5,7 @@ dataset, business_date.
 from __future__ import annotations
 
 import os
+import sys
 import uuid
 
 import pendulum
@@ -15,9 +16,14 @@ from airflow.operators.python import get_current_context
 from airflow.providers.docker.operators.docker import DockerOperator
 from docker.types import Mount
 
+# Add repo root to sys.path so ods_pipeline package is importable
+_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
+import ods_pipeline
+
 from common.connect_admin import wait_until_offset_consumed
-from common.run_log import insert_run_header, update_run_header, write_stage
-from common.run_event_producer import produce_run_event
 
 
 PG_DSN = os.environ.get(
@@ -88,7 +94,7 @@ def init_run() -> dict:
             s3_curated_path = (
                 f"{dataset_curated_root.rstrip('/')}/date={conf['business_date']}/"
             )
-        insert_run_header(
+        ods_pipeline.runs.start(
             conn,
             run_id=run_id,
             pipeline_type="s3_batch",
@@ -101,7 +107,7 @@ def init_run() -> dict:
     finally:
         conn.close()
 
-    produce_run_event(
+    ods_pipeline.events.produce(
         "run_started",
         run_id=run_id,
         domain=conf["domain"],
@@ -133,9 +139,9 @@ def wait_sinks(ctx: dict) -> dict:
             # audit trail never silently retains the publish-job's
             # 'succeeded' status.
             try:
-                update_run_header(conn, ctx["run_id"], status="partial",
-                                  error_summary=f"wait_sinks aborted: {exc}")
-                write_stage(
+                ods_pipeline.runs.update(conn, ctx["run_id"], status="partial",
+                                         error_summary=f"wait_sinks aborted: {exc}")
+                ods_pipeline.stages.write(
                     conn,
                     run_id=ctx["run_id"],
                     stage="sink_pg_wait",
@@ -149,7 +155,7 @@ def wait_sinks(ctx: dict) -> dict:
             except Exception:
                 pass
             try:
-                produce_run_event(
+                ods_pipeline.events.produce(
                     "run_partial",
                     run_id=ctx["run_id"],
                     domain=ctx["domain"],
@@ -172,8 +178,8 @@ def _wait_sinks_inner(conn, ctx: dict) -> dict:
         )
         row = cur.fetchone()
     if not row or row[0] is None or row[1] is None:
-        update_run_header(conn, ctx["run_id"], status="partial")
-        write_stage(
+        ods_pipeline.runs.update(conn, ctx["run_id"], status="partial")
+        ods_pipeline.stages.write(
             conn,
             run_id=ctx["run_id"],
             stage="sink_pg_wait",
@@ -192,7 +198,7 @@ def _wait_sinks_inner(conn, ctx: dict) -> dict:
     ok_jdbc = wait_until_offset_consumed("jdbc-sink-policies", topic, target)
     ok_s3 = wait_until_offset_consumed("s3-sink-policies", topic, target)
 
-    write_stage(
+    ods_pipeline.stages.write(
         conn,
         run_id=ctx["run_id"],
         stage="sink_pg_wait",
@@ -203,7 +209,7 @@ def _wait_sinks_inner(conn, ctx: dict) -> dict:
         airflow_dag_id=ctx.get("airflow_dag_id"),
         airflow_run_id=ctx.get("airflow_run_id"),
     )
-    write_stage(
+    ods_pipeline.stages.write(
         conn,
         run_id=ctx["run_id"],
         stage="sink_s3_wait",
@@ -216,7 +222,7 @@ def _wait_sinks_inner(conn, ctx: dict) -> dict:
     )
 
     if not (ok_jdbc and ok_s3):
-        update_run_header(conn, ctx["run_id"], status="partial")
+        ods_pipeline.runs.update(conn, ctx["run_id"], status="partial")
         raise RuntimeError("sink wait failed")
     return ctx
 
@@ -225,7 +231,7 @@ def _wait_sinks_inner(conn, ctx: dict) -> dict:
 def finalise(ctx: dict) -> None:
     conn = psycopg2.connect(PG_DSN)
     try:
-        update_run_header(conn, ctx["run_id"], status="succeeded")
+        ods_pipeline.runs.update(conn, ctx["run_id"], status="succeeded")
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -239,7 +245,7 @@ def finalise(ctx: dict) -> None:
     finally:
         conn.close()
 
-    produce_run_event(
+    ods_pipeline.events.produce(
         "run_succeeded",
         run_id=ctx["run_id"],
         domain=ctx["domain"],

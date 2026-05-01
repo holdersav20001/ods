@@ -12,8 +12,6 @@ from utils import (
     generate_message_key,
     write_job_log,
     load_dataset_config,
-    set_file_state,
-    get_file_state,
 )
 
 
@@ -97,12 +95,4 @@ def test_load_dataset_config_missing_raises(pg):
     with pytest.raises(ValueError, match="No active config"):
         load_dataset_config(pg, "insurance", "nonexistent")
 
-@pytest.mark.skipif(not postgres_available(), reason="Postgres not running")
-def test_set_and_get_file_state(pg):
-    import uuid
-    run_id = str(uuid.uuid4())
-    s3_path = f"s3://ods-raw-local/test/{run_id}/test.csv"
-    set_file_state(pg, s3_path, run_id, "new")
-    assert get_file_state(pg, s3_path) == "new"
-    set_file_state(pg, s3_path, run_id, "completed", record_count=100)
-    assert get_file_state(pg, s3_path) == "completed"
+# set_file_state / get_file_state moved to ods_pipeline.files — see test_ods_pipeline.py

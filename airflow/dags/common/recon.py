@@ -1,5 +1,13 @@
+from __future__ import annotations
+import os, sys
 from dataclasses import dataclass
-from .run_log import write_recon
+
+# Ensure repo root is importable so ods_pipeline package is found
+_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
+import ods_pipeline
 
 @dataclass
 class T0Result:
@@ -13,7 +21,7 @@ def t0_check_publish(conn, *, run_id, domain, dataset, business_date,
     kafka_count = (kafka_offset_end or 0) - (kafka_offset_start or 0)
     discrepancy = kafka_count - source_count
     passed = discrepancy == 0
-    write_recon(
+    ods_pipeline.reconciliation.write_check(
         conn,
         check_type='t0_publish_count',
         run_id=run_id,

@@ -6,6 +6,7 @@ Triggered per-file by dag_drop_to_raw with conf:
 from __future__ import annotations
 
 import os
+import sys
 import uuid
 
 import pendulum
@@ -16,7 +17,12 @@ from airflow.operators.python import get_current_context
 from airflow.providers.docker.operators.docker import DockerOperator
 from docker.types import Mount
 
-from common.run_log import insert_run_header, update_run_header, write_stage
+# Add repo root to sys.path so ods_pipeline package is importable
+_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
+import ods_pipeline
 
 
 PG_DSN = os.environ.get(
@@ -80,7 +86,7 @@ def init_run() -> dict:
                 )
             slot_name, merge_dataset = cfg
 
-        insert_run_header(
+        ods_pipeline.runs.start(
             conn,
             run_id=run_id,
             pipeline_type="stage",
@@ -161,7 +167,7 @@ def prepare_merge(ctx: dict) -> dict:
 def finalise(ctx: dict) -> None:
     conn = psycopg2.connect(PG_DSN)
     try:
-        update_run_header(conn, ctx["run_id"], status="succeeded")
+        ods_pipeline.runs.update(conn, ctx["run_id"], status="succeeded")
         with conn.cursor() as cur:
             cur.execute(
                 "UPDATE pipeline.file_catalogue "
