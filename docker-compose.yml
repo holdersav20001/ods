@@ -19,6 +19,7 @@ x-airflow-common: &airflow-common
     DOCKER_HOST: unix:///var/run/docker.sock
     GLUE_JOBS_PATH: ${PWD}/glue/jobs
     ODS_PIPELINE_PATH: ${PWD}/ods_pipeline
+    PATTERNS_PATH: ${PWD}/patterns
     GLUE_IMAGE: ods-glue:local
     PIPELINE_PG_DSN: host=postgres port=5432 dbname=ods_dev user=ods password=ods
     SFTP_HOST: sftp
@@ -29,6 +30,7 @@ x-airflow-common: &airflow-common
   volumes:
     - ./airflow/dags:/opt/airflow/dags
     - ./ods_pipeline:/opt/ods_pipeline
+    - ./patterns:/opt/airflow/patterns
     - ./datasets:/opt/airflow/datasets
     - /var/run/docker.sock:/var/run/docker.sock
     - airflow-logs:/opt/airflow/logs

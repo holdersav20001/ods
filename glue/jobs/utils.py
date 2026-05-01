@@ -26,7 +26,9 @@ def load_dataset_config(conn, domain: str, dataset: str) -> dict:
             """
             SELECT id, domain, dataset, filename_pattern, target_topic,
                    schema_id, schema_version, key_fields, dq_rules,
-                   data_classification, version
+                   data_classification, version,
+                   is_canonical, canonical_topic, canonical_schema_id,
+                   transform_yaml_path
             FROM pipeline.dataset_config
             WHERE domain = %s AND dataset = %s AND active = TRUE
             """,
@@ -38,7 +40,8 @@ def load_dataset_config(conn, domain: str, dataset: str) -> dict:
     cols = [
         "id", "domain", "dataset", "filename_pattern", "target_topic",
         "schema_id", "schema_version", "key_fields", "dq_rules",
-        "data_classification", "version",
+        "data_classification", "version", "is_canonical",
+        "canonical_topic", "canonical_schema_id", "transform_yaml_path",
     ]
     return dict(zip(cols, row))
 

@@ -81,13 +81,15 @@ def provision_all_from_db(pg_conn) -> dict[str, bool]:
     """Provision connectors for all active s3_batch datasets with a target table."""
     with pg_conn.cursor() as cur:
         cur.execute("""
-            SELECT domain, dataset, target_topic, postgres_target_table,
+            SELECT domain, dataset, COALESCE(canonical_topic, target_topic) AS sink_topic,
+                   postgres_target_table,
                    COALESCE(write_mode, 'upsert'), key_fields
             FROM pipeline.dataset_config
             WHERE active = TRUE
               AND source_type = 's3_batch'
               AND postgres_target_table IS NOT NULL
-              AND target_topic IS NOT NULL AND target_topic != ''
+              AND COALESCE(canonical_topic, target_topic) IS NOT NULL
+              AND COALESCE(canonical_topic, target_topic) != ''
         """)
         rows = cur.fetchall()
 

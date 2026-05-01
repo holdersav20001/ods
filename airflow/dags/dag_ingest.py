@@ -7,13 +7,16 @@ from __future__ import annotations
 import os
 import sys
 import uuid
+import json
 
 import pendulum
 import psycopg2
 from airflow import DAG
 from airflow.decorators import task
+from airflow.operators.empty import EmptyOperator
 from airflow.operators.python import get_current_context
 from airflow.providers.docker.operators.docker import DockerOperator
+from airflow.utils.trigger_rule import TriggerRule
 from docker.types import Mount
 
 # Add repo root to sys.path so ods_pipeline package is importable
@@ -37,6 +40,10 @@ GLUE_JOBS_PATH = os.environ.get(
 ODS_PIPELINE_PATH = os.environ.get(
     "ODS_PIPELINE_PATH",
     "/c/Users/Holde/development/aviva ODS/ods_pipeline",
+)
+PATTERNS_PATH = os.environ.get(
+    "PATTERNS_PATH",
+    "/c/Users/Holde/development/aviva ODS/patterns",
 )
 GLUE_IMAGE = os.environ.get("GLUE_IMAGE", "ods-glue:local")
 GLUE_ENV = {
@@ -66,6 +73,7 @@ def init_run() -> dict:
     parent_run_id = str(uuid.uuid4())
     ingest_run_id = str(uuid.uuid4())
     publish_run_id = str(uuid.uuid4())
+    canonicalize_run_id = str(uuid.uuid4())
     conn = psycopg2.connect(PG_DSN)
     try:
         with conn.cursor() as cur:
@@ -84,7 +92,8 @@ def init_run() -> dict:
 
             cur.execute(
                 """
-                SELECT config_version_id, s3_curated_path
+                SELECT config_version_id, s3_curated_path,
+                       is_canonical, canonical_topic, transform_yaml_path
                   FROM pipeline.dataset_config
                  WHERE domain=%s AND dataset=%s
                 """,
@@ -95,7 +104,8 @@ def init_run() -> dict:
                 raise RuntimeError(
                     f"dataset_config missing for {conf['domain']}/{conf['dataset']}"
                 )
-            config_version_id, dataset_curated_root = cfg
+            (config_version_id, dataset_curated_root, is_canonical,
+             canonical_topic, transform_yaml_path) = cfg
         if not s3_curated_path:
             s3_curated_path = (
                 f"{dataset_curated_root.rstrip('/')}/date={conf['business_date']}/"
@@ -128,9 +138,13 @@ def init_run() -> dict:
         "parent_run_id": parent_run_id,
         "ingest_run_id": ingest_run_id,
         "publish_run_id": publish_run_id,
+        "canonicalize_run_id": canonicalize_run_id,
         "config_version_id": config_version_id,
         "s3_raw_path": s3_raw_path,
         "s3_curated_path": s3_curated_path,
+        "is_canonical": bool(is_canonical),
+        "canonical_topic": canonical_topic,
+        "transform_yaml_path": transform_yaml_path,
         "airflow_dag_id": dag_run.dag_id,
         "airflow_run_id": dag_run.run_id,
     }
@@ -183,7 +197,7 @@ def wait_sinks(ctx: dict) -> dict:
 
 
 def _wait_sinks_inner(conn, ctx: dict) -> dict:
-    publish_run_id = ctx["publish_run_id"]
+    publish_run_id = ctx.get("sink_run_id") or ctx["publish_run_id"]
     with conn.cursor() as cur:
         cur.execute(
             "SELECT kafka_topic, kafka_offset_end FROM pipeline.run_log WHERE run_id=%s",
@@ -209,8 +223,15 @@ def _wait_sinks_inner(conn, ctx: dict) -> dict:
         )
     topic, target = row
 
-    ok_jdbc = wait_until_offset_consumed("jdbc-sink-policies", topic, target)
-    ok_s3 = wait_until_offset_consumed("s3-sink-policies", topic, target)
+    jdbc_connector = (
+        "jdbc-sink-policies"
+        if ctx["domain"] == "insurance" and ctx["dataset"] == "policies"
+        else f"jdbc-sink-{ctx['domain']}-{ctx['dataset']}".replace("_", "-")
+    )
+    ok_jdbc = wait_until_offset_consumed(jdbc_connector, topic, target)
+    ok_s3 = True
+    if ctx["domain"] == "insurance" and ctx["dataset"] == "policies":
+        ok_s3 = wait_until_offset_consumed("s3-sink-policies", topic, target)
 
     ods_pipeline.stages.write(
         conn,
@@ -240,6 +261,71 @@ def _wait_sinks_inner(conn, ctx: dict) -> dict:
         ods_pipeline.runs.update(conn, ctx["run_id"], status="partial")
         raise RuntimeError("sink wait failed")
     return ctx
+
+
+@task.branch
+def route_canonicalize(ctx: dict) -> str:
+    return "skip_canonicalize" if ctx.get("is_canonical", True) else "stage_canonicalize"
+
+
+@task
+def prepare_canonicalize(ctx: dict) -> dict:
+    if ctx.get("is_canonical", True):
+        return ctx
+
+    conn = psycopg2.connect(PG_DSN)
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT kafka_topic
+                  FROM pipeline.run_log
+                 WHERE run_id=%s
+                """,
+                (ctx["publish_run_id"],),
+            )
+            topic_row = cur.fetchone()
+            cur.execute(
+                """
+                SELECT metrics
+                  FROM pipeline.run_stage_log
+                 WHERE run_id=%s AND stage='kafka_publish'
+                   AND event_type='stage_completed'
+                 ORDER BY id DESC
+                 LIMIT 1
+                """,
+                (ctx["publish_run_id"],),
+            )
+            metrics_row = cur.fetchone()
+    finally:
+        conn.close()
+
+    if not topic_row or not topic_row[0]:
+        raise RuntimeError("publish run did not record raw kafka topic")
+    if not metrics_row or not metrics_row[0]:
+        raise RuntimeError("publish stage did not record offset metrics")
+    metrics = metrics_row[0]
+    starts = metrics.get("offset_start_by_partition") or {"0": metrics["offset_start"]}
+    ends = metrics.get("offset_end_by_partition") or {"0": metrics["offset_end"]}
+    ranges = {
+        str(partition): {
+            "start": int(starts.get(str(partition), starts.get(partition, 0))),
+            "end": int(end),
+        }
+        for partition, end in ends.items()
+    }
+    return {
+        **ctx,
+        "raw_topic": topic_row[0],
+        "offset_ranges": json.dumps(ranges, sort_keys=True),
+    }
+
+
+@task(trigger_rule=TriggerRule.NONE_FAILED_MIN_ONE_SUCCESS)
+def select_sink_run(ctx: dict) -> dict:
+    if ctx.get("is_canonical", True):
+        return {**ctx, "sink_run_id": ctx["publish_run_id"]}
+    return {**ctx, "sink_run_id": ctx["canonicalize_run_id"]}
 
 
 @task
@@ -333,7 +419,46 @@ with DAG(
         ],
     )
 
-    waited = wait_sinks(ctx)
+    prepared = prepare_canonicalize(ctx)
+    branch = route_canonicalize(prepared)
+    skip_canonicalize = EmptyOperator(task_id="skip_canonicalize")
+
+    canonicalize = DockerOperator(
+        task_id="stage_canonicalize",
+        image=GLUE_IMAGE,
+        network_mode="ods-network",
+        auto_remove=True,
+        mount_tmp_dir=False,
+        command=(
+            "spark-submit "
+            "--py-files /home/glue_user/workspace/jobs/utils.py,"
+            "/home/glue_user/workspace/jobs/dq.py,"
+            "/home/glue_user/workspace/jobs/canonicalize.py "
+            "/home/glue_user/workspace/jobs/ods_canonicalize.py "
+            "--run_id {{ ti.xcom_pull(task_ids='prepare_canonicalize')['canonicalize_run_id'] }} "
+            "--domain {{ ti.xcom_pull(task_ids='prepare_canonicalize')['domain'] }} "
+            "--dataset {{ ti.xcom_pull(task_ids='prepare_canonicalize')['dataset'] }} "
+            "--raw_topic {{ ti.xcom_pull(task_ids='prepare_canonicalize')['raw_topic'] }} "
+            "--canonical_topic {{ ti.xcom_pull(task_ids='prepare_canonicalize')['canonical_topic'] }} "
+            "--transform_yaml_path {{ ti.xcom_pull(task_ids='prepare_canonicalize')['transform_yaml_path'] }} "
+            "--offset_ranges '{{ ti.xcom_pull(task_ids='prepare_canonicalize')['offset_ranges'] }}' "
+            "--file_id {{ ti.xcom_pull(task_ids='prepare_canonicalize')['file_id'] }} "
+            "--parent_run_id {{ ti.xcom_pull(task_ids='prepare_canonicalize')['publish_run_id'] }} "
+            "--business_date {{ ti.xcom_pull(task_ids='prepare_canonicalize')['business_date'] }}"
+        ),
+        environment=GLUE_ENV,
+        mounts=[
+            Mount(source=GLUE_JOBS_PATH, target="/home/glue_user/workspace/jobs", type="bind"),
+            Mount(source=ODS_PIPELINE_PATH, target="/home/glue_user/ods_pipeline", type="bind"),
+            Mount(source=PATTERNS_PATH, target="/home/glue_user/patterns", type="bind"),
+        ],
+    )
+
+    selected = select_sink_run(prepared)
+    waited = wait_sinks(selected)
     fin = finalise(waited)
 
-    ctx >> ingest >> publish >> waited >> fin
+    ctx >> ingest >> publish >> prepared >> branch
+    branch >> skip_canonicalize >> selected
+    branch >> canonicalize >> selected
+    selected >> waited >> fin

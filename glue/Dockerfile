@@ -19,6 +19,7 @@ RUN pip install --no-cache-dir \
     psycopg2-binary==2.9.9 \
     boto3==1.34.0 \
     fastavro==1.9.4 \
+    PyYAML==6.0.2 \
     requests==2.31.0
 
 # Download S3A jars into PySpark's jars directory so SparkSession picks them up automatically

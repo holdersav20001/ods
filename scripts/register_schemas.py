@@ -29,6 +29,8 @@ if __name__ == "__main__":
         ("ods.pipeline.run-events-value",          "schemas/pipeline/run_event.avsc"),
         ("ods.insurance.events_append-value",      "schemas/insurance/events_append.avsc"),
         ("ods.insurance.policies_upsert-value",    "schemas/insurance/policies_upsert.avsc"),
+        ("ods.insurance.risk-value",               "schemas/insurance/risk_raw.avsc"),
+        ("ods.insurance.risk-canonical-value",     "schemas/insurance/risk_canonical.avsc"),
     ]
     for subject, path in schemas:
         register_schema(subject, path)

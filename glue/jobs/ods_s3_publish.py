@@ -147,6 +147,11 @@ def _coerce_for_avro(row_dict: dict, schema_str: str) -> dict:
 
 def _topic_end_offsets(topic: str, bootstrap: str) -> int:
     """Return the sum of high-watermark offsets across all partitions of *topic*."""
+    return sum(_topic_end_offsets_by_partition(topic, bootstrap).values())
+
+
+def _topic_end_offsets_by_partition(topic: str, bootstrap: str) -> dict[int, int]:
+    """Return high-watermark offsets by partition for *topic*."""
     c = Consumer({
         "bootstrap.servers": bootstrap,
         "group.id": f"ods-offset-probe-{uuid.uuid4()}",
@@ -155,12 +160,12 @@ def _topic_end_offsets(topic: str, bootstrap: str) -> int:
         md = c.list_topics(topic, timeout=10).topics[topic]
         if md.error:
             raise RuntimeError(f"topic metadata error: {md.error}")
-        parts = [TopicPartition(topic, p) for p in md.partitions]
-        total = 0
-        for tp in parts:
+        offsets: dict[int, int] = {}
+        for partition in sorted(md.partitions):
+            tp = TopicPartition(topic, partition)
             _, high = c.get_watermark_offsets(tp, timeout=10)
-            total += high
-        return total
+            offsets[partition] = high
+        return offsets
     finally:
         c.close()
 
@@ -377,7 +382,8 @@ def _run_impl(conn, run_id: str, domain: str, dataset: str, s3_input_path: str,
     # Step 8 — Capture start offsets BEFORE producing
     # ------------------------------------------------------------------
     try:
-        offset_start = _topic_end_offsets(target_topic, bootstrap)
+        offset_start_by_partition = _topic_end_offsets_by_partition(target_topic, bootstrap)
+        offset_start = sum(offset_start_by_partition.values())
     except Exception as exc:
         err_msg = f"Failed to read start offsets: {exc}"
         ods_pipeline.runs.update(conn, run_id, status="failed", error_summary=err_msg)
@@ -440,7 +446,8 @@ def _run_impl(conn, run_id: str, domain: str, dataset: str, s3_input_path: str,
     # Step 10 — Capture end offsets and compute published count
     # ------------------------------------------------------------------
     try:
-        offset_end = _topic_end_offsets(target_topic, bootstrap)
+        offset_end_by_partition = _topic_end_offsets_by_partition(target_topic, bootstrap)
+        offset_end = sum(offset_end_by_partition.values())
     except Exception as exc:
         err_msg = f"Failed to read end offsets: {exc}"
         ods_pipeline.runs.update(conn, run_id, status="failed", error_summary=err_msg)
@@ -483,7 +490,12 @@ def _run_impl(conn, run_id: str, domain: str, dataset: str, s3_input_path: str,
         output_ref=f"kafka://{target_topic}",
         record_count_in=dq_pass_count,
         record_count_out=published_count,
-        metrics={"offset_start": offset_start, "offset_end": offset_end},
+        metrics={
+            "offset_start": offset_start,
+            "offset_end": offset_end,
+            "offset_start_by_partition": offset_start_by_partition,
+            "offset_end_by_partition": offset_end_by_partition,
+        },
         error=error_summary,
     )
 
