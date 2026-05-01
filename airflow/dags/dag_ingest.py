@@ -34,6 +34,10 @@ GLUE_JOBS_PATH = os.environ.get(
     "GLUE_JOBS_PATH",
     "/c/Users/Holde/development/aviva ODS/glue/jobs",
 )
+ODS_PIPELINE_PATH = os.environ.get(
+    "ODS_PIPELINE_PATH",
+    "/c/Users/Holde/development/aviva ODS/ods_pipeline",
+)
 GLUE_IMAGE = os.environ.get("GLUE_IMAGE", "ods-glue:local")
 GLUE_ENV = {
     "AWS_ACCESS_KEY_ID": "test",
@@ -59,7 +63,14 @@ def init_run() -> dict:
     missing = [k for k in required if not conf.get(k)]
     if missing:
         raise RuntimeError(f"dag_run.conf missing keys: {missing}")
-    run_id = str(uuid.uuid4())
+
+    # Three distinct run_ids — no shared run_id between pipeline types.
+    # Parent orchestrates; children are pre-created with their correct type
+    # so Glue jobs' runs.start calls hit ON CONFLICT DO NOTHING (idempotent).
+    run_id         = str(uuid.uuid4())   # s3_batch orchestration run
+    ingest_run_id  = str(uuid.uuid4())   # ingestion child run
+    publish_run_id = str(uuid.uuid4())   # publish child run
+
     conn = psycopg2.connect(PG_DSN)
     try:
         with conn.cursor() as cur:
@@ -90,10 +101,13 @@ def init_run() -> dict:
                     f"dataset_config missing for {conf['domain']}/{conf['dataset']}"
                 )
             config_version_id, dataset_curated_root = cfg
+
         if not s3_curated_path:
             s3_curated_path = (
                 f"{dataset_curated_root.rstrip('/')}/date={conf['business_date']}/"
             )
+
+        # Parent run
         ods_pipeline.runs.start(
             conn,
             run_id=run_id,
@@ -103,6 +117,44 @@ def init_run() -> dict:
             business_date=conf["business_date"],
             file_id=conf["file_id"],
             config_version_id=config_version_id,
+        )
+        # Pre-create child runs so Glue jobs' runs.start is idempotent
+        ods_pipeline.runs.start(
+            conn,
+            run_id=ingest_run_id,
+            pipeline_type="ingestion",
+            domain=conf["domain"],
+            dataset=conf["dataset"],
+            business_date=conf["business_date"],
+            file_id=conf["file_id"],
+            config_version_id=config_version_id,
+            parents=[run_id],
+        )
+        ods_pipeline.runs.start(
+            conn,
+            run_id=publish_run_id,
+            pipeline_type="publish",
+            domain=conf["domain"],
+            dataset=conf["dataset"],
+            business_date=conf["business_date"],
+            file_id=conf["file_id"],
+            config_version_id=config_version_id,
+            parents=[run_id],
+        )
+        # Link children to parent via lineage
+        ods_pipeline.lineage.write_edge(
+            conn,
+            child_run_id=ingest_run_id,
+            parent_run_id=run_id,
+            parent_file_id=conf["file_id"],
+            edge_type="raw_to_curated",
+        )
+        ods_pipeline.lineage.write_edge(
+            conn,
+            child_run_id=publish_run_id,
+            parent_run_id=run_id,
+            parent_file_id=conf["file_id"],
+            edge_type="curated_to_kafka",
         )
     finally:
         conn.close()
@@ -118,12 +170,14 @@ def init_run() -> dict:
 
     return {
         **conf,
-        "run_id": run_id,
+        "run_id":          run_id,
+        "ingest_run_id":   ingest_run_id,
+        "publish_run_id":  publish_run_id,
         "config_version_id": config_version_id,
-        "s3_raw_path": s3_raw_path,
+        "s3_raw_path":     s3_raw_path,
         "s3_curated_path": s3_curated_path,
-        "airflow_dag_id": dag_run.dag_id,
-        "airflow_run_id": dag_run.run_id,
+        "airflow_dag_id":  dag_run.dag_id,
+        "airflow_run_id":  dag_run.run_id,
     }
 
 
@@ -174,14 +228,14 @@ def _wait_sinks_inner(conn, ctx: dict) -> dict:
     with conn.cursor() as cur:
         cur.execute(
             "SELECT kafka_topic, kafka_offset_end FROM pipeline.run_log WHERE run_id=%s",
-            (ctx["run_id"],),
+            (ctx["publish_run_id"],),
         )
         row = cur.fetchone()
     if not row or row[0] is None or row[1] is None:
         ods_pipeline.runs.update(conn, ctx["run_id"], status="partial")
         ods_pipeline.stages.write(
             conn,
-            run_id=ctx["run_id"],
+            run_id=ctx["publish_run_id"],
             stage="sink_pg_wait",
             status="failed",
             event_type="stage_failed",
@@ -191,7 +245,7 @@ def _wait_sinks_inner(conn, ctx: dict) -> dict:
             airflow_run_id=ctx.get("airflow_run_id"),
         )
         raise RuntimeError(
-            f"run_log row for {ctx['run_id']} missing kafka_topic/offset_end"
+            f"run_log row for publish_run_id={ctx['publish_run_id']} missing kafka_topic/offset_end"
         )
     topic, target = row
 
@@ -200,7 +254,7 @@ def _wait_sinks_inner(conn, ctx: dict) -> dict:
 
     ods_pipeline.stages.write(
         conn,
-        run_id=ctx["run_id"],
+        run_id=ctx["publish_run_id"],
         stage="sink_pg_wait",
         status="succeeded" if ok_jdbc else "failed",
         event_type="stage_completed" if ok_jdbc else "stage_failed",
@@ -211,7 +265,7 @@ def _wait_sinks_inner(conn, ctx: dict) -> dict:
     )
     ods_pipeline.stages.write(
         conn,
-        run_id=ctx["run_id"],
+        run_id=ctx["publish_run_id"],
         stage="sink_s3_wait",
         status="succeeded" if ok_s3 else "failed",
         event_type="stage_completed" if ok_s3 else "stage_failed",
@@ -264,6 +318,11 @@ with DAG(
 ):
     ctx = init_run()
 
+    _glue_mounts = [
+        Mount(source=GLUE_JOBS_PATH,       target="/home/glue_user/workspace/jobs",  type="bind"),
+        Mount(source=ODS_PIPELINE_PATH,    target="/home/glue_user/ods_pipeline",    type="bind"),
+    ]
+
     ingest = DockerOperator(
         task_id="stage_ingest",
         image=GLUE_IMAGE,
@@ -275,7 +334,7 @@ with DAG(
             "--py-files /home/glue_user/workspace/jobs/utils.py,"
             "/home/glue_user/workspace/jobs/dq.py "
             "/home/glue_user/workspace/jobs/ods_ingestion.py "
-            "--run_id {{ ti.xcom_pull(task_ids='init_run')['run_id'] }} "
+            "--run_id {{ ti.xcom_pull(task_ids='init_run')['ingest_run_id'] }} "
             "--domain {{ ti.xcom_pull(task_ids='init_run')['domain'] }} "
             "--dataset {{ ti.xcom_pull(task_ids='init_run')['dataset'] }} "
             "--s3_input_path {{ ti.xcom_pull(task_ids='init_run')['s3_raw_path'] }} "
@@ -284,7 +343,7 @@ with DAG(
             "--airflow_run_id {{ run_id }}"
         ),
         environment=GLUE_ENV,
-        mounts=[Mount(source=GLUE_JOBS_PATH, target="/home/glue_user/workspace/jobs", type="bind")],
+        mounts=_glue_mounts,
     )
 
     publish = DockerOperator(
@@ -298,7 +357,7 @@ with DAG(
             "--py-files /home/glue_user/workspace/jobs/utils.py,"
             "/home/glue_user/workspace/jobs/dq.py "
             "/home/glue_user/workspace/jobs/ods_s3_publish.py "
-            "--run_id {{ ti.xcom_pull(task_ids='init_run')['run_id'] }} "
+            "--run_id {{ ti.xcom_pull(task_ids='init_run')['publish_run_id'] }} "
             "--domain {{ ti.xcom_pull(task_ids='init_run')['domain'] }} "
             "--dataset {{ ti.xcom_pull(task_ids='init_run')['dataset'] }} "
             "--s3_input_path {{ ti.xcom_pull(task_ids='init_run')['s3_curated_path'] }} "
@@ -307,7 +366,7 @@ with DAG(
             "--airflow_run_id {{ run_id }}"
         ),
         environment=GLUE_ENV,
-        mounts=[Mount(source=GLUE_JOBS_PATH, target="/home/glue_user/workspace/jobs", type="bind")],
+        mounts=_glue_mounts,
     )
 
     waited = wait_sinks(ctx)

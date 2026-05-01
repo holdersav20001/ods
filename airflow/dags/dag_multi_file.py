@@ -33,6 +33,10 @@ GLUE_JOBS_PATH = os.environ.get(
     "GLUE_JOBS_PATH",
     "/c/Users/Holde/development/aviva ODS/glue/jobs",
 )
+ODS_PIPELINE_PATH = os.environ.get(
+    "ODS_PIPELINE_PATH",
+    "/c/Users/Holde/development/aviva ODS/ods_pipeline",
+)
 GLUE_IMAGE = os.environ.get("GLUE_IMAGE", "ods-glue:local")
 GLUE_ENV = {
     "AWS_ACCESS_KEY_ID":      "test",
@@ -206,8 +210,10 @@ with DAG(
             "--s3_input_path {{ ti.xcom_pull(task_ids='init_run')['s3_raw_path'] }}"
         ),
         environment=GLUE_ENV,
-        mounts=[Mount(source=GLUE_JOBS_PATH,
-                      target="/home/glue_user/workspace/jobs", type="bind")],
+        mounts=[
+            Mount(source=GLUE_JOBS_PATH,    target="/home/glue_user/workspace/jobs", type="bind"),
+            Mount(source=ODS_PIPELINE_PATH, target="/home/glue_user/ods_pipeline",   type="bind"),
+        ],
     )
 
     slots_ready = check_all_slots_ready(ctx)
@@ -232,8 +238,10 @@ with DAG(
             "--business_date {{ ti.xcom_pull(task_ids='init_run')['business_date'] }}"
         ),
         environment=GLUE_ENV,
-        mounts=[Mount(source=GLUE_JOBS_PATH,
-                      target="/home/glue_user/workspace/jobs", type="bind")],
+        mounts=[
+            Mount(source=GLUE_JOBS_PATH,    target="/home/glue_user/workspace/jobs", type="bind"),
+            Mount(source=ODS_PIPELINE_PATH, target="/home/glue_user/ods_pipeline",   type="bind"),
+        ],
     )
 
     fin = finalise(slots_ready)
