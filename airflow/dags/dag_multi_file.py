@@ -17,10 +17,14 @@ from airflow.operators.python import get_current_context
 from airflow.providers.docker.operators.docker import DockerOperator
 from docker.types import Mount
 
-# Add repo root to sys.path so ods_pipeline package is importable
-_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-if _REPO_ROOT not in sys.path:
-    sys.path.insert(0, _REPO_ROOT)
+# Add likely roots so ods_pipeline is importable both locally and in Airflow.
+_DAG_DIR = os.path.dirname(__file__)
+for _root in (
+    os.path.abspath(os.path.join(_DAG_DIR, "..")),
+    os.path.abspath(os.path.join(_DAG_DIR, "..", "..")),
+):
+    if _root not in sys.path:
+        sys.path.insert(0, _root)
 
 import ods_pipeline
 

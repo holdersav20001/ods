@@ -13,13 +13,18 @@ import psycopg2
 from airflow import DAG
 from airflow.decorators import task
 from airflow.operators.python import get_current_context
+from airflow.utils.trigger_rule import TriggerRule
 from airflow.providers.docker.operators.docker import DockerOperator
 from docker.types import Mount
 
-# Add repo root to sys.path so ods_pipeline package is importable
-_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-if _REPO_ROOT not in sys.path:
-    sys.path.insert(0, _REPO_ROOT)
+# Add likely roots so ods_pipeline is importable both locally and in Airflow.
+_DAG_DIR = os.path.dirname(__file__)
+for _root in (
+    os.path.abspath(os.path.join(_DAG_DIR, "..")),
+    os.path.abspath(os.path.join(_DAG_DIR, "..", "..")),
+):
+    if _root not in sys.path:
+        sys.path.insert(0, _root)
 
 import ods_pipeline
 
@@ -66,7 +71,7 @@ def init_run() -> dict:
 
     # Three distinct run_ids — no shared run_id between pipeline types.
     # Parent orchestrates; children are pre-created with their correct type
-    # so Glue jobs' runs.start calls hit ON CONFLICT DO NOTHING (idempotent).
+    # so Glue jobs' runs.start calls validate against the intended metadata.
     run_id         = str(uuid.uuid4())   # s3_batch orchestration run
     ingest_run_id  = str(uuid.uuid4())   # ingestion child run
     publish_run_id = str(uuid.uuid4())   # publish child run
@@ -89,7 +94,7 @@ def init_run() -> dict:
 
             cur.execute(
                 """
-                SELECT config_version_id, s3_curated_path
+                SELECT config_version_id, s3_curated_path, target_topic
                   FROM pipeline.dataset_config
                  WHERE domain=%s AND dataset=%s
                 """,
@@ -100,7 +105,7 @@ def init_run() -> dict:
                 raise RuntimeError(
                     f"dataset_config missing for {conf['domain']}/{conf['dataset']}"
                 )
-            config_version_id, dataset_curated_root = cfg
+            config_version_id, dataset_curated_root, target_topic = cfg
 
         if not s3_curated_path:
             s3_curated_path = (
@@ -139,6 +144,7 @@ def init_run() -> dict:
             business_date=conf["business_date"],
             file_id=conf["file_id"],
             config_version_id=config_version_id,
+            kafka_topic=target_topic,
             parents=[run_id],
         )
         # Link children to parent via lineage
@@ -174,6 +180,7 @@ def init_run() -> dict:
         "ingest_run_id":   ingest_run_id,
         "publish_run_id":  publish_run_id,
         "config_version_id": config_version_id,
+        "target_topic":    target_topic,
         "s3_raw_path":     s3_raw_path,
         "s3_curated_path": s3_curated_path,
         "airflow_dag_id":  dag_run.dag_id,
@@ -281,31 +288,110 @@ def _wait_sinks_inner(conn, ctx: dict) -> dict:
     return ctx
 
 
-@task
+def _run_statuses(conn, run_ids: list[str]) -> dict[str, str]:
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT run_id::text, status FROM pipeline.run_log WHERE run_id = ANY(%s)",
+            (run_ids,),
+        )
+        return {rid: status for rid, status in cur.fetchall()}
+
+
+def _close_child_if_running(conn, run_id: str, *, status: str, reason: str) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE pipeline.run_log
+               SET status=%s,
+                   error_summary=COALESCE(error_summary, %s),
+                   ended_at=COALESCE(ended_at, NOW())
+             WHERE run_id=%s
+               AND status='running'
+            """,
+            (status, reason, run_id),
+        )
+    conn.commit()
+
+
+@task(trigger_rule=TriggerRule.ALL_DONE)
 def finalise(ctx: dict) -> None:
     conn = psycopg2.connect(PG_DSN)
     try:
-        ods_pipeline.runs.update(conn, ctx["run_id"], status="succeeded")
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                UPDATE pipeline.file_catalogue
-                   SET state='sunk', state_updated_at=NOW(), last_run_id=%s
-                 WHERE file_id=%s
-                """,
-                (ctx["run_id"], ctx["file_id"]),
+        statuses = _run_statuses(
+            conn,
+            [ctx["run_id"], ctx["ingest_run_id"], ctx["publish_run_id"]],
+        )
+        parent_status = statuses.get(ctx["run_id"], "running")
+        ingest_status = statuses.get(ctx["ingest_run_id"], "running")
+        publish_status = statuses.get(ctx["publish_run_id"], "running")
+
+        if ingest_status != "succeeded":
+            _close_child_if_running(
+                conn,
+                ctx["publish_run_id"],
+                status="failed",
+                reason="Publish skipped because ingestion did not succeed.",
             )
-        conn.commit()
+            ods_pipeline.runs.update(
+                conn,
+                ctx["run_id"],
+                status="failed",
+                error_summary=f"ingestion child ended {ingest_status}",
+            )
+            final_status = "failed"
+        elif publish_status != "succeeded":
+            _close_child_if_running(
+                conn,
+                ctx["publish_run_id"],
+                status="failed",
+                reason="Publish did not complete successfully.",
+            )
+            ods_pipeline.runs.update(
+                conn,
+                ctx["run_id"],
+                status="failed",
+                error_summary=f"publish child ended {publish_status}",
+            )
+            final_status = "failed"
+        elif parent_status == "partial":
+            final_status = "partial"
+        elif parent_status in ("failed", "succeeded"):
+            final_status = parent_status
+        else:
+            ods_pipeline.runs.update(conn, ctx["run_id"], status="succeeded")
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE pipeline.file_catalogue
+                       SET state='sunk', state_updated_at=NOW(), last_run_id=%s
+                     WHERE file_id=%s
+                    """,
+                    (ctx["publish_run_id"], ctx["file_id"]),
+                )
+            conn.commit()
+            final_status = "succeeded"
+
+        if final_status == "failed":
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE pipeline.file_catalogue
+                       SET state='failed', state_updated_at=NOW(), last_run_id=%s
+                     WHERE file_id=%s
+                    """,
+                    (ctx["run_id"], ctx["file_id"]),
+                )
+            conn.commit()
     finally:
         conn.close()
 
     ods_pipeline.events.produce(
-        "run_succeeded",
+        "run_succeeded" if final_status == "succeeded" else f"run_{final_status}",
         run_id=ctx["run_id"],
         domain=ctx["domain"],
         dataset=ctx["dataset"],
         business_date=ctx["business_date"],
-        status="succeeded",
+        status=final_status,
     )
 
 
@@ -370,6 +456,7 @@ with DAG(
     )
 
     waited = wait_sinks(ctx)
-    fin = finalise(waited)
+    fin = finalise(ctx)
 
-    ctx >> ingest >> publish >> waited >> fin
+    ctx >> ingest >> publish >> waited
+    [ingest, publish, waited] >> fin

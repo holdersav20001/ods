@@ -2,10 +2,14 @@ from __future__ import annotations
 import os, sys
 from dataclasses import dataclass
 
-# Ensure repo root is importable so ods_pipeline package is found
-_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
-if _REPO_ROOT not in sys.path:
-    sys.path.insert(0, _REPO_ROOT)
+# Ensure ods_pipeline is importable both locally and in Airflow.
+_COMMON_DIR = os.path.dirname(__file__)
+for _root in (
+    os.path.abspath(os.path.join(_COMMON_DIR, "..", "..")),
+    os.path.abspath(os.path.join(_COMMON_DIR, "..", "..", "..")),
+):
+    if _root not in sys.path:
+        sys.path.insert(0, _root)
 
 import ods_pipeline
 

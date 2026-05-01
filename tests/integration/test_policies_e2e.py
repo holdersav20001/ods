@@ -27,7 +27,9 @@ GLUE_COMMON = [
     "-e", "POSTGRES_PASSWORD=ods",
     "-e", "SCHEMA_REGISTRY_URL=http://schema-registry:8081",
     "-e", "ENV=local",
-] + (["-v", f"{_HOST_JOBS}:/home/glue_user/workspace/jobs"] if _HOST_JOBS else [])
+] + (["-v", f"{_HOST_JOBS}:/home/glue_user/workspace/jobs"] if _HOST_JOBS else []) + [
+    "-v", f"{os.getcwd()}/ods_pipeline:/home/glue_user/ods_pipeline",
+]
 
 GLUE_KAFKA_ENV = GLUE_COMMON + ["-e", "KAFKA_BOOTSTRAP_SERVERS=broker:29092"]
 

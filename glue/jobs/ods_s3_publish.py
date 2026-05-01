@@ -254,6 +254,7 @@ def _run_impl(conn, run_id: str, domain: str, dataset: str, s3_input_path: str,
         domain=domain,
         dataset=dataset,
         business_date=None,  # refined below once parquet is read
+        file_id=file_id,
         kafka_topic=target_topic,
         config_version_id=config_version,
     )

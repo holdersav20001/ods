@@ -55,6 +55,39 @@ def test_write_stage(pg_conn, isolated_run):
     assert n == 10
     assert m['duration_s'] == 4.2
 
+
+def test_stage_start_and_finish_closes_open_row(pg_conn, isolated_run):
+    rid = isolated_run
+    ods_pipeline.runs.start(pg_conn, run_id=rid, pipeline_type='s3_batch',
+                            domain='insurance', dataset='policies',
+                            business_date='2026-04-28', file_id=None,
+                            config_version_id=1)
+    ods_pipeline.stages.start(pg_conn, run_id=rid, stage='raw_read',
+                              input_ref='s3://raw/x.csv')
+    with pg_conn.cursor() as cur:
+        cur.execute(
+            "SELECT status, ended_at FROM pipeline.run_stage_log "
+            "WHERE run_id=%s AND stage='raw_read'",
+            (rid,),
+        )
+        status, ended_at = cur.fetchone()
+    assert status == 'running'
+    assert ended_at is None
+
+    ods_pipeline.stages.finish(pg_conn, run_id=rid, stage='raw_read',
+                               status='succeeded',
+                               record_count_out=10)
+    with pg_conn.cursor() as cur:
+        cur.execute(
+            "SELECT count(*), max(status), count(*) FILTER (WHERE ended_at IS NULL) "
+            "FROM pipeline.run_stage_log WHERE run_id=%s AND stage='raw_read'",
+            (rid,),
+        )
+        count, status, open_count = cur.fetchone()
+    assert count == 1
+    assert status == 'succeeded'
+    assert open_count == 0
+
 def test_write_recon_discrepancy_calculation(pg_conn, isolated_run):
     rid = isolated_run
     ods_pipeline.runs.start(pg_conn, run_id=rid, pipeline_type='s3_batch',
@@ -81,6 +114,33 @@ def test_update_run_header_rejects_unknown_field(pg_conn, isolated_run):
                             config_version_id=1)
     with pytest.raises(ValueError):
         ods_pipeline.runs.update(pg_conn, rid, bogus_column='x')
+
+
+def test_start_run_rejects_conflicting_duplicate_metadata(pg_conn, isolated_run):
+    rid = isolated_run
+    ods_pipeline.runs.start(pg_conn, run_id=rid, pipeline_type='ingestion',
+                            domain='insurance', dataset='policies',
+                            business_date='2026-04-28', file_id=None,
+                            config_version_id=1)
+    with pytest.raises(ValueError, match="different metadata"):
+        ods_pipeline.runs.start(pg_conn, run_id=rid, pipeline_type='publish',
+                                domain='insurance', dataset='policies',
+                                business_date='2026-04-28', file_id=None,
+                                config_version_id=1)
+
+
+def test_start_run_allows_matching_duplicate_metadata(pg_conn, isolated_run):
+    rid = isolated_run
+    kwargs = dict(pipeline_type='ingestion',
+                  domain='insurance', dataset='policies',
+                  business_date='2026-04-28', file_id=None,
+                  config_version_id=1)
+    ods_pipeline.runs.start(pg_conn, run_id=rid, **kwargs)
+    ods_pipeline.runs.start(pg_conn, run_id=rid, **kwargs)
+    with pg_conn.cursor() as cur:
+        cur.execute("SELECT count(*) FROM pipeline.run_log WHERE run_id=%s", (rid,))
+        (count,) = cur.fetchone()
+    assert count == 1
 
 
 def test_update_run_header_terminal_sets_ended_at_only_for_terminal_status(pg_conn, isolated_run):

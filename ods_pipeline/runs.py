@@ -6,6 +6,20 @@ import json
 from ods_pipeline.models import ALLOWED_RUN_FIELDS, TERMINAL_STATUSES
 
 
+def _json_or_none(value):
+    return json.dumps(value) if value is not None else None
+
+
+def _normalise(value):
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value)
+
+
 def start(
     conn,
     *,
@@ -22,8 +36,21 @@ def start(
 ) -> None:
     """Insert a new ``run_log`` row with ``status='running'``.
 
-    Silently no-ops on duplicate ``run_id`` (ON CONFLICT DO NOTHING).
+    Duplicate ``run_id`` is allowed only when the supplied identifying
+    metadata matches the existing row.  This preserves idempotency for retries
+    while surfacing accidental reuse across different pipeline types/files.
     """
+    supplied = {
+        "pipeline_type": pipeline_type,
+        "domain": domain,
+        "dataset": dataset,
+        "business_date": str(business_date) if business_date is not None else None,
+        "file_id": file_id,
+        "kafka_topic": kafka_topic,
+        "config_version_id": config_version_id,
+        "schema_version_id": schema_version_id,
+        "parents": _json_or_none(parents),
+    }
     try:
         with conn.cursor() as cur:
             cur.execute(
@@ -34,14 +61,45 @@ def start(
                      schema_version_id, parents)
                 VALUES (%s,%s,%s,%s,%s, %s,'running',%s,%s,%s,%s)
                 ON CONFLICT (run_id) DO NOTHING
+                RETURNING run_id
                 """,
                 (
                     run_id, pipeline_type, domain, dataset,
-                    str(business_date) if business_date is not None else None,
+                    supplied["business_date"],
                     file_id, kafka_topic, config_version_id, schema_version_id,
-                    json.dumps(parents) if parents else None,
+                    supplied["parents"],
                 ),
             )
+            inserted = cur.fetchone()
+            if not inserted:
+                cur.execute(
+                    """
+                    SELECT pipeline_type, domain, dataset, business_date::text,
+                           file_id::text, kafka_topic, config_version_id,
+                           schema_version_id, parents::text
+                      FROM pipeline.run_log
+                     WHERE run_id=%s
+                    """,
+                    (run_id,),
+                )
+                row = cur.fetchone()
+                if not row:
+                    raise RuntimeError(f"run_log conflict for {run_id} but row not found")
+                existing = dict(zip(supplied.keys(), row))
+                mismatches = {}
+                for key, expected in supplied.items():
+                    if expected is None:
+                        continue
+                    if _normalise(existing.get(key)) != _normalise(expected):
+                        mismatches[key] = {
+                            "existing": existing.get(key),
+                            "requested": expected,
+                        }
+                if mismatches:
+                    raise ValueError(
+                        f"run_id {run_id} already exists with different metadata: "
+                        f"{mismatches}"
+                    )
         conn.commit()
     except Exception:
         conn.rollback()
