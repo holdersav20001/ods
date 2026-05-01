@@ -38,6 +38,9 @@ def _put(name: str, body: str):
         sftp.chdir("upload")
     except IOError:
         pass
+    for existing in sftp.listdir():
+        if existing.startswith("policies_") and existing.endswith(".csv"):
+            sftp.remove(existing)
     with sftp.file(name, "w") as f:
         f.write(body)
     sftp.close()
@@ -53,7 +56,15 @@ def test_failed_run_resumes_cleanly(pg_conn):
 
     # Clean — FK order: run_stage_log → run_log → file_catalogue → target
     with pg_conn.cursor() as cur:
-        cur.execute("DELETE FROM ods.insurance_policies WHERE policy_id='DR1'")
+        cur.execute("DELETE FROM ods.insurance_policy WHERE policy_id='DR1'")
+        cur.execute(
+            "DELETE FROM pipeline.lineage_edge WHERE child_run_id IN ("
+            "  SELECT run_id FROM pipeline.run_log WHERE domain='insurance' "
+            "  AND dataset='policies' AND business_date='2026-04-20') "
+            "OR parent_file_id IN ("
+            "  SELECT file_id FROM pipeline.file_catalogue WHERE domain='insurance' "
+            "  AND dataset='policies' AND business_date='2026-04-20')"
+        )
         cur.execute(
             "DELETE FROM pipeline.run_stage_log WHERE run_id IN ("
             "  SELECT run_id FROM pipeline.run_log WHERE domain='insurance' "
@@ -66,6 +77,14 @@ def test_failed_run_resumes_cleanly(pg_conn):
         cur.execute(
             "DELETE FROM pipeline.file_catalogue WHERE domain='insurance' "
             "AND dataset='policies' AND business_date='2026-04-20'"
+        )
+        cur.execute(
+            "DELETE FROM pipeline.file_state "
+            "WHERE s3_path IN (%s, %s)",
+            (
+                "s3://ods-raw-local/insurance/policies/2026-04-20/policies_20260420.csv",
+                "s3://ods-curated-local/insurance/policies/date=2026-04-20/",
+            ),
         )
     pg_conn.commit()
 
@@ -99,7 +118,7 @@ def test_failed_run_resumes_cleanly(pg_conn):
     while time.time() < deadline:
         pg_conn.rollback()
         with pg_conn.cursor() as cur:
-            cur.execute("SELECT count(*) FROM ods.insurance_policies WHERE policy_id='DR1'")
+            cur.execute("SELECT count(*) FROM ods.insurance_policy WHERE policy_id='DR1'")
             found = cur.fetchone()[0]
         if found == 1:
             break

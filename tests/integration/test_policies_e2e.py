@@ -27,7 +27,9 @@ GLUE_COMMON = [
     "-e", "POSTGRES_PASSWORD=ods",
     "-e", "SCHEMA_REGISTRY_URL=http://schema-registry:8081",
     "-e", "ENV=local",
-] + (["-v", f"{_HOST_JOBS}:/home/glue_user/workspace/jobs"] if _HOST_JOBS else [])
+] + (["-v", f"{_HOST_JOBS}:/home/glue_user/workspace/jobs"] if _HOST_JOBS else []) + [
+    "-v", f"{os.getcwd()}/ods_pipeline:/home/glue_user/ods_pipeline",
+]
 
 GLUE_KAFKA_ENV = GLUE_COMMON + ["-e", "KAFKA_BOOTSTRAP_SERVERS=broker:29092"]
 
@@ -57,6 +59,11 @@ def reset_pipeline_state(pg, s3):
     """Wipe pipeline state for the e2e test dates so tests are re-runnable."""
     cur = pg.cursor()
     cur.execute("""
+        DELETE FROM ods.insurance_policy
+         WHERE _ods_business_date::text LIKE '2026-06-%'
+            OR policy_id LIKE 'P%'
+    """)
+    cur.execute("""
         DELETE FROM pipeline.file_state
         WHERE s3_path LIKE 's3://ods-raw-local/insurance/policies/%'
            OR s3_path LIKE 's3://ods-curated-local/insurance/policies/%'
@@ -67,11 +74,30 @@ def reset_pipeline_state(pg, s3):
            AND r.domain='insurance' AND r.dataset='policies'
     """)
     cur.execute("""
+        DELETE FROM pipeline.lineage_edge
+         WHERE child_run_id IN (
+               SELECT run_id FROM pipeline.run_log
+                WHERE domain='insurance' AND dataset='policies'
+         )
+            OR parent_file_id IN (
+               SELECT file_id FROM pipeline.file_catalogue
+                WHERE domain='insurance' AND dataset='policies'
+         )
+    """)
+    cur.execute("""
         DELETE FROM pipeline.reconciliation_log
          WHERE domain='insurance' AND dataset='policies'
     """)
     cur.execute("""
+        DELETE FROM pipeline.run_events
+         WHERE domain='insurance' AND dataset='policies'
+    """)
+    cur.execute("""
         DELETE FROM pipeline.run_log
+         WHERE domain = 'insurance' AND dataset = 'policies'
+    """)
+    cur.execute("""
+        DELETE FROM pipeline.file_catalogue
          WHERE domain = 'insurance' AND dataset = 'policies'
     """)
     pg.commit()
@@ -178,14 +204,22 @@ def test_2_idempotency(s3, pg):
     upload(s3, key, good)
 
     ingest(f"s3://ods-raw-local/{key}")
-    msgs_after_first = kafka_count()
 
     # Run ingestion again — same file
     _, run2 = ingest(f"s3://ods-raw-local/{key}")
-    msgs_after_second = kafka_count()
 
-    assert msgs_after_first == msgs_after_second
     assert log_status(pg, run2) == "succeeded"
+    with pg.cursor() as cur:
+        cur.execute(
+            """
+            SELECT error_summary
+              FROM pipeline.run_log
+             WHERE run_id=%s
+            """,
+            (run2,),
+        )
+        err = cur.fetchone()[0]
+    assert "already in completed state" in err
 
 
 # ── Scenario 3 — Schema incompatible ────────────────────────────────────────

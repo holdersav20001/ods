@@ -17,65 +17,29 @@ import json
 import os
 import sys
 
-import psycopg2
+# Add repo root to sys.path so ods_pipeline package is importable from Glue
+_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
+import ods_pipeline
 import requests
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
 from utils import (
-    Stage, StageEvent,
     extract_business_date,
-    get_file_state,
     load_dataset_config,
-    set_file_state,
-    upsert_file_catalogue,
-    upsert_run_header,
-    update_run_fields,
-    write_lineage_edge,
-    write_stage_row,
 )
 from dq import evaluate_dq_rules
 
-import sys as _sys
-_PRODUCER_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "airflow", "dags", "common")
-if _PRODUCER_PATH not in _sys.path:
-    _sys.path.insert(0, os.path.abspath(_PRODUCER_PATH))
-try:
-    from run_event_producer import produce_run_event as _produce_run_event
-except ImportError:
-    _produce_run_event = None
+Stage = ods_pipeline.Stage
+StageEvent = ods_pipeline.StageEvent
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def _emit(run_id, domain, dataset, business_date, status, **kwargs):
-    if _produce_run_event:
-        _produce_run_event(
-            "ingestion.completed", run_id, domain, dataset,
-            business_date or "", status,
-            pipeline_type="ingestion", **kwargs,
-        )
-
-def _get_pg_conn():
-    return psycopg2.connect(
-        host=os.environ.get("POSTGRES_HOST", "localhost"),
-        port=int(os.environ.get("POSTGRES_PORT", "5432")),
-        dbname=os.environ.get("POSTGRES_DB", "ods_dev"),
-        user=os.environ.get("POSTGRES_USER", "ods"),
-        password=os.environ.get("POSTGRES_PASSWORD", "ods"),
-    )
-
-
-def _pg_dsn() -> str:
-    return (
-        f"host={os.environ.get('POSTGRES_HOST', 'localhost')} "
-        f"port={os.environ.get('POSTGRES_PORT', '5432')} "
-        f"dbname={os.environ.get('POSTGRES_DB', 'ods_dev')} "
-        f"user={os.environ.get('POSTGRES_USER', 'ods')} "
-        f"password={os.environ.get('POSTGRES_PASSWORD', 'ods')}"
-    )
 
 
 def _build_spark(dataset: str) -> SparkSession:
@@ -156,12 +120,29 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str,
         airflow_run_id: str | None = None) -> int:
     """Execute the ingestion pipeline. Returns process exit code."""
 
-    pg = _get_pg_conn()
+    conn = ods_pipeline.connect()
+
+    try:
+        return _run_impl(
+            conn, run_id, domain, dataset, s3_input_path,
+            file_id=file_id,
+            airflow_dag_id=airflow_dag_id,
+            airflow_run_id=airflow_run_id,
+        )
+    finally:
+        conn.close()
+
+
+def _run_impl(conn, run_id: str, domain: str, dataset: str, s3_input_path: str,
+              file_id: str | None = None,
+              airflow_dag_id: str | None = None,
+              airflow_run_id: str | None = None) -> int:
+    """Execute the ingestion pipeline. Returns process exit code."""
 
     # ------------------------------------------------------------------
     # Step 1 — Load dataset config + snapshot
     # ------------------------------------------------------------------
-    config = load_dataset_config(pg, domain, dataset)
+    config = load_dataset_config(conn, domain, dataset)
     config_snapshot = json.dumps(
         {k: v for k, v in config.items()},
         default=str,
@@ -171,30 +152,28 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str,
     # ------------------------------------------------------------------
     # Step 2 — Idempotency check
     # ------------------------------------------------------------------
-    pg_dsn = _pg_dsn()
-
     # spark_app_id starts None; updated once Spark is running.
     # _ws closes over it by reference so post-Spark calls see the real value.
     spark_app_id: str | None = None
 
     def _ws(**kw):
-        write_stage_row(pg_dsn, run_id=run_id,
-                        airflow_dag_id=airflow_dag_id,
-                        airflow_run_id=airflow_run_id,
-                        spark_app_id=spark_app_id, **kw)
+        ods_pipeline.stages.write(conn, run_id=run_id,
+                                  airflow_dag_id=airflow_dag_id,
+                                  airflow_run_id=airflow_run_id,
+                                  spark_app_id=spark_app_id, **kw)
 
-    current_state = get_file_state(pg, s3_input_path)
+    current_state = ods_pipeline.files.get_state(conn, s3_input_path)
     if current_state == "completed":
-        upsert_run_header(
-            pg_dsn,
+        ods_pipeline.runs.start(
+            conn,
             run_id=run_id,
             pipeline_type="ingestion",
             domain=domain,
             dataset=dataset,
             business_date=None,
         )
-        update_run_fields(
-            pg_dsn, run_id,
+        ods_pipeline.runs.update(
+            conn, run_id,
             status="succeeded",
             error_summary="File already in completed state — skipping.",
         )
@@ -205,7 +184,6 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str,
             input_ref=s3_input_path,
             error="File already in completed state — skipping.",
         )
-        pg.close()
         return 0
 
     # ------------------------------------------------------------------
@@ -239,19 +217,19 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str,
 
     if file_id:
         # Explicit file_id from DAG — update existing catalogue record
-        with pg.cursor() as _cur:
+        with conn.cursor() as _cur:
             _cur.execute(
                 "UPDATE pipeline.file_catalogue "
                 "SET state='ingesting', last_run_id=%s, state_updated_at=NOW() "
                 "WHERE file_id=%s",
                 (run_id, file_id),
             )
-        pg.commit()
+        conn.commit()
         _file_id = file_id
     else:
         # No explicit file_id — upsert keyed on MD5 (backward compat)
-        _file_id = upsert_file_catalogue(
-            pg_dsn,
+        _file_id = ods_pipeline.files.upsert(
+            conn,
             domain=domain,
             dataset=dataset,
             business_date=business_date_str,
@@ -269,8 +247,8 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str,
         config_version_id_val = int(config_version) if config_version is not None else None
     except (TypeError, ValueError):
         config_version_id_val = None
-    upsert_run_header(
-        pg_dsn,
+    ods_pipeline.runs.start(
+        conn,
         run_id=run_id,
         pipeline_type="ingestion",
         domain=domain,
@@ -279,11 +257,14 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str,
         config_version_id=config_version_id_val,
         file_id=_file_id,
     )
-    _ws(
+    ods_pipeline.stages.start(
+        conn,
+        run_id=run_id,
         stage=Stage.RAW_READ,
-        event_type=StageEvent.STARTED,
-        status="running",
         input_ref=s3_input_path,
+        airflow_dag_id=airflow_dag_id,
+        airflow_run_id=airflow_run_id,
+        spark_app_id=spark_app_id,
     )
 
     spark = _build_spark(dataset)
@@ -305,7 +286,19 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str,
     # Step 6 — Log file_read
     # ------------------------------------------------------------------
     source_count = df.count()
-    update_run_fields(pg_dsn, run_id, record_count_source=source_count)
+    ods_pipeline.runs.update(conn, run_id, record_count_source=source_count)
+    ods_pipeline.stages.finish(
+        conn,
+        run_id=run_id,
+        stage=Stage.RAW_READ,
+        status="succeeded",
+        event_type=StageEvent.COMPLETED,
+        input_ref=s3_input_path,
+        record_count_out=source_count,
+        airflow_dag_id=airflow_dag_id,
+        airflow_run_id=airflow_run_id,
+        spark_app_id=spark_app_id,
+    )
 
     # ------------------------------------------------------------------
     # Step 7 — Schema validation via Schema Registry
@@ -316,7 +309,7 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str,
         df.columns, schema_id, schema_version
     )
     if not ok:
-        update_run_fields(pg_dsn, run_id, status="failed", error_summary=err_msg)
+        ods_pipeline.runs.update(conn, run_id, status="failed", error_summary=err_msg)
         _ws(
             stage=Stage.SCHEMA_VALIDATE,
             event_type=StageEvent.FAILED,
@@ -324,11 +317,14 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str,
             input_ref=s3_input_path,
             error=err_msg,
         )
-        set_file_state(pg, s3_input_path, run_id, "failed", error_reason=err_msg)
-        _emit(run_id, domain, dataset, business_date_str, "failed",
-              file_id=_file_id, file_md5=_md5, s3_raw_path=s3_input_path,
-              error_summary=err_msg)
-        pg.close()
+        ods_pipeline.files.set_state(conn, s3_input_path, run_id, "failed", error_reason=err_msg)
+        ods_pipeline.events.produce(
+            "ingestion.completed", run_id, domain, dataset,
+            business_date_str, "failed",
+            pipeline_type="ingestion",
+            file_id=_file_id, file_md5=_md5, s3_raw_path=s3_input_path,
+            error_summary=err_msg,
+        )
         spark.stop()
         return 1
 
@@ -364,16 +360,25 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str,
     # Step 11 — Log DQ counts
     # ------------------------------------------------------------------
     dq_pass_count = source_count - failing_count
-    update_run_fields(
-        pg_dsn, run_id,
+    ods_pipeline.runs.update(
+        conn, run_id,
         record_count_dq_pass=dq_pass_count,
         record_count_dq_fail=failing_count,
     )
+    all_rows_failed_dq = source_count > 0 and dq_pass_count == 0 and failing_count > 0
     _dq_has_issues = bool(warnings or failing_count > 0)
-    dq_status = "warned" if _dq_has_issues else "succeeded"
+    dq_status = (
+        "failed" if all_rows_failed_dq
+        else "warned" if _dq_has_issues
+        else "succeeded"
+    )
     _ws(
         stage=Stage.DQ_CHECK,
-        event_type=StageEvent.WARNED if _dq_has_issues else StageEvent.COMPLETED,
+        event_type=(
+            StageEvent.FAILED if all_rows_failed_dq
+            else StageEvent.WARNED if _dq_has_issues
+            else StageEvent.COMPLETED
+        ),
         status=dq_status,
         input_ref=s3_input_path,
         record_count_in=source_count,
@@ -381,6 +386,25 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str,
         metrics={"failing_count": failing_count, "warnings": warnings or []},
         error=json.dumps(warnings) if warnings else None,
     )
+
+    if all_rows_failed_dq:
+        err = "All rows failed DQ — nothing curated."
+        ods_pipeline.runs.update(conn, run_id, status="failed", error_summary=err)
+        ods_pipeline.files.set_state(conn, s3_input_path, run_id, "failed", error_reason=err)
+        ods_pipeline.events.produce(
+            "ingestion.completed", run_id, domain, dataset,
+            business_date_str, "failed",
+            pipeline_type="ingestion",
+            record_count_source=source_count,
+            record_count_dq_pass=dq_pass_count,
+            record_count_dq_fail=failing_count,
+            error_summary=err,
+            file_id=_file_id,
+            file_md5=_md5,
+            s3_raw_path=s3_input_path,
+        )
+        spark.stop()
+        return 1
 
     # ------------------------------------------------------------------
     # Step 12 — Add ODS system columns to passing_df
@@ -414,7 +438,7 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str,
             f"expected={expected_count} "
             f"(source={source_count} - failed={failing_count})"
         )
-        update_run_fields(pg_dsn, run_id, status="failed", error_summary=err)
+        ods_pipeline.runs.update(conn, run_id, status="failed", error_summary=err)
         _ws(
             stage=Stage.CURATED_WRITE,
             event_type=StageEvent.FAILED,
@@ -423,16 +447,19 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str,
             record_count_in=source_count,
             error=err,
         )
-        set_file_state(pg, s3_input_path, run_id, "failed", error_reason=err)
-        _emit(run_id, domain, dataset, business_date_str, "failed",
-              record_count_source=source_count,
-              record_count_dq_pass=dq_pass_count,
-              record_count_dq_fail=failing_count,
-              error_summary=err,
-              file_id=_file_id,
-              file_md5=_md5,
-              s3_raw_path=s3_input_path)
-        pg.close()
+        ods_pipeline.files.set_state(conn, s3_input_path, run_id, "failed", error_reason=err)
+        ods_pipeline.events.produce(
+            "ingestion.completed", run_id, domain, dataset,
+            business_date_str, "failed",
+            pipeline_type="ingestion",
+            record_count_source=source_count,
+            record_count_dq_pass=dq_pass_count,
+            record_count_dq_fail=failing_count,
+            error_summary=err,
+            file_id=_file_id,
+            file_md5=_md5,
+            s3_raw_path=s3_input_path,
+        )
         spark.stop()
         return 1
 
@@ -442,18 +469,18 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str,
     curated_output_ref = curated_path.replace("s3a://", "s3://")
 
     # Back-fill curated path + final state into file_catalogue
-    with pg.cursor() as _cur:
+    with conn.cursor() as _cur:
         _cur.execute(
             "UPDATE pipeline.file_catalogue "
             "SET s3_curated_path=%s, state='curated', state_updated_at=NOW() "
             "WHERE file_id=%s",
             (curated_output_ref, _file_id),
         )
-    pg.commit()
+    conn.commit()
 
     # Write raw→curated lineage edge
-    write_lineage_edge(
-        pg_dsn,
+    ods_pipeline.lineage.write_edge(
+        conn,
         child_run_id=run_id,
         parent_file_id=_file_id,
         edge_type="raw_to_curated",
@@ -471,8 +498,8 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str,
         record_count_in=source_count,
         record_count_out=written_count,
     )
-    update_run_fields(
-        pg_dsn, run_id,
+    ods_pipeline.runs.update(
+        conn, run_id,
         status="succeeded",
         record_count_source=source_count,
         record_count_dq_pass=written_count,
@@ -482,24 +509,24 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str,
     # ------------------------------------------------------------------
     # Step 18 — Set file_state = completed
     # ------------------------------------------------------------------
-    set_file_state(
-        pg, s3_input_path, run_id, "completed",
+    ods_pipeline.files.set_state(
+        conn, s3_input_path, run_id, "completed",
         record_count=written_count,
     )
 
-    # Fetch s3_raw_path for event enrichment
-    _s3_raw = s3_input_path
+    ods_pipeline.events.produce(
+        "ingestion.completed", run_id, domain, dataset,
+        business_date_str, "succeeded",
+        pipeline_type="ingestion",
+        file_id=_file_id,
+        s3_raw_path=s3_input_path,
+        s3_curated_path=curated_output_ref,
+        file_md5=_md5,
+        record_count_source=source_count,
+        record_count_dq_pass=written_count,
+        record_count_dq_fail=failing_count,
+    )
 
-    _emit(run_id, domain, dataset, business_date_str, "succeeded",
-          file_id=_file_id,
-          s3_raw_path=_s3_raw,
-          s3_curated_path=curated_output_ref,
-          file_md5=_md5,
-          record_count_source=source_count,
-          record_count_dq_pass=written_count,
-          record_count_dq_fail=failing_count)
-
-    pg.close()
     spark.stop()
     return 0
 

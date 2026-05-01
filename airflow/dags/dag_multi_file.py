@@ -6,6 +6,7 @@ Triggered per-file by dag_drop_to_raw with conf:
 from __future__ import annotations
 
 import os
+import sys
 import uuid
 
 import pendulum
@@ -16,7 +17,16 @@ from airflow.operators.python import get_current_context
 from airflow.providers.docker.operators.docker import DockerOperator
 from docker.types import Mount
 
-from common.run_log import insert_run_header, update_run_header, write_stage
+# Add likely roots so ods_pipeline is importable both locally and in Airflow.
+_DAG_DIR = os.path.dirname(__file__)
+for _root in (
+    os.path.abspath(os.path.join(_DAG_DIR, "..")),
+    os.path.abspath(os.path.join(_DAG_DIR, "..", "..")),
+):
+    if _root not in sys.path:
+        sys.path.insert(0, _root)
+
+import ods_pipeline
 
 
 PG_DSN = os.environ.get(
@@ -26,6 +36,10 @@ PG_DSN = os.environ.get(
 GLUE_JOBS_PATH = os.environ.get(
     "GLUE_JOBS_PATH",
     "/c/Users/Holde/development/aviva ODS/glue/jobs",
+)
+ODS_PIPELINE_PATH = os.environ.get(
+    "ODS_PIPELINE_PATH",
+    "/c/Users/Holde/development/aviva ODS/ods_pipeline",
 )
 GLUE_IMAGE = os.environ.get("GLUE_IMAGE", "ods-glue:local")
 GLUE_ENV = {
@@ -80,7 +94,7 @@ def init_run() -> dict:
                 )
             slot_name, merge_dataset = cfg
 
-        insert_run_header(
+        ods_pipeline.runs.start(
             conn,
             run_id=run_id,
             pipeline_type="stage",
@@ -161,7 +175,7 @@ def prepare_merge(ctx: dict) -> dict:
 def finalise(ctx: dict) -> None:
     conn = psycopg2.connect(PG_DSN)
     try:
-        update_run_header(conn, ctx["run_id"], status="succeeded")
+        ods_pipeline.runs.update(conn, ctx["run_id"], status="succeeded")
         with conn.cursor() as cur:
             cur.execute(
                 "UPDATE pipeline.file_catalogue "
@@ -200,8 +214,10 @@ with DAG(
             "--s3_input_path {{ ti.xcom_pull(task_ids='init_run')['s3_raw_path'] }}"
         ),
         environment=GLUE_ENV,
-        mounts=[Mount(source=GLUE_JOBS_PATH,
-                      target="/home/glue_user/workspace/jobs", type="bind")],
+        mounts=[
+            Mount(source=GLUE_JOBS_PATH,    target="/home/glue_user/workspace/jobs", type="bind"),
+            Mount(source=ODS_PIPELINE_PATH, target="/home/glue_user/ods_pipeline",   type="bind"),
+        ],
     )
 
     slots_ready = check_all_slots_ready(ctx)
@@ -226,8 +242,10 @@ with DAG(
             "--business_date {{ ti.xcom_pull(task_ids='init_run')['business_date'] }}"
         ),
         environment=GLUE_ENV,
-        mounts=[Mount(source=GLUE_JOBS_PATH,
-                      target="/home/glue_user/workspace/jobs", type="bind")],
+        mounts=[
+            Mount(source=GLUE_JOBS_PATH,    target="/home/glue_user/workspace/jobs", type="bind"),
+            Mount(source=ODS_PIPELINE_PATH, target="/home/glue_user/ods_pipeline",   type="bind"),
+        ],
     )
 
     fin = finalise(slots_ready)

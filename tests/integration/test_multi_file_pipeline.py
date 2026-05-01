@@ -41,6 +41,7 @@ GLUE_COMMON = [
     "-e", "SCHEMA_REGISTRY_URL=http://schema-registry:8081",
     "-e", "ENV=local",
     "-v", f"{os.getcwd()}/glue/jobs:/home/glue_user/workspace/jobs",
+    "-v", f"{os.getcwd()}/ods_pipeline:/home/glue_user/ods_pipeline",
 ]
 
 PY_FILES = (
@@ -114,6 +115,18 @@ def _wipe(pg):
         "DELETE FROM pipeline.run_stage_log s USING pipeline.run_log r "
         "WHERE s.run_id=r.run_id AND r.domain='insurance' "
         "AND r.dataset IN ('policies_core','policies_enrichment','policies_enriched')"
+    )
+    cur.execute(
+        "DELETE FROM pipeline.lineage_edge "
+        "WHERE child_run_id IN ("
+        "  SELECT run_id FROM pipeline.run_log "
+        "   WHERE domain='insurance' "
+        "     AND dataset IN ('policies_core','policies_enrichment','policies_enriched')"
+        ") OR parent_file_id IN ("
+        "  SELECT file_id FROM pipeline.file_catalogue "
+        "   WHERE domain='insurance' "
+        "     AND dataset IN ('policies_core','policies_enrichment','policies_enriched')"
+        ")"
     )
     cur.execute(
         "DELETE FROM pipeline.run_log "

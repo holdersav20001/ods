@@ -1,10 +1,8 @@
 import os, sys, uuid, pytest
 
 HERE = os.path.dirname(__file__)
-sys.path.insert(0, os.path.abspath(os.path.join(HERE, '..', '..', 'airflow', 'dags')))
-from common.run_log import (
-    insert_run_header, update_run_header, write_stage, write_recon
-)
+sys.path.insert(0, os.path.abspath(os.path.join(HERE, '..', '..')))
+import ods_pipeline
 
 @pytest.fixture
 def isolated_run(pg_conn):
@@ -25,14 +23,14 @@ def isolated_run(pg_conn):
 
 def test_insert_run_header_and_update(pg_conn, isolated_run):
     rid = isolated_run
-    insert_run_header(pg_conn, run_id=rid, pipeline_type='s3_batch',
-                      domain='insurance', dataset='policies',
-                      business_date='2026-04-28', file_id=None,
-                      config_version_id=1)
-    update_run_header(pg_conn, rid, status='succeeded',
-                      record_count_source=10, record_count_published=10,
-                      kafka_offset_start=0, kafka_offset_end=10,
-                      kafka_topic='ods.insurance.policies')
+    ods_pipeline.runs.start(pg_conn, run_id=rid, pipeline_type='s3_batch',
+                            domain='insurance', dataset='policies',
+                            business_date='2026-04-28', file_id=None,
+                            config_version_id=1)
+    ods_pipeline.runs.update(pg_conn, rid, status='succeeded',
+                             record_count_source=10, record_count_published=10,
+                             kafka_offset_start=0, kafka_offset_end=10,
+                             kafka_topic='ods.insurance.policies')
     with pg_conn.cursor() as cur:
         cur.execute("SELECT status, record_count_published, ended_at FROM pipeline.run_log WHERE run_id=%s", (rid,))
         s, n, ended = cur.fetchone()
@@ -42,13 +40,14 @@ def test_insert_run_header_and_update(pg_conn, isolated_run):
 
 def test_write_stage(pg_conn, isolated_run):
     rid = isolated_run
-    insert_run_header(pg_conn, run_id=rid, pipeline_type='s3_batch',
-                      domain='insurance', dataset='policies',
-                      business_date='2026-04-28', file_id=None,
-                      config_version_id=1)
-    write_stage(pg_conn, run_id=rid, stage='ingest', status='succeeded',
-                input_ref='s3://raw/x.csv', output_ref='s3://staging/x.parquet',
-                record_count_in=10, record_count_out=10, metrics={'duration_s': 4.2})
+    ods_pipeline.runs.start(pg_conn, run_id=rid, pipeline_type='s3_batch',
+                            domain='insurance', dataset='policies',
+                            business_date='2026-04-28', file_id=None,
+                            config_version_id=1)
+    ods_pipeline.stages.write(pg_conn, run_id=rid, stage='ingest', status='succeeded',
+                              input_ref='s3://raw/x.csv', output_ref='s3://staging/x.parquet',
+                              record_count_in=10, record_count_out=10,
+                              metrics={'duration_s': 4.2})
     with pg_conn.cursor() as cur:
         cur.execute("SELECT stage, record_count_out, metrics FROM pipeline.run_stage_log WHERE run_id=%s", (rid,))
         st, n, m = cur.fetchone()
@@ -56,16 +55,51 @@ def test_write_stage(pg_conn, isolated_run):
     assert n == 10
     assert m['duration_s'] == 4.2
 
+
+def test_stage_start_and_finish_closes_open_row(pg_conn, isolated_run):
+    rid = isolated_run
+    ods_pipeline.runs.start(pg_conn, run_id=rid, pipeline_type='s3_batch',
+                            domain='insurance', dataset='policies',
+                            business_date='2026-04-28', file_id=None,
+                            config_version_id=1)
+    ods_pipeline.stages.start(pg_conn, run_id=rid, stage='raw_read',
+                              input_ref='s3://raw/x.csv')
+    with pg_conn.cursor() as cur:
+        cur.execute(
+            "SELECT status, ended_at FROM pipeline.run_stage_log "
+            "WHERE run_id=%s AND stage='raw_read'",
+            (rid,),
+        )
+        status, ended_at = cur.fetchone()
+    assert status == 'running'
+    assert ended_at is None
+
+    ods_pipeline.stages.finish(pg_conn, run_id=rid, stage='raw_read',
+                               status='succeeded',
+                               record_count_out=10)
+    with pg_conn.cursor() as cur:
+        cur.execute(
+            "SELECT count(*), max(status), count(*) FILTER (WHERE ended_at IS NULL) "
+            "FROM pipeline.run_stage_log WHERE run_id=%s AND stage='raw_read'",
+            (rid,),
+        )
+        count, status, open_count = cur.fetchone()
+    assert count == 1
+    assert status == 'succeeded'
+    assert open_count == 0
+
 def test_write_recon_discrepancy_calculation(pg_conn, isolated_run):
     rid = isolated_run
-    insert_run_header(pg_conn, run_id=rid, pipeline_type='s3_batch',
-                      domain='insurance', dataset='policies',
-                      business_date='2026-04-28', file_id=None,
-                      config_version_id=1)
-    write_recon(pg_conn, check_type='t0_publish_count', run_id=rid,
-                domain='insurance', dataset='policies', business_date='2026-04-28',
-                source_count=10, kafka_count=9, postgres_count=None,
-                status='failed', detail='offset delta < source')
+    ods_pipeline.runs.start(pg_conn, run_id=rid, pipeline_type='s3_batch',
+                            domain='insurance', dataset='policies',
+                            business_date='2026-04-28', file_id=None,
+                            config_version_id=1)
+    ods_pipeline.reconciliation.write_check(
+        pg_conn, check_type='t0_publish_count', run_id=rid,
+        domain='insurance', dataset='policies', business_date='2026-04-28',
+        source_count=10, kafka_count=9, postgres_count=None,
+        status='failed', detail='offset delta < source',
+    )
     with pg_conn.cursor() as cur:
         cur.execute("SELECT discrepancy_count, status FROM pipeline.reconciliation_log WHERE run_id=%s ORDER BY id DESC LIMIT 1", (rid,))
         d, s = cur.fetchone()
@@ -74,22 +108,49 @@ def test_write_recon_discrepancy_calculation(pg_conn, isolated_run):
 
 def test_update_run_header_rejects_unknown_field(pg_conn, isolated_run):
     rid = isolated_run
-    insert_run_header(pg_conn, run_id=rid, pipeline_type='s3_batch',
-                      domain='insurance', dataset='policies',
-                      business_date='2026-04-28', file_id=None,
-                      config_version_id=1)
+    ods_pipeline.runs.start(pg_conn, run_id=rid, pipeline_type='s3_batch',
+                            domain='insurance', dataset='policies',
+                            business_date='2026-04-28', file_id=None,
+                            config_version_id=1)
     with pytest.raises(ValueError):
-        update_run_header(pg_conn, rid, bogus_column='x')
+        ods_pipeline.runs.update(pg_conn, rid, bogus_column='x')
+
+
+def test_start_run_rejects_conflicting_duplicate_metadata(pg_conn, isolated_run):
+    rid = isolated_run
+    ods_pipeline.runs.start(pg_conn, run_id=rid, pipeline_type='ingestion',
+                            domain='insurance', dataset='policies',
+                            business_date='2026-04-28', file_id=None,
+                            config_version_id=1)
+    with pytest.raises(ValueError, match="different metadata"):
+        ods_pipeline.runs.start(pg_conn, run_id=rid, pipeline_type='publish',
+                                domain='insurance', dataset='policies',
+                                business_date='2026-04-28', file_id=None,
+                                config_version_id=1)
+
+
+def test_start_run_allows_matching_duplicate_metadata(pg_conn, isolated_run):
+    rid = isolated_run
+    kwargs = dict(pipeline_type='ingestion',
+                  domain='insurance', dataset='policies',
+                  business_date='2026-04-28', file_id=None,
+                  config_version_id=1)
+    ods_pipeline.runs.start(pg_conn, run_id=rid, **kwargs)
+    ods_pipeline.runs.start(pg_conn, run_id=rid, **kwargs)
+    with pg_conn.cursor() as cur:
+        cur.execute("SELECT count(*) FROM pipeline.run_log WHERE run_id=%s", (rid,))
+        (count,) = cur.fetchone()
+    assert count == 1
 
 
 def test_update_run_header_terminal_sets_ended_at_only_for_terminal_status(pg_conn, isolated_run):
     rid = isolated_run
-    insert_run_header(pg_conn, run_id=rid, pipeline_type='s3_batch',
-                      domain='insurance', dataset='policies',
-                      business_date='2026-04-28', file_id=None,
-                      config_version_id=1)
+    ods_pipeline.runs.start(pg_conn, run_id=rid, pipeline_type='s3_batch',
+                            domain='insurance', dataset='policies',
+                            business_date='2026-04-28', file_id=None,
+                            config_version_id=1)
     # Non-terminal update: ended_at should remain NULL.
-    update_run_header(pg_conn, rid, record_count_source=5)
+    ods_pipeline.runs.update(pg_conn, rid, record_count_source=5)
     with pg_conn.cursor() as cur:
         cur.execute("SELECT ended_at FROM pipeline.run_log WHERE run_id=%s", (rid,))
         (ended,) = cur.fetchone()

@@ -44,8 +44,8 @@ def test_sync_inserts_then_bumps_version(pg_conn, tmp_path):
     def _cleanup():
         with pg_conn.cursor() as cur:
             cur.execute(
-                "DELETE FROM pipeline.file_catalogue_deprecated_2026_04_28 WHERE dataset_config_id IN "
-                "(SELECT id FROM pipeline.dataset_config WHERE domain='testdomain' AND dataset='testdataset')"
+                "DELETE FROM pipeline.file_catalogue "
+                "WHERE domain='testdomain' AND dataset='testdataset'"
             )
             cur.execute("DELETE FROM pipeline.dataset_config WHERE domain='testdomain' AND dataset='testdataset'")
         pg_conn.commit()

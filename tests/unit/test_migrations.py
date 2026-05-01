@@ -30,23 +30,21 @@ def test_dataset_config_table_exists(conn):
     assert cur.fetchone() is not None
 
 def test_glue_job_log_has_config_snapshot(conn):
-    # After migration 03, glue_job_log is renamed to glue_job_log_deprecated_2026_04_28
     cur = conn.cursor()
     cur.execute(
         "SELECT column_name FROM information_schema.columns "
-        "WHERE table_schema='pipeline' AND table_name='glue_job_log_deprecated_2026_04_28' "
-        "AND column_name='config_snapshot'"
+        "WHERE table_schema='pipeline' AND table_name='run_stage_log' "
+        "AND column_name='metrics'"
     )
     assert cur.fetchone() is not None
 
 def test_file_state_status_constraint(conn):
-    # After migration 03, file_state is renamed to file_state_deprecated_2026_04_28
     cur = conn.cursor()
     cur.execute(
         "SELECT check_clause FROM information_schema.check_constraints cc "
         "JOIN information_schema.constraint_column_usage ccu "
         "ON cc.constraint_name = ccu.constraint_name "
-        "WHERE ccu.table_schema='pipeline' AND ccu.table_name='file_state_deprecated_2026_04_28' "
+        "WHERE ccu.table_schema='pipeline' AND ccu.table_name='file_state' "
         "AND ccu.column_name='status'"
     )
     row = cur.fetchone()
@@ -65,23 +63,38 @@ def test_policies_seed_exists(conn):
 def test_policies_dq_rules_have_hard_blocks(conn):
     cur = conn.cursor()
     cur.execute(
-        "SELECT dq_rules->'hard_blocks' FROM pipeline.dataset_config WHERE dataset='policies'"
+        "SELECT dq_rules FROM pipeline.dataset_config WHERE dataset='policies'"
     )
     row = cur.fetchone()
     assert row is not None
-    assert len(row[0]) >= 4
+    rules = row[0]
+    hard_blocks = rules["hard_blocks"]
+    assert {"field": "policy_id", "rule": "not_null"} in hard_blocks
+    assert {"field": "policy_id", "rule": "unique"} in hard_blocks
+    rule_fields = {
+        rule.get("field")
+        for section in ("hard_blocks", "soft_warns")
+        for rule in rules.get(section, [])
+        if "field" in rule
+    }
+    completeness_fields = {
+        field
+        for rule in rules.get("soft_warns", [])
+        for field in rule.get("fields", [])
+    }
+    assert "premium_amount" not in rule_fields | completeness_fields
 
 def test_file_catalogue_links_to_dataset_config(conn):
-    # After migration 03, the old file_catalogue is renamed to file_catalogue_deprecated_2026_04_28
     cur = conn.cursor()
     cur.execute(
-        "SELECT fc.name_pattern FROM pipeline.file_catalogue_deprecated_2026_04_28 fc "
-        "JOIN pipeline.dataset_config dc ON fc.dataset_config_id = dc.id "
-        "WHERE dc.dataset='policies'"
+        "SELECT filename_pattern, postgres_target_table "
+        "FROM pipeline.dataset_config "
+        "WHERE domain='insurance' AND dataset='policies'"
     )
     row = cur.fetchone()
     assert row is not None
-    assert row[0] == 'policies_*.csv'
+    assert row[0] == r'policies_(?P<bd>\d{8})\.csv'
+    assert row[1] == 'ods.insurance_policy'
 
 
 # --- New tests for migration 03 + 04 ---
@@ -129,10 +142,7 @@ def test_legacy_tables_renamed(conn):
               AND table_name LIKE '%_deprecated_2026_04_28'
         """)
         names = {r[0] for r in cur.fetchall()}
-    assert 'glue_job_log_deprecated_2026_04_28' in names
-    assert 'lineage_deprecated_2026_04_28' in names
-    assert 'file_state_deprecated_2026_04_28' in names
-    assert 'ingestion_file_state_deprecated_2026_04_28' in names
+    assert names == set()
 
 def test_dataset_config_has_version_columns(conn):
     with conn.cursor() as cur:

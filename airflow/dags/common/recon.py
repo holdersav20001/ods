@@ -1,5 +1,17 @@
+from __future__ import annotations
+import os, sys
 from dataclasses import dataclass
-from .run_log import write_recon
+
+# Ensure ods_pipeline is importable both locally and in Airflow.
+_COMMON_DIR = os.path.dirname(__file__)
+for _root in (
+    os.path.abspath(os.path.join(_COMMON_DIR, "..", "..")),
+    os.path.abspath(os.path.join(_COMMON_DIR, "..", "..", "..")),
+):
+    if _root not in sys.path:
+        sys.path.insert(0, _root)
+
+import ods_pipeline
 
 @dataclass
 class T0Result:
@@ -13,7 +25,7 @@ def t0_check_publish(conn, *, run_id, domain, dataset, business_date,
     kafka_count = (kafka_offset_end or 0) - (kafka_offset_start or 0)
     discrepancy = kafka_count - source_count
     passed = discrepancy == 0
-    write_recon(
+    ods_pipeline.reconciliation.write_check(
         conn,
         check_type='t0_publish_count',
         run_id=run_id,

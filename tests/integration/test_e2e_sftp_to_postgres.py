@@ -1,5 +1,5 @@
 """End-to-end integration test: drop a file via SFTP, expect rows to land in
-ods.insurance_policies through the full Airflow + Spark + Kafka + Connect pipeline.
+ods.insurance_policy through the full Airflow + Spark + Kafka + Connect pipeline.
 """
 from __future__ import annotations
 
@@ -38,6 +38,9 @@ def _put(name: str, body: str) -> None:
         sftp.chdir("upload")
     except IOError:
         pass
+    for existing in sftp.listdir():
+        if existing.startswith("policies_") and existing.endswith(".csv"):
+            sftp.remove(existing)
     with sftp.file(name, "w") as f:
         f.write(body)
     sftp.close()
@@ -54,6 +57,17 @@ def test_drop_file_lands_in_postgres(pg_conn):
     # Reset all state so test is re-runnable (FK order: run_stage_log → run_log → file_catalogue → target)
     with pg_conn.cursor() as cur:
         cur.execute(
+            "DELETE FROM ods.insurance_policy WHERE policy_id IN ('P100','P101')"
+        )
+        cur.execute(
+            "DELETE FROM pipeline.lineage_edge WHERE child_run_id IN ("
+            "  SELECT run_id FROM pipeline.run_log WHERE domain='insurance' "
+            "  AND dataset='policies' AND business_date='2026-04-28') "
+            "OR parent_file_id IN ("
+            "  SELECT file_id FROM pipeline.file_catalogue WHERE domain='insurance' "
+            "  AND dataset='policies' AND business_date='2026-04-28')"
+        )
+        cur.execute(
             "DELETE FROM pipeline.run_stage_log WHERE run_id IN ("
             "  SELECT run_id FROM pipeline.run_log WHERE domain='insurance' "
             "  AND dataset='policies' AND business_date='2026-04-28')"
@@ -67,7 +81,12 @@ def test_drop_file_lands_in_postgres(pg_conn):
             "AND dataset='policies' AND business_date='2026-04-28'"
         )
         cur.execute(
-            "DELETE FROM ods.insurance_policies WHERE policy_id IN ('P100','P101')"
+            "DELETE FROM pipeline.file_state "
+            "WHERE s3_path IN (%s, %s)",
+            (
+                "s3://ods-raw-local/insurance/policies/date=20260428/policies_20260428.csv",
+                "s3://ods-curated-local/insurance/policies/date=2026-04-28/",
+            ),
         )
     pg_conn.commit()
 
@@ -79,11 +98,11 @@ def test_drop_file_lands_in_postgres(pg_conn):
         pg_conn.rollback()
         with pg_conn.cursor() as cur:
             cur.execute(
-                "SELECT count(*) FROM ods.insurance_policies "
+                "SELECT count(*) FROM ods.insurance_policy "
                 "WHERE policy_id IN ('P100','P101')"
             )
             n = cur.fetchone()[0]
         if n == 2:
             return
         time.sleep(3)
-    raise AssertionError(f"expected 2 rows in ods.insurance_policies, got {n}")
+    raise AssertionError(f"expected 2 rows in ods.insurance_policy, got {n}")

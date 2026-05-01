@@ -138,7 +138,9 @@ Both dashboards bind to the auto-provisioned `ODS Postgres` datasource.
 | Check | Where it runs | What it compares |
 |---|---|---|
 | **T0** `t0_publish_count` | Inline in `ods_s3_publish.py` after produce | `record_count_source` vs `kafka_offset_end - kafka_offset_start` |
-| **T2** `t2_full` | `dag_recon_t2`, hourly | source vs kafka delta vs `count(target WHERE _ods_run_id=run_id AND _ods_business_date=bd)` |
+| **T2** `t2_append_file_count` | `dag_recon_t2`, hourly | accepted source rows vs landed rows in append targets, matched by file/run identity |
+| **T2** `t2_history_file_count` | `dag_recon_t2`, hourly | accepted source rows vs immutable history rows for upsert/current datasets |
+| **T2** `t2_current_latest_consistency` | `dag_recon_t2`, hourly | current-state table vs latest history row per business key |
 
 Trigger T2 manually:
 ```bash

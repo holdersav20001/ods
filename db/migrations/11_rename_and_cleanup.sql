@@ -3,6 +3,12 @@
 -- Rename ods table
 ALTER TABLE ods.insurance_policies RENAME TO insurance_policy;
 
+UPDATE pipeline.dataset_config
+   SET postgres_target_table = 'ods.insurance_policy'
+ WHERE domain = 'insurance'
+   AND dataset = 'policies'
+   AND postgres_target_table = 'ods.insurance_policies';
+
 -- Drop deprecated pipeline tables
 DROP TABLE IF EXISTS pipeline.file_catalogue_deprecated_2026_04_28;
 DROP TABLE IF EXISTS pipeline.file_state_deprecated_2026_04_28;
