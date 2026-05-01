@@ -42,6 +42,7 @@ GLUE_COMMON = [
 ] + (["-v", f"{_HOST_JOBS}:/home/glue_user/workspace/jobs"] if _HOST_JOBS else
      ["-v", f"{os.getcwd()}/glue/jobs:/home/glue_user/workspace/jobs"]) + [
     "-v", f"{os.getcwd()}/airflow/dags/common:/home/glue_user/airflow/dags/common",
+    "-v", f"{os.getcwd()}/ods_pipeline:/home/glue_user/ods_pipeline",
 ]
 
 SPARK = [

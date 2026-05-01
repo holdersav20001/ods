@@ -36,7 +36,8 @@ def start(
                 ON CONFLICT (run_id) DO NOTHING
                 """,
                 (
-                    run_id, pipeline_type, domain, dataset, str(business_date),
+                    run_id, pipeline_type, domain, dataset,
+                    str(business_date) if business_date is not None else None,
                     file_id, kafka_topic, config_version_id, schema_version_id,
                     json.dumps(parents) if parents else None,
                 ),
