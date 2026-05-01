@@ -19,7 +19,7 @@ def register_schema(subject: str, schema_path: str) -> int:
     )
     r.raise_for_status()
     schema_id = r.json()["id"]
-    print(f"Registered {subject} → schema id {schema_id}")
+    print(f"Registered {subject} -> schema id {schema_id}")
     return schema_id
 
 

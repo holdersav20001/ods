@@ -42,6 +42,7 @@ GLUE_COMMON = [
 ] + (["-v", f"{_HOST_JOBS}:/home/glue_user/workspace/jobs"] if _HOST_JOBS else
      ["-v", f"{os.getcwd()}/glue/jobs:/home/glue_user/workspace/jobs"]) + [
     "-v", f"{os.getcwd()}/airflow/dags/common:/home/glue_user/airflow/dags/common",
+    "-v", f"{os.getcwd()}/ods_pipeline:/home/glue_user/ods_pipeline",
 ]
 
 SPARK = [
@@ -61,6 +62,9 @@ _POLICY_FIELDS = [
     {"name": "_ods_business_date",  "type": "string"},
     {"name": "_ods_run_id",         "type": "string"},
     {"name": "_ods_file_id",        "type": ["null", "string"],  "default": None},
+    {"name": "_ods_domain",         "type": ["null", "string"],  "default": None},
+    {"name": "_ods_dataset",        "type": ["null", "string"],  "default": None},
+    {"name": "_ods_source_application", "type": ["null", "string"], "default": None},
 ]
 
 _POLICIES_SCHEMA = {
@@ -529,6 +533,48 @@ def test_insurance_policy_history_file_id_populated(pg):
         )
         nulls = cur.fetchone()[0]
     assert nulls == 0, f"{nulls} rows in insurance_policy_history missing _ods_file_id"
+
+
+def test_insurance_policy_metadata_contract_populated(pg):
+    """Current policy rows carry the shared ODS metadata contract."""
+    with pg.cursor() as cur:
+        cur.execute(
+            """
+            SELECT COUNT(*) FROM ods.insurance_policy
+            WHERE policy_id IN (%s,%s,%s)
+              AND (
+                  _ods_domain IS DISTINCT FROM 'insurance'
+               OR _ods_dataset IS DISTINCT FROM 'policies'
+               OR _ods_source_application IS DISTINCT FROM 'sftp'
+              )
+            """,
+            _POLICY_IDS,
+        )
+        mismatches = cur.fetchone()[0]
+    assert mismatches == 0, (
+        f"{mismatches} insurance_policy rows do not carry expected ODS metadata"
+    )
+
+
+def test_insurance_policy_history_metadata_contract_populated(pg):
+    """History policy rows carry the shared ODS metadata contract."""
+    with pg.cursor() as cur:
+        cur.execute(
+            """
+            SELECT COUNT(*) FROM ods.insurance_policy_history
+            WHERE policy_id IN (%s,%s,%s)
+              AND (
+                  _ods_domain IS DISTINCT FROM 'insurance'
+               OR _ods_dataset IS DISTINCT FROM 'policies'
+               OR _ods_source_application IS DISTINCT FROM 'sftp'
+              )
+            """,
+            _POLICY_IDS,
+        )
+        mismatches = cur.fetchone()[0]
+    assert mismatches == 0, (
+        f"{mismatches} insurance_policy_history rows do not carry expected ODS metadata"
+    )
 
 
 def test_file_id_joins_to_catalogue(pg):

@@ -74,6 +74,7 @@ def run_ingestion_job(
         "-e", "SCHEMA_REGISTRY_URL=http://schema-registry:8081",
         "-e", "ENV=local",
         "-v", f"{os.getcwd()}/glue/jobs:/home/glue_user/workspace/jobs",
+        "-v", f"{os.getcwd()}/ods_pipeline:/home/glue_user/ods_pipeline",
         "ods-glue:local",
         "spark-submit",
         "--py-files",

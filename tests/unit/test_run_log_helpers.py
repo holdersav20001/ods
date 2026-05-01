@@ -55,6 +55,24 @@ def test_write_stage(pg_conn, isolated_run):
     assert n == 10
     assert m['duration_s'] == 4.2
 
+
+def test_write_stage_started_keeps_ended_at_null(pg_conn, isolated_run):
+    rid = isolated_run
+    ods_pipeline.runs.start(pg_conn, run_id=rid, pipeline_type='s3_batch',
+                            domain='insurance', dataset='policies',
+                            business_date='2026-04-28', file_id=None,
+                            config_version_id=1)
+    ods_pipeline.stages.write(pg_conn, run_id=rid, stage='raw_read',
+                              event_type='stage_started', status='running',
+                              input_ref='s3://raw/x.csv')
+    with pg_conn.cursor() as cur:
+        cur.execute(
+            "SELECT ended_at FROM pipeline.run_stage_log WHERE run_id=%s AND stage=%s",
+            (rid, 'raw_read'),
+        )
+        (ended,) = cur.fetchone()
+    assert ended is None
+
 def test_write_recon_discrepancy_calculation(pg_conn, isolated_run):
     rid = isolated_run
     ods_pipeline.runs.start(pg_conn, run_id=rid, pipeline_type='s3_batch',
@@ -95,3 +113,25 @@ def test_update_run_header_terminal_sets_ended_at_only_for_terminal_status(pg_co
         cur.execute("SELECT ended_at FROM pipeline.run_log WHERE run_id=%s", (rid,))
         (ended,) = cur.fetchone()
     assert ended is None
+
+
+def test_start_run_allows_null_business_date(pg_conn, isolated_run):
+    rid = isolated_run
+    ods_pipeline.runs.start(pg_conn, run_id=rid, pipeline_type='publish',
+                            domain='insurance', dataset='policies',
+                            business_date=None, kafka_topic='ods.insurance.policies')
+    with pg_conn.cursor() as cur:
+        cur.execute("SELECT business_date FROM pipeline.run_log WHERE run_id=%s", (rid,))
+        (business_date,) = cur.fetchone()
+    assert business_date is None
+
+
+def test_start_run_rejects_conflicting_duplicate_metadata(pg_conn, isolated_run):
+    rid = isolated_run
+    ods_pipeline.runs.start(pg_conn, run_id=rid, pipeline_type='ingestion',
+                            domain='insurance', dataset='policies',
+                            business_date='2026-04-28')
+    with pytest.raises(RuntimeError):
+        ods_pipeline.runs.start(pg_conn, run_id=rid, pipeline_type='publish',
+                                domain='insurance', dataset='policies',
+                                business_date='2026-04-28')

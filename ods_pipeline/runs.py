@@ -13,7 +13,7 @@ def start(
     pipeline_type: str,
     domain: str,
     dataset: str,
-    business_date: str,
+    business_date: str | None,
     file_id: str | None = None,
     kafka_topic: str | None = None,
     config_version_id=None,
@@ -22,8 +22,15 @@ def start(
 ) -> None:
     """Insert a new ``run_log`` row with ``status='running'``.
 
-    Silently no-ops on duplicate ``run_id`` (ON CONFLICT DO NOTHING).
+    Duplicate ``run_id`` starts are idempotent only when the existing run
+    metadata matches the requested metadata. Conflicting starts raise so
+    callers cannot accidentally collapse ingestion/publish lineage.
     """
+    parent_json = json.dumps(parents) if parents else None
+
+    def _norm(value):
+        return None if value is None else str(value)
+
     try:
         with conn.cursor() as cur:
             cur.execute(
@@ -34,13 +41,44 @@ def start(
                      schema_version_id, parents)
                 VALUES (%s,%s,%s,%s,%s, %s,'running',%s,%s,%s,%s)
                 ON CONFLICT (run_id) DO NOTHING
+                RETURNING run_id
                 """,
                 (
-                    run_id, pipeline_type, domain, dataset, str(business_date),
+                    run_id, pipeline_type, domain, dataset, business_date,
                     file_id, kafka_topic, config_version_id, schema_version_id,
-                    json.dumps(parents) if parents else None,
+                    parent_json,
                 ),
             )
+            inserted = cur.fetchone()
+            if not inserted:
+                cur.execute(
+                    """
+                    SELECT pipeline_type, domain, dataset, business_date,
+                           file_id, kafka_topic, config_version_id,
+                           schema_version_id, parents::text
+                      FROM pipeline.run_log
+                     WHERE run_id=%s
+                    """,
+                    (run_id,),
+                )
+                row = cur.fetchone()
+                expected = (
+                    pipeline_type,
+                    domain,
+                    dataset,
+                    _norm(business_date),
+                    _norm(file_id),
+                    _norm(kafka_topic),
+                    _norm(config_version_id),
+                    _norm(schema_version_id),
+                    parent_json,
+                )
+                actual = tuple(_norm(v) for v in row)
+                if actual != expected:
+                    raise RuntimeError(
+                        "run_id already exists with different metadata: "
+                        f"run_id={run_id}"
+                    )
         conn.commit()
     except Exception:
         conn.rollback()

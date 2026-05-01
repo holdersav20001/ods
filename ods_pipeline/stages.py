@@ -24,8 +24,17 @@ def write(
 ) -> None:
     """Append one row to ``pipeline.run_stage_log``.
 
-    ``started_at`` and ``ended_at`` are both set to ``NOW()``.
+    Started/running rows keep ``ended_at`` null. Terminal rows set both
+    timestamps at insert time because this table is an append-only event log.
     """
+    terminal_event = event_type in {
+        "stage_completed",
+        "stage_failed",
+        "stage_skipped",
+        "stage_warned",
+    }
+    terminal_status = status in {"succeeded", "failed", "skipped", "partial", "warned"}
+    has_ended = terminal_event or (event_type is None and terminal_status)
     try:
         with conn.cursor() as cur:
             cur.execute(
@@ -37,11 +46,12 @@ def write(
                      record_count_in, record_count_out,
                      metrics, error,
                      airflow_dag_id, airflow_run_id, spark_app_id)
-                VALUES (%s,%s,%s,%s,%s, NOW(), NOW(),
+                VALUES (%s,%s,%s,%s,%s, NOW(), CASE WHEN %s THEN NOW() ELSE NULL END,
                         %s,%s, %s,%s, %s,%s, %s,%s,%s)
                 """,
                 (
                     run_id, stage, status, event_type, attempt_number,
+                    has_ended,
                     input_ref, output_ref,
                     record_count_in, record_count_out,
                     json.dumps(metrics) if metrics else None, error,

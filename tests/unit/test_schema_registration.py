@@ -44,7 +44,16 @@ def test_policies_schema_has_required_fields():
     )
     schema = json.loads(r.json()["schema"])
     field_names = [f["name"] for f in schema["fields"]]
-    for required in ["policy_id", "premium", "effective_date", "_ods_run_id", "_ods_file_id"]:
+    for required in [
+        "policy_id",
+        "premium",
+        "effective_date",
+        "_ods_run_id",
+        "_ods_file_id",
+        "_ods_domain",
+        "_ods_dataset",
+        "_ods_source_application",
+    ]:
         assert required in field_names, f"Missing field: {required}"
 
 

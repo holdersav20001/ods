@@ -7,7 +7,11 @@
     {"name": "status",              "type": ["null", "string"], "default": null},
     {"name": "premium",             "type": ["null", "double"], "default": null},
     {"name": "effective_date",      "type": ["null", {"type": "int", "logicalType": "date"}], "default": null},
-    {"name": "_ods_business_date",  "type": "string"},
-    {"name": "_ods_run_id",         "type": "string"}
+    {"name": "_ods_business_date",      "type": "string"},
+    {"name": "_ods_run_id",             "type": "string"},
+    {"name": "_ods_file_id",            "type": ["null", "string"], "default": null},
+    {"name": "_ods_domain",             "type": ["null", "string"], "default": null},
+    {"name": "_ods_dataset",            "type": ["null", "string"], "default": null},
+    {"name": "_ods_source_application", "type": ["null", "string"], "default": null}
   ]
 }
