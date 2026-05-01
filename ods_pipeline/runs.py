@@ -6,6 +6,20 @@ import json
 from ods_pipeline.models import ALLOWED_RUN_FIELDS, TERMINAL_STATUSES
 
 
+def _json_or_none(value):
+    return json.dumps(value) if value is not None else None
+
+
+def _normalise(value):
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value)
+
+
 def start(
     conn,
     *,
@@ -22,15 +36,21 @@ def start(
 ) -> None:
     """Insert a new ``run_log`` row with ``status='running'``.
 
-    Duplicate ``run_id`` starts are idempotent only when the existing run
-    metadata matches the requested metadata. Conflicting starts raise so
-    callers cannot accidentally collapse ingestion/publish lineage.
+    Duplicate ``run_id`` is allowed only when the supplied identifying
+    metadata matches the existing row.  This preserves idempotency for retries
+    while surfacing accidental reuse across different pipeline types/files.
     """
-    parent_json = json.dumps(parents) if parents else None
-
-    def _norm(value):
-        return None if value is None else str(value)
-
+    supplied = {
+        "pipeline_type": pipeline_type,
+        "domain": domain,
+        "dataset": dataset,
+        "business_date": str(business_date) if business_date is not None else None,
+        "file_id": file_id,
+        "kafka_topic": kafka_topic,
+        "config_version_id": config_version_id,
+        "schema_version_id": schema_version_id,
+        "parents": _json_or_none(parents),
+    }
     try:
         with conn.cursor() as cur:
             cur.execute(
@@ -44,17 +64,18 @@ def start(
                 RETURNING run_id
                 """,
                 (
-                    run_id, pipeline_type, domain, dataset, business_date,
+                    run_id, pipeline_type, domain, dataset,
+                    supplied["business_date"],
                     file_id, kafka_topic, config_version_id, schema_version_id,
-                    parent_json,
+                    supplied["parents"],
                 ),
             )
             inserted = cur.fetchone()
             if not inserted:
                 cur.execute(
                     """
-                    SELECT pipeline_type, domain, dataset, business_date,
-                           file_id, kafka_topic, config_version_id,
+                    SELECT pipeline_type, domain, dataset, business_date::text,
+                           file_id::text, kafka_topic, config_version_id,
                            schema_version_id, parents::text
                       FROM pipeline.run_log
                      WHERE run_id=%s
@@ -62,22 +83,22 @@ def start(
                     (run_id,),
                 )
                 row = cur.fetchone()
-                expected = (
-                    pipeline_type,
-                    domain,
-                    dataset,
-                    _norm(business_date),
-                    _norm(file_id),
-                    _norm(kafka_topic),
-                    _norm(config_version_id),
-                    _norm(schema_version_id),
-                    parent_json,
-                )
-                actual = tuple(_norm(v) for v in row)
-                if actual != expected:
-                    raise RuntimeError(
-                        "run_id already exists with different metadata: "
-                        f"run_id={run_id}"
+                if not row:
+                    raise RuntimeError(f"run_log conflict for {run_id} but row not found")
+                existing = dict(zip(supplied.keys(), row))
+                mismatches = {}
+                for key, expected in supplied.items():
+                    if expected is None:
+                        continue
+                    if _normalise(existing.get(key)) != _normalise(expected):
+                        mismatches[key] = {
+                            "existing": existing.get(key),
+                            "requested": expected,
+                        }
+                if mismatches:
+                    raise ValueError(
+                        f"run_id {run_id} already exists with different metadata: "
+                        f"{mismatches}"
                     )
         conn.commit()
     except Exception:

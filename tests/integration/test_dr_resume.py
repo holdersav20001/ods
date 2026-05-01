@@ -38,6 +38,9 @@ def _put(name: str, body: str):
         sftp.chdir("upload")
     except IOError:
         pass
+    for existing in sftp.listdir():
+        if existing.startswith("policies_") and existing.endswith(".csv"):
+            sftp.remove(existing)
     with sftp.file(name, "w") as f:
         f.write(body)
     sftp.close()
@@ -74,6 +77,14 @@ def test_failed_run_resumes_cleanly(pg_conn):
         cur.execute(
             "DELETE FROM pipeline.file_catalogue WHERE domain='insurance' "
             "AND dataset='policies' AND business_date='2026-04-20'"
+        )
+        cur.execute(
+            "DELETE FROM pipeline.file_state "
+            "WHERE s3_path IN (%s, %s)",
+            (
+                "s3://ods-raw-local/insurance/policies/2026-04-20/policies_20260420.csv",
+                "s3://ods-curated-local/insurance/policies/date=2026-04-20/",
+            ),
         )
     pg_conn.commit()
 

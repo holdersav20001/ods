@@ -29,7 +29,7 @@ x-airflow-common: &airflow-common
     KAFKA_BOOTSTRAP: broker:29092
   volumes:
     - ./airflow/dags:/opt/airflow/dags
-    - ./ods_pipeline:/opt/ods_pipeline
+    - ./ods_pipeline:/opt/airflow/ods_pipeline
     - ./patterns:/opt/airflow/patterns
     - ./datasets:/opt/airflow/datasets
     - /var/run/docker.sock:/var/run/docker.sock

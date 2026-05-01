@@ -79,6 +79,9 @@ def _put(name: str, body: str) -> None:
         sftp.chdir("upload")
     except IOError:
         pass
+    for existing in sftp.listdir():
+        if existing.startswith("policies_") and existing.endswith(".csv"):
+            sftp.remove(existing)
     with sftp.file(name, "w") as f:
         f.write(body)
     sftp.close()
@@ -138,9 +141,10 @@ def test_dq_block_records_failure(pg_conn):
             cur.execute(
                 """
                 SELECT status, COALESCE(error_summary,''), COALESCE(record_count_dq_fail,0)
-                  FROM pipeline.run_log
+                FROM pipeline.run_log
                  WHERE business_date=%s
                    AND started_at >= %s
+                   AND pipeline_type='ingestion'
                  ORDER BY started_at DESC LIMIT 1
                 """,
                 (bd, since_iso),

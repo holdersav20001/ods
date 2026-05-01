@@ -38,6 +38,9 @@ def _put(name: str, body: str) -> None:
         sftp.chdir("upload")
     except IOError:
         pass
+    for existing in sftp.listdir():
+        if existing.startswith("policies_") and existing.endswith(".csv"):
+            sftp.remove(existing)
     with sftp.file(name, "w") as f:
         f.write(body)
     sftp.close()
