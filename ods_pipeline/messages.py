@@ -111,7 +111,14 @@ def record_result(
     archive_ref: str | None = None,
     extra_detail: Mapping[str, Any] | None = None,
 ) -> str:
-    """Close a message/API run with count reconciliation and stage facts."""
+    """Close a message/API run with count reconciliation and stage facts.
+
+    Atomicity (B4): every helper call below uses ``commit=False`` — this
+    function does NOT commit on its own.  The caller MUST wrap the
+    invocation in ``with conn:`` (or equivalent transactional context) so
+    that all stage / recon / run_log writes either commit together at the
+    end or roll back together on any exception.
+    """
     accepted_count = int(source_count) - int(validation_fail_count) - int(dlq_count)
     discrepancy = int(published_count) - accepted_count
     archive_discrepancy = (
@@ -128,6 +135,7 @@ def record_result(
         event_type=StageEvent.COMPLETED,
         record_count_in=source_count,
         record_count_out=source_count,
+        commit=False,
     )
     stages.write(
         conn,
@@ -138,6 +146,7 @@ def record_result(
         record_count_in=source_count,
         record_count_out=source_count - validation_fail_count,
         metrics={"validation_fail_count": validation_fail_count},
+        commit=False,
     )
     if dlq_count:
         stages.write(
@@ -149,6 +158,7 @@ def record_result(
             output_ref=dlq_ref,
             record_count_in=dlq_count,
             record_count_out=dlq_count,
+            commit=False,
         )
     if archive_count is not None:
         stages.write(
@@ -161,6 +171,7 @@ def record_result(
             record_count_in=source_count,
             record_count_out=archive_count,
             error=None if archive_discrepancy == 0 else f"archive discrepancy={archive_discrepancy}",
+            commit=False,
         )
 
     detail = {
@@ -184,6 +195,7 @@ def record_result(
         kafka_count=published_count,
         status="ok" if ok else "failed",
         detail=json.dumps(detail, sort_keys=True),
+        commit=False,
     )
     stages.write(
         conn,
@@ -195,10 +207,12 @@ def record_result(
         record_count_out=published_count,
         metrics=detail,
         error=None if ok else f"message reconciliation mismatch={discrepancy}",
+        commit=False,
     )
     runs.update(
         conn,
         run_id,
+        commit=False,
         status=status,
         record_count_source=source_count,
         record_count_dq_fail=validation_fail_count + dlq_count,

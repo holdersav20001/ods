@@ -17,6 +17,7 @@ def write_check(
     detail: str | None = None,
     window_start=None,
     window_end=None,
+    commit: bool = True,
 ) -> None:
     """Insert a row into ``pipeline.reconciliation_log``.
 
@@ -25,6 +26,10 @@ def write_check(
         ``discrepancy = kafka_count - source_count``
       * If *kafka_count* and *postgres_count* both supplied:
         ``discrepancy = postgres_count - kafka_count``
+
+    ``commit``: when True (default), the helper commits its own transaction.
+    When False, the caller owns the surrounding tx (used by atomic
+    ``record_result`` flow — B4).
     """
     discrepancy: int | None = None
     if source_count is not None and kafka_count is not None:
@@ -55,7 +60,9 @@ def write_check(
                     discrepancy, pct, status, detail,
                 ),
             )
-        conn.commit()
+        if commit:
+            conn.commit()
     except Exception:
-        conn.rollback()
+        if commit:
+            conn.rollback()
         raise

@@ -23,6 +23,7 @@ def write(
     airflow_dag_id: str | None = None,
     airflow_run_id: str | None = None,
     spark_app_id: str | None = None,
+    commit: bool = True,
 ) -> None:
     """Append one row to ``pipeline.run_stage_log``.
 
@@ -31,13 +32,27 @@ def write(
     (completed / failed / skipped / warned).  For ``stage_started`` /
     ``status='running'`` it is left NULL so the open interval is
     queryable.
+
+    Idempotency (B4, migration 19): inserting a ``stage_started`` row that
+    duplicates an existing open attempt is a no-op (partial unique index
+    ``run_stage_log_started_unique``).  Terminal events remain append-only.
+
+    ``commit``: when True (default), the helper commits its own transaction.
+    When False, the caller owns the surrounding tx (used by atomic
+    ``record_result`` flow).
     """
-    # ended_at is NULL for open (in-progress) events, NOW() for terminal ones
     is_open = (
         event_type == StageEvent.STARTED
         or (event_type is None and status == "running")
     )
     ended_at_sql = "NULL" if is_open else "NOW()"
+    # Only the started-event path participates in the partial unique index
+    # added by migration 19. Terminal events are append-only.
+    on_conflict_sql = (
+        "ON CONFLICT (run_id, stage, attempt_number) WHERE event_type = 'stage_started' DO NOTHING"
+        if is_open
+        else ""
+    )
 
     try:
         with conn.cursor() as cur:
@@ -52,6 +67,7 @@ def write(
                      airflow_dag_id, airflow_run_id, spark_app_id)
                 VALUES (%s,%s,%s,%s,%s, NOW(), {ended_at_sql},
                         %s,%s, %s,%s, %s,%s, %s,%s,%s)
+                {on_conflict_sql}
                 """,
                 (
                     run_id, stage, status, event_type, attempt_number,
@@ -61,9 +77,11 @@ def write(
                     airflow_dag_id, airflow_run_id, spark_app_id,
                 ),
             )
-        conn.commit()
+        if commit:
+            conn.commit()
     except Exception:
-        conn.rollback()
+        if commit:
+            conn.rollback()
         raise
 
 
@@ -96,6 +114,7 @@ def finish(
     airflow_dag_id: str | None = None,
     airflow_run_id: str | None = None,
     spark_app_id: str | None = None,
+    commit: bool = True,
 ) -> None:
     """Close the latest open stage row, falling back to append if none exists.
 
@@ -180,7 +199,9 @@ def finish(
                         airflow_dag_id, airflow_run_id, spark_app_id,
                     ),
                 )
-        conn.commit()
+        if commit:
+            conn.commit()
     except Exception:
-        conn.rollback()
+        if commit:
+            conn.rollback()
         raise

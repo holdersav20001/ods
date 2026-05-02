@@ -108,13 +108,18 @@ def start(
         raise
 
 
-def update(conn, run_id: str, **fields) -> None:
+def update(conn, run_id: str, *, commit: bool = True, **fields) -> None:
     """Update arbitrary ``run_log`` fields for *run_id*.
 
     Terminal status (succeeded / failed / partial) automatically sets
     ``ended_at = COALESCE(ended_at, NOW())``.
 
     Raises ``ValueError`` for unknown field names.
+
+    ``commit``: when True (default), the helper commits its own transaction —
+    behaviour preserved for all existing callers.  When False, the caller is
+    responsible for the surrounding transaction (used by
+    ``ods_pipeline.messages.record_result`` for atomic multi-write flows).
     """
     if not fields:
         return
@@ -144,9 +149,11 @@ def update(conn, run_id: str, **fields) -> None:
     try:
         with conn.cursor() as cur:
             cur.execute(statement, vals + [run_id])
-        conn.commit()
+        if commit:
+            conn.commit()
     except Exception:
-        conn.rollback()
+        if commit:
+            conn.rollback()
         raise
 
 
