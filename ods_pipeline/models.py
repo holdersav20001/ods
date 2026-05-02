@@ -65,6 +65,27 @@ TERMINAL_STATUSES: frozenset[str] = frozenset(
     {RunStatus.SUCCEEDED, RunStatus.FAILED, RunStatus.PARTIAL}
 )
 
+#: Fields that may be inserted into ``pipeline.glue_job_log`` by
+#: ``glue.jobs.utils.write_job_log``. Any caller-supplied key outside this set
+#: is rejected before SQL composition to prevent identifier injection.
+ALLOWED_JOB_LOG_FIELDS: frozenset[str] = frozenset({
+    "run_id",
+    "job_name",
+    "pipeline_type",
+    "domain",
+    "dataset",
+    "source_path",
+    "target_path",
+    "business_date",
+    "status",
+    "record_count",
+    "error_reason",
+    "error_detail",
+    "config_version",
+    "config_snapshot",
+})
+
+
 #: Fields that may be updated on ``pipeline.run_log``.
 ALLOWED_RUN_FIELDS: frozenset[str] = frozenset({
     "status",

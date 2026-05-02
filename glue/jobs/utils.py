@@ -6,6 +6,8 @@ import re
 import sys
 from datetime import date
 
+from psycopg2 import sql
+
 _HERE = os.path.dirname(__file__)
 for _root in (
     os.path.abspath(os.path.join(_HERE, "..", "..")),
@@ -13,6 +15,8 @@ for _root in (
 ):
     if _root not in sys.path:
         sys.path.insert(0, _root)
+
+from ods_pipeline.models import ALLOWED_JOB_LOG_FIELDS  # noqa: E402
 
 
 def extract_business_date(filename: str, pattern: str) -> date:
@@ -57,13 +61,25 @@ def load_dataset_config(conn, domain: str, dataset: str) -> dict:
 
 
 def write_job_log(conn, **fields) -> None:
-    cols = ", ".join(fields.keys())
-    placeholders = ", ".join(["%s"] * len(fields))
+    if not fields:
+        raise ValueError("write_job_log requires at least one field")
+    invalid = set(fields) - ALLOWED_JOB_LOG_FIELDS
+    if invalid:
+        raise ValueError(f"Unknown glue_job_log fields: {sorted(invalid)}")
+    cols = list(fields.keys())
+    # Defence in depth: belt-and-braces guard against unsafe identifiers
+    # creeping into the whitelist.
+    for c in cols:
+        if not (isinstance(c, str) and c.isidentifier() and c in ALLOWED_JOB_LOG_FIELDS):
+            raise ValueError(f"Illegal glue_job_log field name: {c!r}")
+    statement = sql.SQL(
+        "INSERT INTO pipeline.glue_job_log ({cols}) VALUES ({vals})"
+    ).format(
+        cols=sql.SQL(", ").join(sql.Identifier(c) for c in cols),
+        vals=sql.SQL(", ").join(sql.Placeholder() for _ in cols),
+    )
     with conn.cursor() as cur:
-        cur.execute(
-            f"INSERT INTO pipeline.glue_job_log ({cols}) VALUES ({placeholders})",
-            list(fields.values()),
-        )
+        cur.execute(statement, list(fields.values()))
     conn.commit()
 
 

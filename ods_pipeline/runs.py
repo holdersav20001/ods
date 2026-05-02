@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import json
 
+from psycopg2 import sql
+
 from ods_pipeline.models import ALLOWED_RUN_FIELDS, TERMINAL_STATUSES
 
 
@@ -120,19 +122,28 @@ def update(conn, run_id: str, **fields) -> None:
     if invalid:
         raise ValueError(f"Unknown run_log fields: {sorted(invalid)}")
     cols = list(fields.keys())
+    # Defence in depth: every key MUST be a bare identifier *and* whitelisted.
+    # ALLOWED_RUN_FIELDS is the authoritative gate; isidentifier() is a belt-
+    # and-braces guard against future whitelist additions that contain unsafe
+    # characters by mistake.
+    for c in cols:
+        if not (isinstance(c, str) and c.isidentifier() and c in ALLOWED_RUN_FIELDS):
+            raise ValueError(f"Illegal run_log field name: {c!r}")
     vals = [
         json.dumps(v) if k == "parents" and v is not None else v
         for k, v in fields.items()
     ]
-    sets = ", ".join(f"{c}=%s" for c in cols)
+    set_clause = sql.SQL(", ").join(
+        sql.SQL("{}=%s").format(sql.Identifier(c)) for c in cols
+    )
     if fields.get("status") in TERMINAL_STATUSES:
-        sets += ", ended_at=COALESCE(ended_at, NOW())"
+        set_clause = sql.SQL("{}, ended_at=COALESCE(ended_at, NOW())").format(set_clause)
+    statement = sql.SQL("UPDATE pipeline.run_log SET {sets} WHERE run_id=%s").format(
+        sets=set_clause
+    )
     try:
         with conn.cursor() as cur:
-            cur.execute(
-                f"UPDATE pipeline.run_log SET {sets} WHERE run_id=%s",
-                vals + [run_id],
-            )
+            cur.execute(statement, vals + [run_id])
         conn.commit()
     except Exception:
         conn.rollback()
