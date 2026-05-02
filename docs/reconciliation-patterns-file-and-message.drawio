@@ -1,0 +1,156 @@
+<mxfile host="app.diagrams.net" modified="2026-05-01T00:00:00.000Z" agent="Codex" version="24.7.17" type="device">
+  <diagram id="file-based-reconciliation" name="File Based Reconciliation">
+    <mxGraphModel dx="1600" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="title_file" value="File Based Pattern: reconciliation by _ods_file_id" style="text;html=1;strokeColor=none;fillColor=none;fontSize=24;fontStyle=1;align=left;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="60" y="30" width="760" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="subtitle_file" value="Business reconciliation follows the file ID. Kafka offsets are captured for operational observability and replay diagnostics." style="text;html=1;strokeColor=none;fillColor=none;fontSize=14;align=left;verticalAlign=middle;fontColor=#4B5563;" vertex="1" parent="1">
+          <mxGeometry x="60" y="70" width="1050" height="30" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="file_source" value="Source file&#xa;policies_20260428.csv" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#E0F2FE;strokeColor=#0284C7;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="60" y="170" width="190" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="drop_to_raw" value="dag_drop_to_raw&#xa;register file" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#F0FDF4;strokeColor=#16A34A;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="310" y="170" width="190" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="file_catalogue" value="pipeline.file_catalogue&#xa;file_id, md5, paths, state" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#FEF3C7;strokeColor=#D97706;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="310" y="290" width="190" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="s3_raw" value="S3 raw&#xa;original file" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#E0F2FE;strokeColor=#0284C7;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="560" y="170" width="190" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="ingestion" value="Glue ingestion&#xa;read, DQ, enrich ODS fields" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#F0FDF4;strokeColor=#16A34A;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="810" y="170" width="210" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="curated" value="S3 curated parquet&#xa;passing records only" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#E0F2FE;strokeColor=#0284C7;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1080" y="170" width="210" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="publish" value="Publish to Kafka&#xa;records carry _ods_file_id" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#F0FDF4;strokeColor=#16A34A;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="60" y="480" width="210" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="kafka_topic" value="Kafka topic&#xa;business messages + ODS metadata" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#E0E7FF;strokeColor=#4F46E5;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="330" y="480" width="230" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="jdbc_sink" value="JDBC sink&#xa;consumer lag / offsets observed" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#F0FDF4;strokeColor=#16A34A;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="620" y="480" width="210" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="history" value="Policy history / audit&#xa;all rows by _ods_file_id" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#FEF3C7;strokeColor=#D97706;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="890" y="480" width="230" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="current" value="Policy current state&#xa;latest row per business key" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#FEF3C7;strokeColor=#D97706;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1180" y="480" width="230" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="control_plane" value="Control plane tables&#xa;run_log, run_stage_log, reconciliation_log, lineage_edge" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#F5F3FF;strokeColor=#7C3AED;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="790" y="300" width="360" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="file_edge_1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;endArrow=block;" edge="1" parent="1" source="file_source" target="drop_to_raw"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="file_edge_2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;endArrow=block;" edge="1" parent="1" source="drop_to_raw" target="s3_raw"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="file_edge_3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;endArrow=block;" edge="1" parent="1" source="s3_raw" target="ingestion"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="file_edge_4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;endArrow=block;" edge="1" parent="1" source="ingestion" target="curated"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="file_edge_5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;endArrow=block;" edge="1" parent="1" source="curated" target="publish"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1185" y="430"/><mxPoint x="165" y="430"/></Array></mxGeometry></mxCell>
+        <mxCell id="file_edge_6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;endArrow=block;" edge="1" parent="1" source="publish" target="kafka_topic"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="file_edge_7" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;endArrow=block;" edge="1" parent="1" source="kafka_topic" target="jdbc_sink"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="file_edge_8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;endArrow=block;" edge="1" parent="1" source="jdbc_sink" target="history"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="file_edge_9" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;endArrow=block;" edge="1" parent="1" source="history" target="current"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="file_edge_catalogue" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1;dashed=1;endArrow=block;" edge="1" parent="1" source="drop_to_raw" target="file_catalogue"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="file_edge_control" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1;dashed=1;endArrow=block;" edge="1" parent="1" source="ingestion" target="control_plane"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="file_edge_control2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1;dashed=1;endArrow=block;" edge="1" parent="1" source="publish" target="control_plane"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <mxCell id="r0" value="R0&#xa;Source count - DQ failures = curated rows" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#FEE2E2;strokeColor=#DC2626;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="930" y="80" width="130" height="130" as="geometry"/>
+        </mxCell>
+        <mxCell id="r1" value="R1&#xa;Published count by _ods_file_id" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#FEE2E2;strokeColor=#DC2626;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="185" y="590" width="130" height="130" as="geometry"/>
+        </mxCell>
+        <mxCell id="r2" value="R2&#xa;History rows by _ods_file_id" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#FEE2E2;strokeColor=#DC2626;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="930" y="590" width="130" height="130" as="geometry"/>
+        </mxCell>
+        <mxCell id="r3" value="R3&#xa;Current = latest history state" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#FEE2E2;strokeColor=#DC2626;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1240" y="590" width="130" height="130" as="geometry"/>
+        </mxCell>
+        <mxCell id="offset_note_file" value="Offsets captured per partition for operations: lag, debugging, replay. Not the product-facing reconciliation key." style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#F9FAFB;strokeColor=#6B7280;fontColor=#374151;" vertex="1" parent="1">
+          <mxGeometry x="60" y="760" width="600" height="70" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="message-based-reconciliation" name="Event API Message Reconciliation">
+    <mxGraphModel dx="1600" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="title_msg" value="Event / API Pattern: reconciliation by source message, request, batch, or window" style="text;html=1;strokeColor=none;fillColor=none;fontSize=24;fontStyle=1;align=left;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="60" y="30" width="1150" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="subtitle_msg" value="Message-level traceability is retained, while dashboard reconciliation normally happens per request, batch, or time window." style="text;html=1;strokeColor=none;fillColor=none;fontSize=14;align=left;verticalAlign=middle;fontColor=#4B5563;" vertex="1" parent="1">
+          <mxGeometry x="60" y="70" width="1150" height="30" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="source_msg" value="Source app&#xa;event stream or API client" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#E0F2FE;strokeColor=#0284C7;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="60" y="170" width="210" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="landing_msg" value="Landing / API gateway&#xa;assign source correlation key" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#F0FDF4;strokeColor=#16A34A;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="330" y="170" width="230" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="raw_topic_msg" value="Raw Kafka / landing topic&#xa;message value contains ODS metadata" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#E0E7FF;strokeColor=#4F46E5;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="620" y="170" width="250" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="validate_msg" value="Validate / canonicalize&#xa;bad records to DLQ" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#F0FDF4;strokeColor=#16A34A;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="930" y="170" width="230" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="canonical_msg" value="Canonical Kafka topic&#xa;preserve source correlation key" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#E0E7FF;strokeColor=#4F46E5;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1220" y="170" width="250" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="sink_msg" value="JDBC sink&#xa;connector lag / offsets observed" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#F0FDF4;strokeColor=#16A34A;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="180" y="480" width="230" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="history_msg" value="History / audit table&#xa;rows by source correlation key" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#FEF3C7;strokeColor=#D97706;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="490" y="480" width="250" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="current_msg" value="Current state table&#xa;latest row per business key" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#FEF3C7;strokeColor=#D97706;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="820" y="480" width="250" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="control_msg" value="Control plane tables&#xa;run_log, stage_log, recon_log, lineage_edge" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#F5F3FF;strokeColor=#7C3AED;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1150" y="480" width="300" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="msg_edge_1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;endArrow=block;" edge="1" parent="1" source="source_msg" target="landing_msg"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="msg_edge_2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;endArrow=block;" edge="1" parent="1" source="landing_msg" target="raw_topic_msg"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="msg_edge_3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;endArrow=block;" edge="1" parent="1" source="raw_topic_msg" target="validate_msg"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="msg_edge_4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;endArrow=block;" edge="1" parent="1" source="validate_msg" target="canonical_msg"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="msg_edge_5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;endArrow=block;" edge="1" parent="1" source="canonical_msg" target="sink_msg"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1345" y="430"/><mxPoint x="295" y="430"/></Array></mxGeometry></mxCell>
+        <mxCell id="msg_edge_6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;endArrow=block;" edge="1" parent="1" source="sink_msg" target="history_msg"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="msg_edge_7" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;endArrow=block;" edge="1" parent="1" source="history_msg" target="current_msg"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="msg_edge_control_1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1;dashed=1;endArrow=block;" edge="1" parent="1" source="landing_msg" target="control_msg"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="445" y="360"/><mxPoint x="1300" y="360"/></Array></mxGeometry></mxCell>
+        <mxCell id="msg_edge_control_2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1;dashed=1;endArrow=block;" edge="1" parent="1" source="validate_msg" target="control_msg"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <mxCell id="mr0" value="M0&#xa;Accepted messages / batch count" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#FEE2E2;strokeColor=#DC2626;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="390" y="290" width="130" height="130" as="geometry"/>
+        </mxCell>
+        <mxCell id="mr1" value="M1&#xa;Consumed - DLQ = canonical published" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#FEE2E2;strokeColor=#DC2626;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="980" y="290" width="130" height="130" as="geometry"/>
+        </mxCell>
+        <mxCell id="mr2" value="M2&#xa;History rows by batch/window/key" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#FEE2E2;strokeColor=#DC2626;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="550" y="590" width="130" height="130" as="geometry"/>
+        </mxCell>
+        <mxCell id="mr3" value="M3&#xa;Current = latest history state" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#FEE2E2;strokeColor=#DC2626;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="880" y="590" width="130" height="130" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="msg_note_1" value="Product decision: reconcile each message, each request/batch, or each time window? Recommended: batch/window for dashboards, message ID for traceability." style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#F9FAFB;strokeColor=#6B7280;fontColor=#374151;" vertex="1" parent="1">
+          <mxGeometry x="60" y="760" width="720" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="msg_note_2" value="Offsets remain important for operations: connector lag, bounded replay, and investigation. They are not the main business reconciliation key." style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#F9FAFB;strokeColor=#6B7280;fontColor=#374151;" vertex="1" parent="1">
+          <mxGeometry x="840" y="760" width="620" height="70" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
