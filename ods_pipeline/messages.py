@@ -9,6 +9,26 @@ from ods_pipeline import metadata, reconciliation, runs, stages
 from ods_pipeline.models import PATTERN_CORRELATION_FIELD, PatternType, Stage, StageEvent
 
 
+def _caller_must_rollback_on_exception() -> None:
+    """Caller-managed transaction contract.
+
+    ``record_result`` (below) calls ``runs.update``, ``stages.write``,
+    ``stages.finish``, and ``reconciliation.write_check`` with
+    ``commit=False``. The CALLER MUST wrap the invocation in a try/except
+    and call ``conn.rollback()`` on exception, otherwise the open
+    transaction stays open and partially-written rows remain in pg_locks.
+
+    Recommended pattern::
+
+        try:
+            messages.record_result(conn, ...)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+    """
+
+
 def correlate(
     message: Mapping[str, Any],
     context: Mapping[str, Any],

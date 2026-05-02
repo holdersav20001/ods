@@ -197,7 +197,7 @@ def _make_airflow_client():  # pragma: no cover
                 f"{base}/api/v1/dags/{dag_id}/dagRuns",
                 json={"conf": conf},
                 auth=auth,
-                timeout=10,
+                timeout=30,
             )
             resp.raise_for_status()
             return resp.json()
