@@ -19,9 +19,11 @@ def upsert(
     state: str = "ingested",
     last_run_id: str | None = None,
 ) -> str:
-    """Upsert ``file_catalogue`` keyed on ``(domain, dataset, file_md5)``.
+    """Upsert ``file_catalogue`` keyed on ``(domain, dataset, s3_raw_path)``.
 
-    Returns the canonical ``file_id`` UUID string (existing or newly created).
+    Returns the canonical ``file_id`` UUID string for this landed raw file.
+    ``file_md5`` remains a content fingerprint; it is not the identity because
+    different files can legitimately have identical content.
     """
     try:
         with conn.cursor() as cur:
@@ -32,8 +34,12 @@ def upsert(
                      s3_raw_path, sftp_path, s3_curated_path,
                      file_size_bytes, source_row_count, state, last_run_id)
                 VALUES (%s,%s,%s,%s,%s, %s,%s,%s, %s,%s,%s,%s)
-                ON CONFLICT (domain, dataset, file_md5) DO UPDATE SET
+                ON CONFLICT (domain, dataset, s3_raw_path)
+                WHERE s3_raw_path IS NOT NULL
+                DO UPDATE SET
                     state           = EXCLUDED.state,
+                    business_date   = EXCLUDED.business_date,
+                    file_md5        = EXCLUDED.file_md5,
                     s3_raw_path     = COALESCE(EXCLUDED.s3_raw_path,
                                                pipeline.file_catalogue.s3_raw_path),
                     s3_curated_path = COALESCE(EXCLUDED.s3_curated_path,

@@ -7,6 +7,8 @@ import pytest
 SCHEMA_REGISTRY = os.getenv("SCHEMA_REGISTRY_URL", "http://localhost:8081")
 POLICIES_SUBJECT = "ods.insurance.policies-value"
 POLICIES_SCHEMA_PATH = Path(__file__).resolve().parents[2] / "schemas" / "insurance" / "policies.avsc"
+RISK_CANONICAL_SUBJECT = "ods.insurance.risk-canonical-value"
+RISK_CANONICAL_SCHEMA_PATH = Path(__file__).resolve().parents[2] / "schemas" / "insurance" / "risk_canonical.avsc"
 
 
 def schema_registry_available():
@@ -29,6 +31,18 @@ def ensure_policies_schema_registered():
     assert response.status_code in (200, 201, 409), response.text
 
 
+def ensure_schema_registered(subject: str, schema_path: Path):
+    schema = json.loads(schema_path.read_text())
+    payload = {"schemaType": "AVRO", "schema": json.dumps(schema)}
+    response = requests.post(
+        f"{SCHEMA_REGISTRY}/subjects/{subject}/versions",
+        json=payload,
+        headers={"Content-Type": "application/vnd.schemaregistry.v1+json"},
+        timeout=10,
+    )
+    assert response.status_code in (200, 201, 409), response.text
+
+
 @pytest.mark.skipif(not schema_registry_available(), reason="Schema Registry not running")
 def test_policies_schema_registered():
     ensure_policies_schema_registered()
@@ -44,7 +58,16 @@ def test_policies_schema_has_required_fields():
     )
     schema = json.loads(r.json()["schema"])
     field_names = [f["name"] for f in schema["fields"]]
-    for required in ["policy_id", "premium", "effective_date", "_ods_run_id", "_ods_file_id"]:
+    for required in [
+        "policy_id",
+        "premium",
+        "effective_date",
+        "_ods_run_id",
+        "_ods_file_id",
+        "_ods_domain",
+        "_ods_dataset",
+        "_ods_source_application",
+    ]:
         assert required in field_names, f"Missing field: {required}"
 
 
@@ -57,3 +80,16 @@ def test_policies_schema_policy_id_is_string():
     schema = json.loads(r.json()["schema"])
     policy_id_field = next(f for f in schema["fields"] if f["name"] == "policy_id")
     assert policy_id_field["type"] == "string"
+
+
+@pytest.mark.skipif(not schema_registry_available(), reason="Schema Registry not running")
+def test_risk_canonical_schema_has_lineage_fields():
+    ensure_schema_registered(RISK_CANONICAL_SUBJECT, RISK_CANONICAL_SCHEMA_PATH)
+    r = requests.get(
+        f"{SCHEMA_REGISTRY}/subjects/{RISK_CANONICAL_SUBJECT}/versions/latest"
+    )
+    schema = json.loads(r.json()["schema"])
+    field_names = {f["name"] for f in schema["fields"]}
+    assert {"risk_id", "policy_id", "as_of_date"}.issubset(field_names)
+    assert "_ods_raw_run_id" in field_names
+    assert "_ods_canonicalize_run_id" in field_names

@@ -147,6 +147,11 @@ def _coerce_for_avro(row_dict: dict, schema_str: str) -> dict:
 
 def _topic_end_offsets(topic: str, bootstrap: str) -> int:
     """Return the sum of high-watermark offsets across all partitions of *topic*."""
+    return sum(_topic_end_offsets_by_partition(topic, bootstrap).values())
+
+
+def _topic_end_offsets_by_partition(topic: str, bootstrap: str) -> dict[int, int]:
+    """Return high-watermark offsets by partition for *topic*."""
     c = Consumer({
         "bootstrap.servers": bootstrap,
         "group.id": f"ods-offset-probe-{uuid.uuid4()}",
@@ -155,12 +160,12 @@ def _topic_end_offsets(topic: str, bootstrap: str) -> int:
         md = c.list_topics(topic, timeout=10).topics[topic]
         if md.error:
             raise RuntimeError(f"topic metadata error: {md.error}")
-        parts = [TopicPartition(topic, p) for p in md.partitions]
-        total = 0
-        for tp in parts:
+        offsets: dict[int, int] = {}
+        for partition in sorted(md.partitions):
+            tp = TopicPartition(topic, partition)
             _, high = c.get_watermark_offsets(tp, timeout=10)
-            total += high
-        return total
+            offsets[partition] = high
+        return offsets
     finally:
         c.close()
 
@@ -181,6 +186,7 @@ def _write_dlq(spark, failing_df, domain: str, dataset: str,
 
 def run(run_id: str, domain: str, dataset: str, s3_input_path: str,
         file_id: str | None = None,
+        parent_run_id: str | None = None,
         airflow_dag_id: str | None = None,
         airflow_run_id: str | None = None) -> int:
     """Top-level entry: guarantees run_log.status='failed' on any unhandled error."""
@@ -188,6 +194,7 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str,
     try:
         return _run_impl(conn, run_id, domain, dataset, s3_input_path,
                          file_id=file_id,
+                         parent_run_id=parent_run_id,
                          airflow_dag_id=airflow_dag_id,
                          airflow_run_id=airflow_run_id)
     except Exception as exc:
@@ -205,6 +212,7 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str,
 
 def _run_impl(conn, run_id: str, domain: str, dataset: str, s3_input_path: str,
               file_id: str | None = None,
+              parent_run_id: str | None = None,
               airflow_dag_id: str | None = None,
               airflow_run_id: str | None = None) -> int:
     """Execute the publish pipeline. Returns process exit code."""
@@ -257,6 +265,8 @@ def _run_impl(conn, run_id: str, domain: str, dataset: str, s3_input_path: str,
         file_id=file_id,
         kafka_topic=target_topic,
         config_version_id=config_version,
+        parents=[{"run_id": parent_run_id, "edge_type": "orchestrates"}]
+        if parent_run_id else None,
     )
     ods_pipeline.files.set_state(conn, s3_input_path, run_id, "processing")
 
@@ -373,7 +383,8 @@ def _run_impl(conn, run_id: str, domain: str, dataset: str, s3_input_path: str,
     # Step 8 — Capture start offsets BEFORE producing
     # ------------------------------------------------------------------
     try:
-        offset_start = _topic_end_offsets(target_topic, bootstrap)
+        offset_start_by_partition = _topic_end_offsets_by_partition(target_topic, bootstrap)
+        offset_start = sum(offset_start_by_partition.values())
     except Exception as exc:
         err_msg = f"Failed to read start offsets: {exc}"
         ods_pipeline.runs.update(conn, run_id, status="failed", error_summary=err_msg)
@@ -389,10 +400,21 @@ def _run_impl(conn, run_id: str, domain: str, dataset: str, s3_input_path: str,
     # Step 9 — Produce Avro messages
     # ------------------------------------------------------------------
     rows = passing_df.collect()
+    source_application = os.environ.get("ODS_SOURCE_APPLICATION", "sftp")
+
     try:
         for row in rows:
             row_dict = row.asDict()
-            row_dict["_ods_file_id"] = _file_id or ""
+            file_meta = ods_pipeline.metadata.file_metadata(
+                file_id=str(_file_id or ""),
+                run_id=str(row_dict.get("_ods_run_id") or run_id),
+                domain=domain,
+                dataset=dataset,
+                business_date=row_dict.get("_ods_business_date") or business_date or "",
+                source_application=source_application,
+                ingested_at=row_dict.get("_ods_ingested_at"),
+            )
+            row_dict.update({k: v for k, v in file_meta.items() if v is not None})
             coerced = _coerce_for_avro(row_dict, avro_schema_str)
             msg_key = generate_message_key(key_fields, coerced)
             producer.produce(
@@ -425,7 +447,8 @@ def _run_impl(conn, run_id: str, domain: str, dataset: str, s3_input_path: str,
     # Step 10 — Capture end offsets and compute published count
     # ------------------------------------------------------------------
     try:
-        offset_end = _topic_end_offsets(target_topic, bootstrap)
+        offset_end_by_partition = _topic_end_offsets_by_partition(target_topic, bootstrap)
+        offset_end = sum(offset_end_by_partition.values())
     except Exception as exc:
         err_msg = f"Failed to read end offsets: {exc}"
         ods_pipeline.runs.update(conn, run_id, status="failed", error_summary=err_msg)
@@ -468,7 +491,12 @@ def _run_impl(conn, run_id: str, domain: str, dataset: str, s3_input_path: str,
         output_ref=f"kafka://{target_topic}",
         record_count_in=dq_pass_count,
         record_count_out=published_count,
-        metrics={"offset_start": offset_start, "offset_end": offset_end},
+        metrics={
+            "offset_start": offset_start,
+            "offset_end": offset_end,
+            "offset_start_by_partition": offset_start_by_partition,
+            "offset_end_by_partition": offset_end_by_partition,
+        },
         error=error_summary,
     )
 
@@ -547,6 +575,8 @@ def _parse_args(argv=None):
     parser.add_argument("--file_id", required=False, default=None,
                         help="UUID from file_catalogue — explicit lineage contract. "
                              "When provided, skips date-scoped catalogue lookup.")
+    parser.add_argument("--parent_run_id", default=None,
+                        help="Optional s3_batch parent run id for run hierarchy")
     parser.add_argument("--airflow_dag_id", default=None,
                         help="Airflow DAG id for CloudWatch/Airflow correlation")
     parser.add_argument("--airflow_run_id", default=None,
@@ -563,6 +593,7 @@ if __name__ == "__main__":
             dataset=args.dataset,
             s3_input_path=args.s3_input_path,
             file_id=args.file_id,
+            parent_run_id=args.parent_run_id,
             airflow_dag_id=args.airflow_dag_id,
             airflow_run_id=args.airflow_run_id,
         )

@@ -116,6 +116,7 @@ def _write_dlq(spark, failing_df, domain: str, dataset: str,
 
 def run(run_id: str, domain: str, dataset: str, s3_input_path: str,
         file_id: str | None = None,
+        parent_run_id: str | None = None,
         airflow_dag_id: str | None = None,
         airflow_run_id: str | None = None) -> int:
     """Execute the ingestion pipeline. Returns process exit code."""
@@ -126,6 +127,7 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str,
         return _run_impl(
             conn, run_id, domain, dataset, s3_input_path,
             file_id=file_id,
+            parent_run_id=parent_run_id,
             airflow_dag_id=airflow_dag_id,
             airflow_run_id=airflow_run_id,
         )
@@ -135,6 +137,7 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str,
 
 def _run_impl(conn, run_id: str, domain: str, dataset: str, s3_input_path: str,
               file_id: str | None = None,
+              parent_run_id: str | None = None,
               airflow_dag_id: str | None = None,
               airflow_run_id: str | None = None) -> int:
     """Execute the ingestion pipeline. Returns process exit code."""
@@ -171,6 +174,8 @@ def _run_impl(conn, run_id: str, domain: str, dataset: str, s3_input_path: str,
             domain=domain,
             dataset=dataset,
             business_date=None,
+            parents=[{"run_id": parent_run_id, "edge_type": "orchestrates"}]
+            if parent_run_id else None,
         )
         ods_pipeline.runs.update(
             conn, run_id,
@@ -256,6 +261,8 @@ def _run_impl(conn, run_id: str, domain: str, dataset: str, s3_input_path: str,
         business_date=business_date_str,
         config_version_id=config_version_id_val,
         file_id=_file_id,
+        parents=[{"run_id": parent_run_id, "edge_type": "orchestrates"}]
+        if parent_run_id else None,
     )
     ods_pipeline.stages.start(
         conn,
@@ -409,11 +416,18 @@ def _run_impl(conn, run_id: str, domain: str, dataset: str, s3_input_path: str,
     # ------------------------------------------------------------------
     # Step 12 — Add ODS system columns to passing_df
     # ------------------------------------------------------------------
-    passing_df = (
-        passing_df
-        .withColumn("_ods_business_date", F.lit(business_date_str))
-        .withColumn("_ods_run_id", F.lit(run_id))
+    source_application = os.environ.get("ODS_SOURCE_APPLICATION", "sftp")
+    file_meta = ods_pipeline.metadata.file_metadata(
+        file_id=str(_file_id),
+        run_id=run_id,
+        domain=domain,
+        dataset=dataset,
+        business_date=business_date_str,
+        source_application=source_application,
     )
+    passing_df = passing_df
+    for _field, _value in file_meta.items():
+        passing_df = passing_df.withColumn(_field, F.lit(_value))
 
     # ------------------------------------------------------------------
     # Step 13 — Write Parquet to S3 Curated
@@ -544,6 +558,8 @@ def _parse_args(argv=None):
                         help="S3 path to input CSV, e.g. s3://ods-raw-local/...")
     parser.add_argument("--file_id", default=None,
                         help="Explicit file_id UUID from file_catalogue (passed by DAG)")
+    parser.add_argument("--parent_run_id", default=None,
+                        help="Optional s3_batch parent run id for run hierarchy")
     parser.add_argument("--airflow_dag_id", default=None,
                         help="Airflow DAG id for CloudWatch/Airflow correlation")
     parser.add_argument("--airflow_run_id", default=None,
@@ -560,6 +576,7 @@ if __name__ == "__main__":
             dataset=args.dataset,
             s3_input_path=args.s3_input_path,
             file_id=args.file_id,
+            parent_run_id=args.parent_run_id,
             airflow_dag_id=args.airflow_dag_id,
             airflow_run_id=args.airflow_run_id,
         )

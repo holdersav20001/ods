@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ods.pipeline.event-archive-envelope",
+  "title": "ODS Event Archive Envelope",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "_ods_source_message_id": {"type": ["string", "null"]},
+    "_ods_source_event_id": {"type": ["string", "null"]},
+    "_ods_source_request_id": {"type": ["string", "null"]},
+    "_ods_source_batch_id": {"type": ["string", "null"]},
+    "_ods_source_application": {"type": "string"},
+    "_ods_domain": {"type": "string"},
+    "_ods_dataset": {"type": "string"},
+    "_ods_ingested_at": {"type": "string", "format": "date-time"},
+    "_ods_schema_id": {"type": "string"},
+    "_ods_schema_version": {"type": ["integer", "string"]},
+    "_ods_run_id": {"type": "string"},
+    "_ods_archive_s3_uri": {"type": ["string", "null"]},
+    "payload": {"type": "object"}
+  },
+  "required": [
+    "_ods_source_application",
+    "_ods_domain",
+    "_ods_dataset",
+    "_ods_ingested_at",
+    "_ods_schema_id",
+    "_ods_schema_version",
+    "_ods_run_id",
+    "payload"
+  ],
+  "anyOf": [
+    {"required": ["_ods_source_message_id"]},
+    {"required": ["_ods_source_event_id"]},
+    {"required": ["_ods_source_request_id"]},
+    {"required": ["_ods_source_batch_id"]}
+  ]
+}

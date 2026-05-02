@@ -155,6 +155,9 @@ def test_dataset_config_has_version_columns(conn):
     assert 'config_yaml_hash' in cols
     assert 'recon_tolerance_records' in cols
     assert 'recon_tolerance_pct' in cols
+    assert 'is_canonical' in cols
+    assert 'canonical_topic' in cols
+    assert 'transform_yaml_path' in cols
 
 def test_v_lineage_view_exists(conn):
     with conn.cursor() as cur:

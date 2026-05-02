@@ -10,8 +10,11 @@ class Stage:
     DQ_CHECK        = "dq_check"         # data quality rules evaluation
     CURATED_WRITE   = "curated_write"    # write Parquet to S3 curated
     CURATED_READ    = "curated_read"     # publish: read curated Parquet
+    KAFKA_CONSUME   = "kafka_consume"    # canonicalize: bounded raw-topic consume
+    CANONICAL_TRANSFORM = "canonical_transform"  # raw-shape -> canonical-shape
     KAFKA_PUBLISH   = "kafka_publish"    # produce Avro messages to Kafka topic
     RECON_T0        = "recon_t0"         # T0 offset reconciliation check
+    RECON_T1        = "recon_t1"         # raw-topic -> canonical-topic reconciliation
     SINK_PG_WAIT    = "sink_pg_wait"     # wait for JDBC sink to consume offsets
     SINK_S3_WAIT    = "sink_s3_wait"     # wait for S3 sink to consume offsets
     FINALISE        = "finalise"         # DAG finalise: mark run succeeded

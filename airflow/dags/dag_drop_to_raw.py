@@ -89,21 +89,22 @@ def scan_and_register():
                 with sftp.file(filename, "r") as fh:
                     body = fh.read()
                 md5 = hashlib.md5(body).hexdigest()
+                bd_iso = _extract_business_date(m)
+                s3_key = f"{domain}/{dataset}/{bd_iso}/{filename}"
+                s3_raw_path = f"s3://{S3_RAW_BUCKET}/{s3_key}"
 
                 with conn.cursor() as cur:
                     cur.execute(
                         """
                         SELECT file_id FROM pipeline.file_catalogue
-                         WHERE domain=%s AND dataset=%s AND file_md5=%s
+                         WHERE domain=%s AND dataset=%s AND s3_raw_path=%s
                         """,
-                        (domain, dataset, md5),
+                        (domain, dataset, s3_raw_path),
                     )
                     if cur.fetchone():
                         break  # idempotent: already registered
 
                     file_id = str(uuid.uuid4())
-                    bd_iso = _extract_business_date(m)
-                    s3_key = f"{domain}/{dataset}/{bd_iso}/{filename}"
                     s3.put_object(Bucket=S3_RAW_BUCKET, Key=s3_key, Body=body)
                     cur.execute(
                         """
@@ -118,7 +119,7 @@ def scan_and_register():
                             dataset,
                             bd_iso,
                             f"/upload/{filename}",
-                            f"s3://{S3_RAW_BUCKET}/{s3_key}",
+                            s3_raw_path,
                             len(body),
                             md5,
                         ),

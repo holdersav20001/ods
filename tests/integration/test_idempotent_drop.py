@@ -62,8 +62,10 @@ def test_same_file_twice_yields_single_catalogue_row(pg_conn):
     body = "policy_id,status,premium\nP1,ACTIVE,100.00\n"
     md5 = hashlib.md5(body.encode()).hexdigest()
     filename = "policies_20260428.csv"
+    raw_path = f"s3://ods-raw-local/insurance/policies/2026-04-28/{filename}"
 
-    # Clean prior state for this md5
+    # Clean prior state for this content and path. The drop DAG dedupes by
+    # s3_raw_path, while this test asserts by md5.
     with pg_conn.cursor() as cur:
         cur.execute(
             """
@@ -72,15 +74,15 @@ def test_same_file_twice_yields_single_catalogue_row(pg_conn):
                    SELECT run_id FROM pipeline.run_log
                     WHERE file_id IN (
                           SELECT file_id FROM pipeline.file_catalogue
-                           WHERE file_md5=%s
+                           WHERE file_md5=%s OR s3_raw_path=%s
                     )
              )
                 OR parent_file_id IN (
                    SELECT file_id FROM pipeline.file_catalogue
-                    WHERE file_md5=%s
+                    WHERE file_md5=%s OR s3_raw_path=%s
                 )
             """,
-            (md5, md5),
+            (md5, raw_path, md5, raw_path),
         )
         cur.execute(
             """
@@ -89,23 +91,26 @@ def test_same_file_twice_yields_single_catalogue_row(pg_conn):
                    SELECT run_id FROM pipeline.run_log
                     WHERE file_id IN (
                           SELECT file_id FROM pipeline.file_catalogue
-                           WHERE file_md5=%s
+                           WHERE file_md5=%s OR s3_raw_path=%s
                     )
              )
             """,
-            (md5,),
+            (md5, raw_path),
         )
         cur.execute(
             """
             DELETE FROM pipeline.run_log
              WHERE file_id IN (
                    SELECT file_id FROM pipeline.file_catalogue
-                    WHERE file_md5=%s
+                    WHERE file_md5=%s OR s3_raw_path=%s
              )
             """,
-            (md5,),
+            (md5, raw_path),
         )
-        cur.execute("DELETE FROM pipeline.file_catalogue WHERE file_md5=%s", (md5,))
+        cur.execute(
+            "DELETE FROM pipeline.file_catalogue WHERE file_md5=%s OR s3_raw_path=%s",
+            (md5, raw_path),
+        )
     pg_conn.commit()
 
     _sftp_put(filename, body)

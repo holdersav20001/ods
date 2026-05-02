@@ -60,6 +60,10 @@ def test_drop_file_lands_in_postgres(pg_conn):
             "DELETE FROM ods.insurance_policy WHERE policy_id IN ('P100','P101')"
         )
         cur.execute(
+            "DELETE FROM ods.insurance_policy_history "
+            "WHERE policy_id IN ('P100','P101')"
+        )
+        cur.execute(
             "DELETE FROM pipeline.lineage_edge WHERE child_run_id IN ("
             "  SELECT run_id FROM pipeline.run_log WHERE domain='insurance' "
             "  AND dataset='policies' AND business_date='2026-04-28') "
@@ -82,8 +86,9 @@ def test_drop_file_lands_in_postgres(pg_conn):
         )
         cur.execute(
             "DELETE FROM pipeline.file_state "
-            "WHERE s3_path IN (%s, %s)",
+            "WHERE s3_path IN (%s, %s, %s)",
             (
+                "s3://ods-raw-local/insurance/policies/2026-04-28/policies_20260428.csv",
                 "s3://ods-raw-local/insurance/policies/date=20260428/policies_20260428.csv",
                 "s3://ods-curated-local/insurance/policies/date=2026-04-28/",
             ),
@@ -92,17 +97,44 @@ def test_drop_file_lands_in_postgres(pg_conn):
 
     _put("policies_20260428.csv", body)
 
-    deadline = time.time() + 180
+    deadline = time.time() + 240
     n = 0
+    parent_status = None
     while time.time() < deadline:
         pg_conn.rollback()
         with pg_conn.cursor() as cur:
             cur.execute(
-                "SELECT count(*) FROM ods.insurance_policy "
-                "WHERE policy_id IN ('P100','P101')"
+                """
+                SELECT count(*)
+                  FROM ods.insurance_policy p
+                  JOIN pipeline.file_catalogue fc
+                    ON fc.file_id::text = p._ods_file_id
+                 WHERE p.policy_id IN ('P100','P101')
+                   AND fc.domain='insurance'
+                   AND fc.dataset='policies'
+                   AND fc.business_date='2026-04-28'
+                   AND fc.state='sunk'
+                """
             )
             n = cur.fetchone()[0]
-        if n == 2:
+            cur.execute(
+                """
+                SELECT status
+                  FROM pipeline.run_log
+                 WHERE domain='insurance'
+                   AND dataset='policies'
+                   AND business_date='2026-04-28'
+                   AND pipeline_type='s3_batch'
+                 ORDER BY started_at DESC
+                 LIMIT 1
+                """
+            )
+            row = cur.fetchone()
+            parent_status = row[0] if row else None
+        if n == 2 and parent_status == "succeeded":
             return
         time.sleep(3)
-    raise AssertionError(f"expected 2 rows in ods.insurance_policy, got {n}")
+    raise AssertionError(
+        "expected 2 sunk rows in ods.insurance_policy and a succeeded parent run, "
+        f"got rows={n}, parent_status={parent_status}"
+    )

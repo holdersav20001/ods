@@ -27,7 +27,7 @@ def start(
     pipeline_type: str,
     domain: str,
     dataset: str,
-    business_date: str,
+    business_date: str | None,
     file_id: str | None = None,
     kafka_topic: str | None = None,
     config_version_id=None,
