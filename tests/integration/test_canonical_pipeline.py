@@ -18,6 +18,7 @@ from confluent_kafka.serialization import MessageField, SerializationContext, St
 
 
 CONNECT_SR = os.environ.get("SCHEMA_REGISTRY_URL", "http://localhost:8081")
+CONNECT_URL = os.environ.get("CONNECT_URL", "http://localhost:8083")
 RAW_TOPIC = "ods.insurance.risk"
 CANONICAL_TOPIC = "ods.insurance.risk-canonical"
 ROOT = Path(__file__).resolve().parents[2]
@@ -40,14 +41,28 @@ def _recreate_topic(topic: str) -> None:
          "--bootstrap-server", "localhost:9092", "--delete", "--topic", topic],
         capture_output=True,
     )
-    time.sleep(1)
-    subprocess.run(
-        ["docker", "exec", "avivaods-broker-1", "kafka-topics",
-         "--bootstrap-server", "localhost:9092", "--create", "--topic", topic,
-         "--partitions", "1", "--replication-factor", "1"],
-        capture_output=True,
-        check=True,
-    )
+    describe_cmd = [
+        "docker", "exec", "avivaods-broker-1", "kafka-topics",
+        "--bootstrap-server", "localhost:9092", "--describe", "--topic", topic,
+    ]
+    for _ in range(30):
+        probe = subprocess.run(describe_cmd, capture_output=True)
+        if probe.returncode != 0:
+            break
+        time.sleep(1)
+    create_cmd = [
+        "docker", "exec", "avivaods-broker-1", "kafka-topics",
+        "--bootstrap-server", "localhost:9092", "--create", "--topic", topic,
+        "--partitions", "1", "--replication-factor", "1",
+    ]
+    for _ in range(10):
+        result = subprocess.run(create_cmd, capture_output=True)
+        if result.returncode == 0:
+            return
+        if b"already exists" not in result.stderr + result.stdout:
+            result.check_returncode()
+        time.sleep(1)
+    result.check_returncode()
 
 
 @pytest.fixture
@@ -115,14 +130,55 @@ def _canonical_count() -> int:
     return count
 
 
+def _provision_risk_sink() -> None:
+    _delete_risk_sink()
+    config = json.loads((ROOT / "docker" / "connect-config" / "jdbc-sink-risk.json").read_text())
+    resp = requests.post(
+        f"{CONNECT_URL}/connectors",
+        json=config,
+        headers={"Content-Type": "application/json"},
+        timeout=10,
+    )
+    assert resp.status_code in (200, 201, 409), resp.text
+
+
+def _delete_risk_sink() -> None:
+    requests.delete(f"{CONNECT_URL}/connectors/jdbc-sink-risk", timeout=10)
+
+
+def _wait_risk_rows(pg, run_id: str, timeout: int = 90) -> list[tuple]:
+    deadline = time.time() + timeout
+    rows: list[tuple] = []
+    while time.time() < deadline:
+        pg.rollback()
+        with pg.cursor() as cur:
+            cur.execute(
+                """
+                SELECT risk_id, policy_id, exposure_amount::text, as_of_date::text,
+                       _ods_canonicalize_run_id
+                  FROM ods.insurance_risk
+                 WHERE _ods_canonicalize_run_id=%s
+                 ORDER BY risk_id
+                """,
+                (run_id,),
+            )
+            rows = cur.fetchall()
+        if len(rows) == 2:
+            return rows
+        time.sleep(2)
+    return rows
+
+
 def test_risk_canonicalize_job_writes_t1_recon(pg):
     _register("ods.insurance.risk-value", ROOT / "schemas" / "insurance" / "risk_raw.avsc")
     _register(
         "ods.insurance.risk-canonical-value",
         ROOT / "schemas" / "insurance" / "risk_canonical.avsc",
     )
+    _delete_risk_sink()
     _recreate_topic(RAW_TOPIC)
     _recreate_topic(CANONICAL_TOPIC)
+    _provision_risk_sink()
 
     run_id = str(uuid.uuid4())
     raw_run_id = str(uuid.uuid4())
@@ -150,6 +206,9 @@ def test_risk_canonicalize_job_writes_t1_recon(pg):
             ON CONFLICT DO NOTHING
             """,
             (raw_run_id, file_id, RAW_TOPIC),
+        )
+        cur.execute(
+            "DELETE FROM ods.insurance_risk WHERE risk_id IN ('R1', 'R2', 'R3')"
         )
     pg.commit()
 
@@ -202,3 +261,9 @@ def test_risk_canonicalize_job_writes_t1_recon(pg):
         )
         row = cur.fetchone()
     assert row == ("ok", 2, 2, 0)
+
+    rows = _wait_risk_rows(pg, run_id)
+    assert rows == [
+        ("R1", "P1", "123.45", "2026-05-01", run_id),
+        ("R2", "P2", "200.00", "2026-05-01", run_id),
+    ]

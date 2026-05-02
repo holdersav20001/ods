@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS ods.insurance_risk (
     _ods_canonicalize_run_id varchar NULL,
     _ods_domain varchar NULL,
     _ods_dataset varchar NULL,
-    _ods_business_date date NULL,
+    _ods_business_date varchar NULL,
     _ods_source_application varchar NULL,
     _ods_ingested_at timestamp DEFAULT now() NOT NULL,
     CONSTRAINT insurance_risk_pkey PRIMARY KEY (risk_id, as_of_date)

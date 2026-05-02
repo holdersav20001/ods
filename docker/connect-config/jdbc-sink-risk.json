@@ -1,0 +1,20 @@
+{
+  "name": "jdbc-sink-risk",
+  "config": {
+    "connector.class": "io.confluent.connect.jdbc.JdbcSinkConnector",
+    "tasks.max": "1",
+    "topics": "ods.insurance.risk-canonical",
+    "connection.url": "jdbc:postgresql://postgres:5432/ods_dev",
+    "connection.user": "ods",
+    "connection.password": "ods",
+    "insert.mode": "upsert",
+    "pk.mode": "record_value",
+    "pk.fields": "risk_id,as_of_date",
+    "auto.create": "false",
+    "auto.evolve": "true",
+    "table.name.format": "ods.insurance_risk",
+    "value.converter": "io.confluent.connect.avro.AvroConverter",
+    "value.converter.schema.registry.url": "http://schema-registry:8081",
+    "key.converter": "org.apache.kafka.connect.storage.StringConverter"
+  }
+}

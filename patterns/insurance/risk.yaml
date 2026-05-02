@@ -11,7 +11,7 @@ schema_version: 1
 postgres_target_table: ods.insurance_risk
 s3_curated_path: s3://ods-curated-local/insurance/risk/
 transform_yaml_path: /home/glue_user/patterns/insurance/risk.yaml
-key_fields: [risk_id]
+key_fields: [risk_id, as_of_date]
 write_mode: upsert
 recon_tolerance_records: 0
 recon_tolerance_pct: 0
