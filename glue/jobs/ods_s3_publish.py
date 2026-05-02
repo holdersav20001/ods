@@ -374,21 +374,34 @@ def _run_impl(conn, run_id: str, domain: str, dataset: str, s3_input_path: str,
     key_ser = StringSerializer("utf_8")
     value_ser = AvroSerializer(sr, avro_schema_str)
 
-    delivery_errors: list[str] = []
+    # B5/B6: per-message delivery tracking via OffsetTracker.
+    # The tracker captures (partition, offset) per broker-acknowledged message
+    # via on_delivery, which runs on the librdkafka poll thread. T0 recon
+    # below compares tracker.delivered_count to dq_pass_count instead of the
+    # offset-delta approach (which is corrupted by other producers writing to
+    # the same topic concurrently).
+    tracker = ods_pipeline.offsets.OffsetTracker()
 
-    def _deliver_cb(err, msg):
-        # Runs in librdkafka thread — must NOT raise. Accumulate and check after flush.
-        if err:
-            delivery_errors.append(str(err))
-
+    # B5: transactional producer — exactly-once semantics for the whole batch.
+    # transactional.id is keyed on run_id only (not run_id+partition as the
+    # plan literal suggests) because this Glue job runs ONE Producer instance
+    # writing to all partitions of target_topic via the default partitioner.
+    # A per-partition transactional.id would require one Producer per
+    # partition, which is not the architecture here.
     producer = Producer({
         "bootstrap.servers": bootstrap,
         "enable.idempotence": True,
+        "transactional.id": f"ods-publish-{run_id}",
         "acks": "all",
+        "max.in.flight.requests.per.connection": 5,
     })
 
     # ------------------------------------------------------------------
     # Step 8 — Capture start offsets BEFORE producing
+    #
+    # Kept for forward compatibility with downstream tooling that reads
+    # offset_start_by_partition from run_log; T0 recon itself now uses
+    # tracker counts (see Step 10 below).
     # ------------------------------------------------------------------
     try:
         offset_start_by_partition = _topic_end_offsets_by_partition(target_topic, bootstrap)
@@ -405,40 +418,59 @@ def _run_impl(conn, run_id: str, domain: str, dataset: str, s3_input_path: str,
         return 1
 
     # ------------------------------------------------------------------
-    # Step 9 — Produce Avro messages
+    # Step 9 — Produce Avro messages inside a Kafka transaction
+    #
+    # Lifecycle: init_transactions → begin_transaction → produce*N → flush
+    # → (commit_transaction OR abort_transaction). producer.close() in
+    # finally so resources release even on uncaught exceptions.
     # ------------------------------------------------------------------
     rows = passing_df.collect()
     source_application = os.environ.get("ODS_SOURCE_APPLICATION", "sftp")
 
+    publish_failed = False
+    publish_err: Exception | None = None
     try:
-        for row in rows:
-            row_dict = row.asDict()
-            file_meta = ods_pipeline.metadata.file_metadata(
-                file_id=str(_file_id or ""),
-                run_id=str(row_dict.get("_ods_run_id") or run_id),
-                domain=domain,
-                dataset=dataset,
-                business_date=row_dict.get("_ods_business_date") or business_date or "",
-                source_application=source_application,
-                ingested_at=row_dict.get("_ods_ingested_at"),
-            )
-            row_dict.update({k: v for k, v in file_meta.items() if v is not None})
-            coerced = _coerce_for_avro(row_dict, avro_schema_str)
-            msg_key = generate_message_key(key_fields, coerced)
-            producer.produce(
-                topic=target_topic,
-                key=key_ser(msg_key),
-                value=value_ser(coerced, SerializationContext(target_topic, MessageField.VALUE)),
-                on_delivery=_deliver_cb,
-            )
-        producer.flush()
-        if delivery_errors:
-            raise RuntimeError(
-                f"{len(delivery_errors)} kafka delivery failures; "
-                f"first: {delivery_errors[0]}"
-            )
+        producer.init_transactions()
+        producer.begin_transaction()
+        try:
+            for row in rows:
+                row_dict = row.asDict()
+                file_meta = ods_pipeline.metadata.file_metadata(
+                    file_id=str(_file_id or ""),
+                    run_id=str(row_dict.get("_ods_run_id") or run_id),
+                    domain=domain,
+                    dataset=dataset,
+                    business_date=row_dict.get("_ods_business_date") or business_date or "",
+                    source_application=source_application,
+                    ingested_at=row_dict.get("_ods_ingested_at"),
+                )
+                row_dict.update({k: v for k, v in file_meta.items() if v is not None})
+                coerced = _coerce_for_avro(row_dict, avro_schema_str)
+                msg_key = generate_message_key(key_fields, coerced)
+                producer.produce(
+                    topic=target_topic,
+                    key=key_ser(msg_key),
+                    value=value_ser(coerced, SerializationContext(target_topic, MessageField.VALUE)),
+                    on_delivery=tracker.on_delivery,
+                )
+            producer.flush()
+            if tracker.errors:
+                raise RuntimeError(
+                    f"{len(tracker.errors)} kafka delivery failures; "
+                    f"first: {tracker.errors[0]}"
+                )
+            producer.commit_transaction()
+        except Exception:
+            producer.abort_transaction()
+            raise
     except Exception as exc:
-        err_msg = str(exc)
+        publish_failed = True
+        publish_err = exc
+    finally:
+        producer.close()
+
+    if publish_failed:
+        err_msg = str(publish_err)
         ods_pipeline.runs.update(conn, run_id, status="failed", error_summary=err_msg)
         _ws(stage=Stage.KAFKA_PUBLISH,
             status="failed", event_type=StageEvent.FAILED,
@@ -452,7 +484,8 @@ def _run_impl(conn, run_id: str, domain: str, dataset: str, s3_input_path: str,
         return 1
 
     # ------------------------------------------------------------------
-    # Step 10 — Capture end offsets and compute published count
+    # Step 10 — Capture end offsets (forward compat) and compute published
+    # count from the tracker, not from the offset delta.
     # ------------------------------------------------------------------
     try:
         offset_end_by_partition = _topic_end_offsets_by_partition(target_topic, bootstrap)
@@ -465,7 +498,11 @@ def _run_impl(conn, run_id: str, domain: str, dataset: str, s3_input_path: str,
         spark.stop()
         return 1
 
-    published_count = offset_end - offset_start
+    # B6: T0 recon source-of-truth = tracker.delivered_count.
+    # offset_end - offset_start is unreliable in any topic where another
+    # producer can write concurrently; tracker counts only what THIS
+    # producer's transaction acked.
+    published_count = tracker.delivered_count
     discrepancy = published_count - dq_pass_count
     t0_passed = discrepancy == 0
 

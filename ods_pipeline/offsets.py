@@ -86,3 +86,67 @@ def partitions_consumed(committed_offsets: Mapping[Any, Any], target_offsets: Ma
     if not targets:
         return False
     return all(committed.get(partition, -1) >= target for partition, target in targets.items())
+
+
+class OffsetTracker:
+    """Capture broker-confirmed `(partition, offset)` per delivered Kafka message.
+
+    Designed for use with confluent_kafka's transactional producer (B5/B6).
+    The producer's per-message ``on_delivery`` callback runs on the librdkafka
+    poll thread, so the callback MUST NOT raise.  Errors are accumulated in
+    ``errors`` for the caller to inspect after ``producer.flush()``.
+
+    Recon contract: ``len(rows_attempted) == tracker.delivered_count`` proves
+    every queued ``produce()`` resulted in a broker-acknowledged write inside
+    the open transaction. Safer than ``offset_end - offset_start`` because it
+    is immune to other producers writing to the same topic concurrently.
+
+    Usage:
+
+        tracker = OffsetTracker()
+        for row in rows:
+            producer.produce(topic, key=k, value=v, on_delivery=tracker.on_delivery)
+        producer.flush()
+        if tracker.errors:
+            raise RuntimeError(f"{len(tracker.errors)} delivery failures")
+        assert tracker.delivered_count == len(rows)
+    """
+
+    def __init__(self) -> None:
+        # {partition: [offset, ...]} — order is delivery order, not produce order.
+        self._delivered: dict[int, list[int]] = {}
+        self.errors: list[str] = []
+
+    def on_delivery(self, err, msg) -> None:  # noqa: D401 — librdkafka callback shape
+        """confluent_kafka per-message delivery callback. Must not raise."""
+        if err is not None:
+            self.errors.append(str(err))
+            return
+        try:
+            partition = int(msg.partition())
+            offset = int(msg.offset())
+        except Exception as exc:  # pragma: no cover — defensive
+            self.errors.append(f"unparseable delivery report: {exc}")
+            return
+        self._delivered.setdefault(partition, []).append(offset)
+
+    @property
+    def delivered_count(self) -> int:
+        """Total number of broker-acknowledged messages across all partitions."""
+        return sum(len(offsets) for offsets in self._delivered.values())
+
+    def per_partition_counts(self) -> dict[int, int]:
+        """``{partition: delivered_count}``."""
+        return {partition: len(offsets) for partition, offsets in self._delivered.items()}
+
+    def per_partition_ranges(self) -> OffsetRangeMap:
+        """``{partition: (min_offset, max_offset+1)}`` for delivered messages.
+
+        ``end`` is exclusive (matches the rest of this module's range
+        convention).  Empty partitions are omitted.
+        """
+        return {
+            partition: (min(offsets), max(offsets) + 1)
+            for partition, offsets in self._delivered.items()
+            if offsets
+        }
