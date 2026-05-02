@@ -12,8 +12,13 @@ from services.event_api.main import build_app
 
 
 @pytest.fixture
-def app():
-    """Build app with mocked S3 + Postgres + Kafka so we run pure-unit."""
+def app(monkeypatch):
+    """Build app with mocked S3 + Postgres + Kafka so we run pure-unit.
+
+    Uses monkeypatch.setattr so global state is auto-restored even on
+    test interruption — avoids leaking the start_run mock into other
+    test modules that import ods_pipeline.messages.
+    """
     pg = MagicMock()
     cur = MagicMock()
     cur_cm = MagicMock()
@@ -34,10 +39,9 @@ def app():
         factory_calls["producer"] += 1
         return producer
 
-    # Patch messages.start_run so we don't hit a real DB.
     import ods_pipeline.messages as messages
-    orig_start_run = messages.start_run
-    messages.start_run = MagicMock()
+    start_run_mock = MagicMock()
+    monkeypatch.setattr(messages, "start_run", start_run_mock)
 
     app_obj = build_app(
         pg_factory=pg_factory,
@@ -45,9 +49,7 @@ def app():
         producer_factory=producer_factory,
         archive_bucket="ods-test-bucket",
     )
-    yield app_obj, s3, producer, messages.start_run, factory_calls
-
-    messages.start_run = orig_start_run
+    yield app_obj, s3, producer, start_run_mock, factory_calls
 
 
 def test_healthz_returns_pattern_name(app):

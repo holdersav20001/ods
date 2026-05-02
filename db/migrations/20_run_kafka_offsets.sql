@@ -1,12 +1,23 @@
 -- T6 (B8) + T8 (8.3): normalised per-partition offset table
 --
 -- Stores the offset range each (run_id, stage, topic, partition) covered.
--- Persisted in the SAME postgres transaction as the run-status update so a
--- crash between Kafka transaction commit and run-status commit is detectable
--- via runs.start() resume-time check (T6: exactly-once on retry).
+-- runs.start() resume-time check uses has_recorded_offsets() against this
+-- table to detect "Kafka transaction committed AND offsets persisted" and
+-- skip republish on retry.
 --
--- Replaces JSONB offset blobs in run_stage_log.metrics. Existing JSONB rows
--- continue to live there during the transition; backfill script lands in T8.
+-- CURRENT semantics: offsets.persist_ranges() commits in its own tx,
+-- AFTER the run-status update commits. A crash between the two commits
+-- leaves run=succeeded with no offset rows; the next run will republish
+-- under the idempotent producer (transactional.id keyed on run_id), so
+-- this window does not produce data loss but DOES leave the dashboard
+-- view momentarily empty until repair.
+--
+-- TARGET semantics (T12 follow-up — pattern.atomic(conn) context manager):
+-- both writes share a single Postgres transaction; crash leaves an
+-- atomically consistent state.
+--
+-- Replaces JSONB offset blobs in run_stage_log.metrics. Existing JSONB
+-- rows continue to live there during the transition.
 
 BEGIN;
 
@@ -35,8 +46,9 @@ CREATE INDEX IF NOT EXISTS run_kafka_offsets_run_stage_idx
     ON pipeline.run_kafka_offsets (run_id, stage);
 
 COMMENT ON TABLE pipeline.run_kafka_offsets IS
-    'Per-partition Kafka offsets covered by each (run_id, stage). Persisted in '
-    'same Postgres tx as run status to give exactly-once semantics on retry: '
-    'runs.start() detects existing rows and signals republish-skip.';
+    'Per-partition Kafka offsets covered by each (run_id, stage). Currently '
+    'persisted in a separate tx after the run_log update; T12 follow-up will '
+    'collapse both into a single tx via pattern.atomic(conn). '
+    'has_recorded_offsets() drives runs.start() resume-time republish-skip.';
 
 COMMIT;
