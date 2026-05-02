@@ -8,12 +8,14 @@ import argparse
 import sys
 
 from ods_pipeline.ops import dlq as dlq_cmd
+from ods_pipeline.ops import runs as runs_cmd
 
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m ods_pipeline.ops")
     sub = parser.add_subparsers(dest="cmd", required=True)
     dlq_cmd.register(sub.add_parser("dlq", help="DLQ inspection + replay"))
+    runs_cmd.register(sub.add_parser("runs", help="replay / rerun runs"))
     return parser
 
 
@@ -22,6 +24,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.cmd == "dlq":
         return dlq_cmd.dispatch(args)
+    if args.cmd == "runs":
+        return runs_cmd.dispatch(args)
     parser.print_help()
     return 2
 
