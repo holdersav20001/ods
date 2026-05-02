@@ -10,6 +10,105 @@ OffsetMap = dict[int, int]
 OffsetRangeMap = dict[int, tuple[int, int]]
 
 
+def persist_ranges(
+    conn,
+    *,
+    run_id: str,
+    stage: str,
+    topic: str,
+    ranges: Mapping[int, tuple[int, int]],
+    commit: bool = True,
+) -> int:
+    """Write per-partition offset ranges to ``pipeline.run_kafka_offsets``.
+
+    Returns the number of rows inserted/updated.
+
+    Designed to be called inside the SAME transaction as the run-status update
+    so a crash between Kafka transaction commit and Postgres commit leaves a
+    detectable inconsistency (no offset rows + run still 'running').
+
+    ``commit=True`` (default) preserves single-call ergonomics; ``commit=False``
+    lets a caller (B8 exactly-once flow) own the transaction boundary and
+    commit alongside ``runs.update``.
+    """
+    if not ranges:
+        if commit:
+            conn.commit()
+        return 0
+    rows = [
+        (run_id, stage, topic, int(partition), int(start), int(end))
+        for partition, (start, end) in ranges.items()
+    ]
+    try:
+        with conn.cursor() as cur:
+            cur.executemany(
+                """
+                INSERT INTO pipeline.run_kafka_offsets
+                    (run_id, stage, topic, partition, offset_start, offset_end)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (run_id, stage, topic, partition)
+                DO UPDATE SET
+                    offset_start = EXCLUDED.offset_start,
+                    offset_end   = EXCLUDED.offset_end,
+                    recorded_at  = now()
+                """,
+                rows,
+            )
+        if commit:
+            conn.commit()
+        return len(rows)
+    except Exception:
+        if commit:
+            conn.rollback()
+        raise
+
+
+def read_ranges(conn, *, run_id: str, stage: str | None = None) -> dict[str, OffsetRangeMap]:
+    """Return ``{topic: {partition: (start, end)}}`` for a run (optionally a stage).
+
+    Empty dict if no offsets recorded.  Used by B8 resume-time idempotency
+    check and T8 dashboards.
+    """
+    where = "run_id = %s"
+    params: tuple[Any, ...] = (run_id,)
+    if stage is not None:
+        where += " AND stage = %s"
+        params = (run_id, stage)
+    out: dict[str, OffsetRangeMap] = {}
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            SELECT topic, partition, offset_start, offset_end
+              FROM pipeline.run_kafka_offsets
+             WHERE {where}
+            """,
+            params,
+        )
+        for topic, partition, offset_start, offset_end in cur.fetchall():
+            out.setdefault(topic, {})[int(partition)] = (int(offset_start), int(offset_end))
+    return out
+
+
+def has_recorded_offsets(conn, *, run_id: str, stage: str) -> bool:
+    """Cheap existence check used by B8 resume-time idempotency in ``runs.start``.
+
+    Returns True if any ``run_kafka_offsets`` row exists for the
+    ``(run_id, stage)`` pair — i.e. a prior attempt's Kafka transaction
+    committed AND its offsets were persisted to Postgres in the same tx.
+    Caller should treat this as 'republish would duplicate; skip'.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT 1 FROM pipeline.run_kafka_offsets
+             WHERE run_id = %s AND stage = %s
+             LIMIT 1
+            """,
+            (run_id, stage),
+        )
+        return cur.fetchone() is not None
+
+
 def normalise_offset_map(raw: Mapping[Any, Any] | str | None) -> OffsetMap:
     """Return ``{partition: offset}`` with integer keys and values."""
     if raw is None:

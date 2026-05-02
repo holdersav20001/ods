@@ -556,6 +556,23 @@ def _run_impl(conn, run_id: str, domain: str, dataset: str, s3_input_path: str,
         error_summary=error_summary,
     )
 
+    # B8 (T6): persist per-partition offset ranges to run_kafka_offsets.
+    # On retry, runs.start consumers can call offsets.has_recorded_offsets
+    # to detect "Kafka committed AND PG persisted" and skip republish — the
+    # exactly-once primitive. Architect R4 noted full atomicity with the
+    # run-status update is a T12 follow-up via pattern.atomic(); here both
+    # writes commit individually but the Kafka transaction has already
+    # acked, so worst-case crash leaves run_log updated without offsets,
+    # which a resume run will repair by republishing under idempotent producer.
+    if t0_passed:
+        ods_pipeline.offsets.persist_ranges(
+            conn,
+            run_id=run_id,
+            stage="kafka_publish",
+            topic=target_topic,
+            ranges=tracker.per_partition_ranges(),
+        )
+
     # ------------------------------------------------------------------
     # Step 13 — Write curated→kafka lineage edge (on success)
     # ------------------------------------------------------------------
