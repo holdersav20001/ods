@@ -1,6 +1,9 @@
 """pipeline.reconciliation_log operations."""
 from __future__ import annotations
 
+from collections.abc import Mapping
+from typing import Any
+
 
 def write_check(
     conn,
@@ -66,3 +69,85 @@ def write_check(
         if commit:
             conn.rollback()
         raise
+
+
+# Default dual-sink table pairs per dataset.
+# Each entry: dataset -> (current_table, history_table, run_id_column).
+DUAL_SINK_TABLES: dict[str, tuple[str, str, str]] = {
+    "policies": ("ods.insurance_policy",
+                 "ods.insurance_policy_history",
+                 "_ods_run_id"),
+}
+
+
+def check_dual_sink_parity(
+    conn,
+    *,
+    run_id: str,
+    domain: str,
+    dataset: str,
+    business_date: str | None,
+    pairs: Mapping[str, tuple[str, str, str]] | None = None,
+    commit: bool = True,
+) -> dict[str, Any]:
+    """Compare row counts between current and history sinks for ``run_id``.
+
+    Returns the reconciliation summary and writes a corresponding row to
+    ``pipeline.reconciliation_log`` with ``check_type='dual_sink_parity'``.
+
+    History sink lag is the most common source of divergence between the
+    upsert (current) and append (history) JDBC sinks reading from the same
+    canonical topic. If the history connector is paused, restart-lagging,
+    or schema-evolution-blocked, the current state can advance without a
+    matching history row, leaving the audit trail incomplete.
+
+    Status:
+      - ``ok``        — counts match (delta == 0)
+      - ``pending``   — at least one sink has no rows yet (likely lag)
+      - ``failed``    — both sinks have rows but counts diverge
+    """
+    pairs_to_check = pairs or DUAL_SINK_TABLES
+    table_pair = pairs_to_check.get(dataset)
+    if not table_pair:
+        return {"status": "skipped", "reason": f"no dual-sink pair registered for {dataset}"}
+    current_table, history_table, run_col = table_pair
+
+    with conn.cursor() as cur:
+        cur.execute(f"SELECT COUNT(*) FROM {current_table} WHERE {run_col} = %s", (run_id,))
+        current_count = int(cur.fetchone()[0])
+        cur.execute(f"SELECT COUNT(*) FROM {history_table} WHERE {run_col} = %s", (run_id,))
+        history_count = int(cur.fetchone()[0])
+
+    delta = history_count - current_count
+    if current_count == 0 or history_count == 0:
+        status = "pending"
+        detail = (f"current={current_count}, history={history_count}; "
+                  "one or both sinks empty — likely consumer lag")
+    elif delta == 0:
+        status = "ok"
+        detail = f"current={current_count}, history={history_count}"
+    else:
+        status = "failed"
+        detail = (f"current={current_count}, history={history_count}, "
+                  f"delta={delta}")
+
+    write_check(
+        conn,
+        check_type="dual_sink_parity",
+        run_id=run_id,
+        domain=domain,
+        dataset=dataset,
+        business_date=business_date,
+        source_count=current_count,
+        postgres_count=history_count,
+        status=status,
+        detail=detail,
+        commit=commit,
+    )
+    return {
+        "status": status,
+        "current_count": current_count,
+        "history_count": history_count,
+        "delta": delta,
+        "detail": detail,
+    }
