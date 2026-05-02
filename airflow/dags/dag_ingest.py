@@ -407,7 +407,7 @@ def select_sink_run(ctx: dict) -> dict:
 def _run_statuses(conn, run_ids: list[str]) -> dict[str, str]:
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT run_id::text, status FROM pipeline.run_log WHERE run_id = ANY(%s)",
+            "SELECT run_id::text, status FROM pipeline.run_log WHERE run_id::text = ANY(%s)",
             (run_ids,),
         )
         return {rid: status for rid, status in cur.fetchall()}
