@@ -168,3 +168,71 @@ def finish(
     if error_summary is not None:
         kw["error_summary"] = error_summary
     update(conn, run_id, **kw)
+
+
+class LineageInvariantError(RuntimeError):
+    """Raised by ``finalise`` when run state violates the lineage contract."""
+
+
+def finalise(conn, run_id: str, *, commit: bool = True) -> None:
+    """Validate lineage closure invariants before marking a run succeeded.
+
+    Asserts:
+      1. If ``record_count_published > 0``, at least one ``lineage_edge`` row
+         exists with ``child_run_id = run_id`` (no orphan published runs).
+      2. No non-terminal ``run_stage_log`` rows exist for ``run_id`` — every
+         opened stage must have been closed.
+
+    On violation, marks the run ``failed`` with an explanatory
+    ``error_summary`` and raises :class:`LineageInvariantError`.
+
+    Closes architectural risk A3.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT COALESCE(record_count_published, 0)
+              FROM pipeline.run_log
+             WHERE run_id = %s
+            """,
+            (run_id,),
+        )
+        row = cur.fetchone()
+        if row is None:
+            raise LineageInvariantError(f"run_id {run_id} not found")
+        published = int(row[0] or 0)
+
+        cur.execute(
+            """
+            SELECT COUNT(*) FROM pipeline.lineage_edge
+             WHERE child_run_id = %s
+            """,
+            (run_id,),
+        )
+        edges = int(cur.fetchone()[0])
+
+        cur.execute(
+            """
+            SELECT stage, attempt_number FROM pipeline.run_stage_log
+             WHERE run_id = %s
+               AND event_type NOT IN ('stage_completed','stage_failed',
+                                      'stage_skipped','stage_warned')
+            """,
+            (run_id,),
+        )
+        open_stages = cur.fetchall()
+
+    failures: list[str] = []
+    if published > 0 and edges == 0:
+        failures.append(
+            f"published={published} but no lineage_edge rows; orphaned run"
+        )
+    if open_stages:
+        names = ", ".join(f"{s}#{a}" for s, a in open_stages)
+        failures.append(f"non-terminal stages remain: {names}")
+
+    if failures:
+        summary = "lineage invariant violated: " + " | ".join(failures)
+        update(conn, run_id, status="failed",
+               error_summary=summary, commit=commit)
+        raise LineageInvariantError(summary)
