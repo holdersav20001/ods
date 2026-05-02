@@ -184,3 +184,42 @@ def test_stages_start_idempotent_under_migration_19(pg_conn, isolated_run):
         )
         (count,) = cur.fetchone()
     assert count == 1, f"expected 1 stage_started row after duplicate start, got {count}"
+
+
+def test_start_then_finish_produces_two_rows_under_migration_19(pg_conn, isolated_run):
+    """Migration 19's partial index does NOT block the started→completed pair.
+
+    The index is keyed on ``WHERE event_type='stage_started'`` only.  The
+    UPDATE in ``finish()`` mutates the existing started row's event_type to
+    ``stage_completed`` (which falls outside the partial predicate), so the
+    INSERT path inside finish never runs in this single-thread case.
+
+    Outcome: 1 row ends as ``stage_completed``, with no second row appended.
+    Asserts the index does not interfere with the normal start+finish
+    happy-path lifecycle.
+    """
+    rid = isolated_run
+    runs.start(
+        pg_conn, run_id=rid, pipeline_type="s3_batch",
+        domain="insurance", dataset="policies",
+        business_date="2026-04-28", file_id=None, config_version_id=1,
+    )
+    stages.start(pg_conn, run_id=rid, stage="raw_read", attempt_number=1,
+                 input_ref="s3://raw/x.csv")
+    stages.finish(pg_conn, run_id=rid, stage="raw_read", attempt_number=1,
+                  status="succeeded", record_count_out=10)
+    with pg_conn.cursor() as cur:
+        cur.execute(
+            "SELECT count(*), "
+            "       count(*) FILTER (WHERE event_type='stage_started'), "
+            "       count(*) FILTER (WHERE event_type='stage_completed') "
+            "  FROM pipeline.run_stage_log "
+            " WHERE run_id=%s AND stage='raw_read' AND attempt_number=1",
+            (rid,),
+        )
+        total, started, completed = cur.fetchone()
+    assert total == 1, (
+        f"expected 1 row total after start+finish (UPDATE path), got {total}"
+    )
+    assert started == 0, "started row should have been mutated to completed"
+    assert completed == 1
