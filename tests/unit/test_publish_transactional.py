@@ -30,6 +30,7 @@ HERE = os.path.dirname(__file__)
 sys.path.insert(0, os.path.abspath(os.path.join(HERE, "..", "..")))
 
 from ods_pipeline.offsets import OffsetTracker  # noqa: E402
+from ods_pipeline.publish import publish_with_transaction  # noqa: E402
 
 
 def _msg(partition: int, offset: int):
@@ -104,33 +105,18 @@ def _make_producer_mock():
     return producer
 
 
-def _publish_with_transaction(producer, topic, payloads, tracker):
-    """Mirror of the lifecycle inside ods_s3_publish.py post-T4 refactor.
+def _run_publish(producer, topic, payloads, tracker):
+    """Wrap the production helper with caller-owned producer.close().
 
-    Extracted as a free helper here so the unit test can pin the exact
-    contract without depending on the 600-line Glue job. The Glue job will
-    inline the same shape.
+    The production lifecycle helper ``ods_pipeline.publish.publish_with_transaction``
+    deliberately does NOT close the producer (the caller does, in their own
+    finally block — same shape as the Glue job). This wrapper mirrors that
+    shape so test assertions of "close happens last" map directly to caller
+    behaviour.
     """
-    producer.init_transactions()
-    producer.begin_transaction()
+    payloads_with_topic = [{**p, "topic": topic} for p in payloads]
     try:
-        for payload in payloads:
-            producer.produce(
-                topic=topic,
-                key=payload["key"],
-                value=payload["value"],
-                on_delivery=tracker.on_delivery,
-            )
-        producer.flush()
-        if tracker.errors:
-            raise RuntimeError(
-                f"{len(tracker.errors)} kafka delivery failures; "
-                f"first: {tracker.errors[0]}"
-            )
-        producer.commit_transaction()
-    except Exception:
-        producer.abort_transaction()
-        raise
+        publish_with_transaction(producer, payloads_with_topic, tracker)
     finally:
         producer.close()
 
@@ -141,7 +127,7 @@ class TestTransactionalLifecycle:
         tracker = OffsetTracker()
         payloads = [{"key": f"k{i}", "value": f"v{i}"} for i in range(5)]
 
-        _publish_with_transaction(producer, "ods.test", payloads, tracker)
+        _run_publish(producer, "ods.test", payloads, tracker)
 
         # Lifecycle ordering: init → begin → produce*5 → flush → commit → close
         method_names = [c[0] for c in producer.method_calls]
@@ -175,7 +161,7 @@ class TestTransactionalLifecycle:
         payloads = [{"key": f"k{i}", "value": f"v{i}"} for i in range(5)]
 
         with pytest.raises(RuntimeError, match="simulated produce failure"):
-            _publish_with_transaction(producer, "ods.test", payloads, tracker)
+            _run_publish(producer, "ods.test", payloads, tracker)
 
         method_names = [c[0] for c in producer.method_calls]
         assert "abort_transaction" in method_names
@@ -194,7 +180,7 @@ class TestTransactionalLifecycle:
         tracker = OffsetTracker()
 
         with pytest.raises(RuntimeError, match="kafka delivery failures"):
-            _publish_with_transaction(
+            _run_publish(
                 producer, "ods.test", [{"key": "k", "value": "v"}], tracker
             )
 

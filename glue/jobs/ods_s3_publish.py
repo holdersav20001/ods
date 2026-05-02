@@ -427,47 +427,47 @@ def _run_impl(conn, run_id: str, domain: str, dataset: str, s3_input_path: str,
     rows = passing_df.collect()
     source_application = os.environ.get("ODS_SOURCE_APPLICATION", "sftp")
 
+    def _send_row(_producer, row, *, on_delivery):
+        """Per-row sender: serialise, key, produce. Closure over schema/topic.
+
+        Used as ``on_send`` for ``ods_pipeline.publish.publish_with_transaction``.
+        """
+        row_dict = row.asDict()
+        file_meta = ods_pipeline.metadata.file_metadata(
+            file_id=str(_file_id or ""),
+            run_id=str(row_dict.get("_ods_run_id") or run_id),
+            domain=domain,
+            dataset=dataset,
+            business_date=row_dict.get("_ods_business_date") or business_date or "",
+            source_application=source_application,
+            ingested_at=row_dict.get("_ods_ingested_at"),
+        )
+        row_dict.update({k: v for k, v in file_meta.items() if v is not None})
+        coerced = _coerce_for_avro(row_dict, avro_schema_str)
+        msg_key = generate_message_key(key_fields, coerced)
+        _producer.produce(
+            topic=target_topic,
+            key=key_ser(msg_key),
+            value=value_ser(coerced, SerializationContext(target_topic, MessageField.VALUE)),
+            on_delivery=on_delivery,
+        )
+
     publish_failed = False
     publish_err: Exception | None = None
     try:
-        producer.init_transactions()
-        producer.begin_transaction()
-        try:
-            for row in rows:
-                row_dict = row.asDict()
-                file_meta = ods_pipeline.metadata.file_metadata(
-                    file_id=str(_file_id or ""),
-                    run_id=str(row_dict.get("_ods_run_id") or run_id),
-                    domain=domain,
-                    dataset=dataset,
-                    business_date=row_dict.get("_ods_business_date") or business_date or "",
-                    source_application=source_application,
-                    ingested_at=row_dict.get("_ods_ingested_at"),
-                )
-                row_dict.update({k: v for k, v in file_meta.items() if v is not None})
-                coerced = _coerce_for_avro(row_dict, avro_schema_str)
-                msg_key = generate_message_key(key_fields, coerced)
-                producer.produce(
-                    topic=target_topic,
-                    key=key_ser(msg_key),
-                    value=value_ser(coerced, SerializationContext(target_topic, MessageField.VALUE)),
-                    on_delivery=tracker.on_delivery,
-                )
-            producer.flush()
-            if tracker.errors:
-                raise RuntimeError(
-                    f"{len(tracker.errors)} kafka delivery failures; "
-                    f"first: {tracker.errors[0]}"
-                )
-            producer.commit_transaction()
-        except Exception:
-            producer.abort_transaction()
-            raise
+        ods_pipeline.publish.publish_with_transaction(
+            producer, rows, tracker, on_send=_send_row,
+        )
     except Exception as exc:
         publish_failed = True
         publish_err = exc
     finally:
         producer.close()
+        # Adversarial R2: surface delivery errors to stdout for log scrapers
+        # even when no exception escaped (defensive — should be empty here
+        # because publish_with_transaction would have raised on tracker.errors).
+        if tracker.errors:
+            print(f"[ods_s3_publish] tracker.errors={tracker.errors}", flush=True)
 
     if publish_failed:
         err_msg = str(publish_err)
