@@ -1,0 +1,24 @@
+domain: insurance
+dataset: event_demo
+pattern_type: event
+description: |
+  Demo Message/API ingestion. Accepts arbitrary insurance event JSON via
+  POST /events on the event_api service, archives to S3, publishes to raw
+  Kafka, then canonicalises through the same pipeline as file patterns.
+transform:
+  fields:
+    - target: event_id
+      source: _ods_source_event_id
+      required: true
+    - target: domain
+      source: _ods_domain
+    - target: dataset
+      source: _ods_dataset
+    - target: business_date
+      source: _ods_business_date
+      type: date
+    - target: payload_json
+      source: payload
+      type: string
+  required:
+    - event_id

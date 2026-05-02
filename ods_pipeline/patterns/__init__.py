@@ -11,6 +11,7 @@ from ods_pipeline.patterns.base import (
     get,
     register,
 )
+from ods_pipeline.patterns import event as _event  # noqa: F401 — registers patterns
 from ods_pipeline.patterns import file as _file  # noqa: F401 — registers patterns
 
 __all__ = ["IngestionPattern", "PATTERNS", "get", "register"]
