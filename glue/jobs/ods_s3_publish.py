@@ -173,10 +173,17 @@ def _topic_end_offsets_by_partition(topic: str, bootstrap: str) -> dict[int, int
 def _write_dlq(spark, failing_df, domain: str, dataset: str,
                business_date: str, run_id: str) -> None:
     env = os.environ.get("ENV", "local")
-    dlq_bucket = f"ods-dlq-{env}"
-    date_part = business_date if business_date else "unknown"
-    key = f"{domain}/{dataset}/date={date_part}/run_id={run_id}/failed.parquet"
-    dlq_path = f"s3a://{dlq_bucket}/{key}"
+    dlq_path = (
+        ods_pipeline.dlq.s3_prefix(
+            env=env,
+            domain=domain,
+            dataset=dataset,
+            stage="publish",
+            business_date=business_date or None,
+            run_id=run_id,
+        ).replace("s3://", "s3a://")
+        + "failed.parquet"
+    )
     failing_df.write.mode("overwrite").parquet(dlq_path)
 
 
@@ -237,6 +244,7 @@ def _run_impl(conn, run_id: str, domain: str, dataset: str, s3_input_path: str,
     config = load_dataset_config(conn, domain, dataset)
     target_topic = config["target_topic"]
     config_version = config.get("version")
+    pipeline_type = "publish" if config.get("is_canonical", True) else "publish_raw"
 
     key_fields_raw = config.get("key_fields", [])
     key_fields = (
@@ -258,7 +266,7 @@ def _run_impl(conn, run_id: str, domain: str, dataset: str, s3_input_path: str,
     ods_pipeline.runs.start(
         conn,
         run_id=run_id,
-        pipeline_type="publish",
+        pipeline_type=pipeline_type,
         domain=domain,
         dataset=dataset,
         business_date=None,  # refined below once parquet is read
@@ -538,7 +546,7 @@ def _run_impl(conn, run_id: str, domain: str, dataset: str, s3_input_path: str,
     ods_pipeline.events.produce(
         "publish.completed", run_id, domain, dataset,
         business_date or "", final_status,
-        pipeline_type="publish",
+        pipeline_type=pipeline_type,
         record_count_published=published_count,
         kafka_topic=target_topic,
         kafka_offset_start=offset_start,

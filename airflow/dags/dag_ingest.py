@@ -274,6 +274,37 @@ def wait_sinks(ctx: dict) -> dict:
         conn.close()
 
 
+def _sink_target_offsets_by_partition(conn, run_id: str) -> dict[int, int] | None:
+    """Read partition end offsets captured by publish/canonicalize stages."""
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT metrics
+              FROM pipeline.run_stage_log
+             WHERE run_id=%s
+               AND stage IN ('kafka_publish', 'recon_t1')
+               AND event_type IN ('stage_completed', 'stage_warned')
+             ORDER BY ended_at DESC NULLS LAST, id DESC
+             LIMIT 5
+            """,
+            (run_id,),
+        )
+        rows = cur.fetchall()
+
+    for (metrics,) in rows:
+        if not metrics:
+            continue
+        if isinstance(metrics, str):
+            metrics = json.loads(metrics)
+        raw_offsets = (
+            metrics.get("canonical_offset_end")
+            or metrics.get("offset_end_by_partition")
+        )
+        if raw_offsets:
+            return {int(partition): int(offset) for partition, offset in raw_offsets.items()}
+    return None
+
+
 def _wait_sinks_inner(conn, ctx: dict) -> dict:
     sink_run_id = ctx.get("sink_run_id") or ctx["publish_run_id"]
     with conn.cursor() as cur:
@@ -298,16 +329,27 @@ def _wait_sinks_inner(conn, ctx: dict) -> dict:
         )
         raise RuntimeError(f"run_log row for {sink_run_id} missing kafka_topic/offset_end")
     topic, target = row
+    target_offsets_by_partition = _sink_target_offsets_by_partition(conn, sink_run_id)
 
     jdbc_connector = (
         "jdbc-sink-policies"
         if ctx["domain"] == "insurance" and ctx["dataset"] == "policies"
         else f"jdbc-sink-{ctx['domain']}-{ctx['dataset']}".replace("_", "-")
     )
-    ok_jdbc = wait_until_offset_consumed(jdbc_connector, topic, target)
+    ok_jdbc = wait_until_offset_consumed(
+        jdbc_connector,
+        topic,
+        target,
+        target_offsets_by_partition=target_offsets_by_partition,
+    )
     ok_s3 = True
     if ctx["domain"] == "insurance" and ctx["dataset"] == "policies":
-        ok_s3 = wait_until_offset_consumed("s3-sink-policies", topic, target)
+        ok_s3 = wait_until_offset_consumed(
+            "s3-sink-policies",
+            topic,
+            target,
+            target_offsets_by_partition=target_offsets_by_partition,
+        )
 
     ods_pipeline.stages.write(
         conn,
@@ -316,6 +358,7 @@ def _wait_sinks_inner(conn, ctx: dict) -> dict:
         status="succeeded" if ok_jdbc else "failed",
         event_type="stage_completed" if ok_jdbc else "stage_failed",
         output_ref=f"kafka://{topic}#consumed",
+        metrics={"target_offsets_by_partition": target_offsets_by_partition},
         error=None if ok_jdbc else "jdbc sink did not advance",
         airflow_dag_id=ctx.get("airflow_dag_id"),
         airflow_run_id=ctx.get("airflow_run_id"),
@@ -327,6 +370,7 @@ def _wait_sinks_inner(conn, ctx: dict) -> dict:
         status="succeeded" if ok_s3 else "failed",
         event_type="stage_completed" if ok_s3 else "stage_failed",
         output_ref=f"kafka://{topic}#consumed",
+        metrics={"target_offsets_by_partition": target_offsets_by_partition},
         error=None if ok_s3 else "s3 sink did not advance",
         airflow_dag_id=ctx.get("airflow_dag_id"),
         airflow_run_id=ctx.get("airflow_run_id"),

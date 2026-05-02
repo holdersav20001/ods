@@ -14,7 +14,7 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 import ods_pipeline
-from canonicalize import apply_transform, load_mapping
+from canonicalize import apply_transform, load_mapping, matches_context
 from confluent_kafka import Consumer, Producer, TopicPartition
 from confluent_kafka.schema_registry import SchemaRegistryClient
 from confluent_kafka.schema_registry.avro import AvroDeserializer, AvroSerializer
@@ -145,8 +145,15 @@ def _write_dlq(df, domain: str, dataset: str, business_date: str,
                run_id: str) -> str:
     env = os.environ.get("ENV", "local")
     path = (
-        f"s3a://ods-dlq-{env}/{domain}/{dataset}/canonicalize/"
-        f"date={business_date or 'unknown'}/run_id={run_id}/failed.parquet"
+        ods_pipeline.dlq.s3_prefix(
+            env=env,
+            domain=domain,
+            dataset=dataset,
+            stage="canonicalize",
+            business_date=business_date or None,
+            run_id=run_id,
+        ).replace("s3://", "s3a://")
+        + "failed.parquet"
     )
     df.write.mode("overwrite").parquet(path)
     return path
@@ -217,8 +224,14 @@ def run(
         )
 
         deserializer = AvroDeserializer(sr, raw_schema)
-        rows = _consume_bounded(raw_topic, offset_ranges, bootstrap, deserializer)
+        consumed_rows = _consume_bounded(raw_topic, offset_ranges, bootstrap, deserializer)
+        offset_range_count = _sum_ranges(offset_ranges)
+        rows = [
+            row for row in consumed_rows
+            if matches_context(row, file_id=file_id, parent_run_id=parent_run_id)
+        ]
         raw_count = len(rows)
+        filtered_count = len(consumed_rows) - raw_count
         ods_pipeline.stages.write(
             conn,
             run_id=run_id,
@@ -227,6 +240,12 @@ def run(
             event_type=StageEvent.COMPLETED,
             input_ref=f"kafka://{raw_topic}#{json.dumps(offset_ranges, sort_keys=True)}",
             record_count_out=raw_count,
+            metrics={
+                "offset_range_count": offset_range_count,
+                "consumed_count": len(consumed_rows),
+                "filtered_count": filtered_count,
+                "filter": {"file_id": file_id, "parent_run_id": parent_run_id},
+            },
         )
 
         spark = _build_spark(dataset)

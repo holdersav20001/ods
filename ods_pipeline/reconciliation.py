@@ -48,7 +48,8 @@ def write_check(
                 VALUES (%s,%s,%s,%s,%s, %s,%s, %s,%s,%s, %s,%s,%s,%s)
                 """,
                 (
-                    check_type, run_id, domain, dataset, str(business_date),
+                    check_type, run_id, domain, dataset,
+                    None if business_date is None else str(business_date),
                     window_start, window_end,
                     source_count, kafka_count, postgres_count,
                     discrepancy, pct, status, detail,

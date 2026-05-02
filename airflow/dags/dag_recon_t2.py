@@ -127,7 +127,7 @@ def _accepted_count(row) -> int:
 
 
 def _is_source_run(row) -> bool:
-    return row["pipeline_type"] in ("ingestion", "s3_batch")
+    return row["pipeline_type"] in ("ingestion", "s3_batch", "canonicalize", "message_api")
 
 
 def _key_fields(row) -> list[str]:
@@ -352,6 +352,27 @@ def _reconcile_current_consistency(
     )
 
 
+def _record_current_history_missing(conn, row, target_schema: str, target_table: str) -> None:
+    _insert_recon(
+        conn,
+        check_type="t2_current_history_missing",
+        run_id=row["run_id"],
+        domain=row["domain"],
+        dataset=row["dataset"],
+        business_date=row["business_date"],
+        source_count=_accepted_count(row),
+        kafka_count=None,
+        postgres_count=None,
+        discrepancy=0,
+        status="skipped",
+        detail=(
+            f"{target_schema}.{target_table} is write_mode=upsert but no "
+            f"{target_table}_history table exists; current-state counts are not "
+            "a valid per-run/file reconciliation target"
+        ),
+    )
+
+
 @task
 def reconcile() -> None:
     conn = psycopg2.connect(PG_DSN)
@@ -393,6 +414,8 @@ def reconcile() -> None:
                 history = _history_table_for(conn, target_schema, target_table)
                 if _is_source_run(row) and history:
                     _reconcile_history_file_count(conn, row, history[0], history[1])
+                elif _is_source_run(row) and not history:
+                    _record_current_history_missing(conn, row, target_schema, target_table)
 
                 dataset_key = (row["domain"], row["dataset"])
                 if _is_source_run(row) and history and dataset_key not in current_checked:

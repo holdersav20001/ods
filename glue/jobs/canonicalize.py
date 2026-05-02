@@ -111,6 +111,15 @@ def compile_transform(
     return select_exprs, sorted(required_targets), warnings
 
 
+def matches_context(row: dict[str, Any], *, file_id: str | None, parent_run_id: str | None) -> bool:
+    """True when a raw Kafka row belongs to the file/raw run being canonicalized."""
+    if file_id and str(row.get("_ods_file_id") or "") == str(file_id):
+        return True
+    if parent_run_id and str(row.get("_ods_run_id") or "") == str(parent_run_id):
+        return True
+    return not file_id and not parent_run_id
+
+
 def apply_transform(df, mapping: dict[str, Any]):
     """Apply a transform mapping with DataFrame-native operations.
 

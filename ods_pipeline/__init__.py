@@ -17,7 +17,7 @@ Usage
 """
 
 from ods_pipeline._db import build_dsn, connect
-from ods_pipeline import files, runs, stages, lineage, reconciliation, events, metadata
+from ods_pipeline import files, runs, stages, lineage, reconciliation, events, metadata, offsets, messages, dlq
 from ods_pipeline.models import Stage, StageEvent, RunStatus, TERMINAL_STATUSES
 
 __all__ = [
@@ -32,6 +32,9 @@ __all__ = [
     "reconciliation",
     "events",
     "metadata",
+    "offsets",
+    "messages",
+    "dlq",
     # constants
     "Stage",
     "StageEvent",

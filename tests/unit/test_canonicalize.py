@@ -6,7 +6,7 @@ import pytest
 HERE = os.path.dirname(__file__)
 sys.path.insert(0, os.path.abspath(os.path.join(HERE, "..", "..", "glue", "jobs")))
 
-from canonicalize import compile_transform
+from canonicalize import compile_transform, matches_context
 
 
 def test_compile_transform_renames_casts_and_derives_fields():
@@ -57,3 +57,24 @@ def test_compile_transform_warns_for_missing_source_and_outputs_null():
 def test_compile_transform_rejects_empty_fields():
     with pytest.raises(ValueError, match="transform.fields"):
         compile_transform({"fields": []})
+
+
+def test_canonicalize_context_filter_prefers_file_id():
+    assert matches_context(
+        {"_ods_file_id": "file-1", "_ods_run_id": "raw-run-2"},
+        file_id="file-1",
+        parent_run_id="raw-run-1",
+    )
+    assert not matches_context(
+        {"_ods_file_id": "file-2", "_ods_run_id": "raw-run-2"},
+        file_id="file-1",
+        parent_run_id="raw-run-1",
+    )
+
+
+def test_canonicalize_context_filter_allows_run_id_when_file_absent():
+    assert matches_context(
+        {"_ods_run_id": "raw-run-1"},
+        file_id=None,
+        parent_run_id="raw-run-1",
+    )
