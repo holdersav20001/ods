@@ -15,6 +15,14 @@
     "table.name.format": "ods.insurance_policy",
     "value.converter": "io.confluent.connect.avro.AvroConverter",
     "value.converter.schema.registry.url": "http://schema-registry:8081",
-    "key.converter": "org.apache.kafka.connect.storage.StringConverter"
+    "key.converter": "org.apache.kafka.connect.storage.StringConverter",
+    "errors.tolerance": "all",
+    "errors.deadletterqueue.topic.name": "ods.dlq.jdbc-sink-policies",
+    "errors.deadletterqueue.topic.replication.factor": "1",
+    "errors.deadletterqueue.context.headers.enable": "true",
+    "errors.retry.timeout": "600000",
+    "errors.retry.delay.max.ms": "60000",
+    "errors.log.enable": "true",
+    "errors.log.include.messages": "true"
   }
 }
