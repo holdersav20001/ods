@@ -112,12 +112,20 @@ def compile_transform(
 
 
 def matches_context(row: dict[str, Any], *, file_id: str | None, parent_run_id: str | None) -> bool:
-    """True when a raw Kafka row belongs to the file/raw run being canonicalized."""
-    if file_id and str(row.get("_ods_file_id") or "") == str(file_id):
-        return True
-    if parent_run_id and str(row.get("_ods_run_id") or "") == str(parent_run_id):
-        return True
-    return not file_id and not parent_run_id
+    """True when a raw Kafka row belongs to the file/raw run being canonicalized.
+
+    Thin shim over :func:`ods_pipeline.messages.correlate` (PatternType.FILE).
+    The shim is kept so existing callers don't break; new code should call
+    ``correlate`` directly with ``pattern_type=`` of the relevant pattern.
+    """
+    from ods_pipeline.messages import correlate
+    from ods_pipeline.models import PatternType
+
+    return correlate(
+        row,
+        {"_ods_file_id": file_id, "_ods_run_id": parent_run_id},
+        pattern_type=PatternType.FILE,
+    )
 
 
 def apply_transform(df, mapping: dict[str, Any]):

@@ -6,7 +6,53 @@ from collections.abc import Mapping
 from typing import Any
 
 from ods_pipeline import metadata, reconciliation, runs, stages
-from ods_pipeline.models import Stage, StageEvent
+from ods_pipeline.models import PATTERN_CORRELATION_FIELD, PatternType, Stage, StageEvent
+
+
+def correlate(
+    message: Mapping[str, Any],
+    context: Mapping[str, Any],
+    *,
+    pattern_type: str,
+) -> bool:
+    """Return True if ``message`` belongs to the given ``context`` for ``pattern_type``.
+
+    Each ingestion pattern has its own correlation field (see
+    :data:`ods_pipeline.models.PATTERN_CORRELATION_FIELD`). The function:
+
+    - looks up the field for the pattern,
+    - returns True if both message and context carry the same non-empty value,
+    - returns True when context has no correlation set (broadcast / "all
+      messages of this pattern"),
+    - falls back to ``_ods_run_id`` cross-check for the FILE pattern only,
+      preserving the legacy two-key match in
+      :func:`glue.jobs.canonicalize.matches_context`.
+
+    Raises ``ValueError`` for unknown ``pattern_type``.
+    """
+    if pattern_type not in PatternType.ALL:
+        raise ValueError(
+            f"unknown pattern_type {pattern_type!r}; "
+            f"expected one of {sorted(PatternType.ALL)}"
+        )
+    field = PATTERN_CORRELATION_FIELD[pattern_type]
+    ctx_value = context.get(field) or context.get(field.removeprefix("_ods_"))
+    msg_value = message.get(field)
+
+    if pattern_type == PatternType.FILE:
+        # Legacy: file pattern allows correlation by run_id as a secondary key.
+        ctx_run = context.get("_ods_run_id") or context.get("run_id") or context.get("parent_run_id")
+        msg_run = message.get("_ods_run_id")
+        if ctx_value and msg_value and str(ctx_value) == str(msg_value):
+            return True
+        if ctx_run and msg_run and str(ctx_run) == str(msg_run):
+            return True
+        # No context = broadcast.
+        return not ctx_value and not ctx_run
+
+    if not ctx_value:
+        return True  # broadcast / no correlation set
+    return msg_value is not None and str(ctx_value) == str(msg_value)
 
 
 def _correlation_metadata(

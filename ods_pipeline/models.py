@@ -2,6 +2,30 @@
 from __future__ import annotations
 
 
+class PatternType:
+    """Ingestion pattern types. Each has its own correlation field.
+
+    Used by ``ods_pipeline.messages.correlate`` and the future
+    ``ods_pipeline.patterns.IngestionPattern`` registry (T12).
+    """
+
+    FILE  = "file"   # raw file ingestion -> correlate by _ods_file_id
+    CDC   = "cdc"    # change data capture -> correlate by _ods_change_lsn
+    API   = "api"    # synchronous request  -> correlate by _ods_source_request_id
+    EVENT = "event"  # async event stream   -> correlate by _ods_source_event_id
+
+    ALL: frozenset[str] = frozenset({"file", "cdc", "api", "event"})
+
+
+#: Maps pattern type to the canonical correlation field on the message envelope.
+PATTERN_CORRELATION_FIELD: dict[str, str] = {
+    PatternType.FILE:  "_ods_file_id",
+    PatternType.CDC:   "_ods_change_lsn",
+    PatternType.API:   "_ods_source_request_id",
+    PatternType.EVENT: "_ods_source_event_id",
+}
+
+
 class Stage:
     """Valid values for ``pipeline.run_stage_log.stage``."""
 
