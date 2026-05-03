@@ -6,11 +6,11 @@ Two operations:
 
 Both operations:
   1. Look up the original run + dataset metadata from run_log
-  2. Allocate a new run_id, INSERT a fresh run_log row (status='running')
-  3. Write a lineage_edge with edge_type='replay' linking new -> original
-  4. Trigger the appropriate Airflow DAG via REST (or print intended action
+  2. Allocate a replay_request_id for operator/audit correlation
+  3. Trigger the appropriate Airflow DAG via REST (or print intended action
      in --dry-run)
-  5. Old run + its evidence are NEVER mutated
+  4. The DAG creates the actual run rows and links lineage using
+     replay_of_run_id from conf. Old run + its evidence are NEVER mutated.
 """
 from __future__ import annotations
 
@@ -67,14 +67,13 @@ class _RunsOps:
     # replay: keyed by file_id (one or more original runs)
     # ---------------------------------------------------------------
     def replay_file(self, file_id: str, *, dry_run: bool = False) -> dict[str, Any]:
-        originals = self._lookup_runs_by_file(file_id)
-        if not originals:
+        original = self._lookup_replay_candidate_by_file(file_id)
+        if not original:
             raise LookupError(f"no runs found for file_id={file_id}")
-        results = [
-            self._launch_replay(o, source="replay", dry_run=dry_run)
-            for o in originals
-        ]
-        return {"file_id": file_id, "replays": results}
+        return {
+            "file_id": file_id,
+            "replay": self._launch_replay(original, source="replay", dry_run=dry_run),
+        }
 
     # ---------------------------------------------------------------
     # internals
@@ -96,28 +95,41 @@ class _RunsOps:
                 "business_date", "file_id", "kafka_topic")
         return dict(zip(keys, row))
 
-    def _lookup_runs_by_file(self, file_id: str) -> list[dict]:
+    def _lookup_replay_candidate_by_file(self, file_id: str):
         with self._pg.cursor() as cur:
             cur.execute(
                 """
                 SELECT run_id::text, pipeline_type, domain, dataset,
                        business_date::text, file_id::text, kafka_topic
-                  FROM pipeline.run_log WHERE file_id = %s::uuid
-                  ORDER BY started_at DESC
+                  FROM pipeline.run_log
+                 WHERE file_id = %s::uuid
+                 ORDER BY CASE pipeline_type
+                            WHEN 's3_batch' THEN 0
+                            WHEN 'file' THEN 1
+                            WHEN 'ingestion' THEN 2
+                            WHEN 'publish_raw' THEN 3
+                            WHEN 'publish' THEN 4
+                            WHEN 'canonicalize' THEN 5
+                            ELSE 9
+                          END,
+                          started_at DESC
+                 LIMIT 1
                 """,
                 (file_id,),
             )
-            rows = cur.fetchall()
+            row = cur.fetchone()
+        if not row:
+            return None
         keys = ("run_id", "pipeline_type", "domain", "dataset",
                 "business_date", "file_id", "kafka_topic")
-        return [dict(zip(keys, r)) for r in rows]
+        return dict(zip(keys, row))
 
     def _launch_replay(self, original, *, source: str,
                        dry_run: bool) -> dict[str, Any]:
-        new_run_id = str(uuid.uuid4())
+        replay_request_id = str(uuid.uuid4())
         result = {
             "source": source,
-            "new_run_id": new_run_id,
+            "replay_request_id": replay_request_id,
             "original_run_id": original["run_id"],
             "pipeline_type": original["pipeline_type"],
             "domain": original["domain"],
@@ -129,24 +141,11 @@ class _RunsOps:
         if dry_run:
             result["status"] = "dry-run"
             return result
-        # Real flow: open new run, link lineage, trigger Airflow.
-        from ods_pipeline import lineage, runs
-        runs.start(self._pg, run_id=new_run_id,
-                   pipeline_type=original["pipeline_type"],
-                   domain=original["domain"],
-                   dataset=original["dataset"],
-                   business_date=original["business_date"],
-                   file_id=original["file_id"],
-                   kafka_topic=original["kafka_topic"],
-                   parents=[{"replay_of": original["run_id"]}])
-        lineage.write_edge(self._pg, child_run_id=new_run_id,
-                           parent_run_id=original["run_id"],
-                           edge_type="replay",
-                           record_count=None)
         dag_id = _dag_for(original["pipeline_type"])
         self._airflow.trigger_dag(
             dag_id=dag_id,
-            conf={"run_id": new_run_id,
+            conf={"replay_request_id": replay_request_id,
+                  "replay_of_run_id": original["run_id"],
                   "file_id": original["file_id"],
                   "domain": original["domain"],
                   "dataset": original["dataset"],

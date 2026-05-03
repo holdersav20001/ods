@@ -462,7 +462,9 @@ def _run_impl(conn, run_id: str, domain: str, dataset: str, s3_input_path: str,
         publish_failed = True
         publish_err = exc
     finally:
-        producer.close()
+        close = getattr(producer, "close", None)
+        if callable(close):
+            close()
         # Adversarial R2: surface delivery errors to stdout for log scrapers
         # even when no exception escaped (defensive — should be empty here
         # because publish_with_transaction would have raised on tracker.errors).
@@ -503,6 +505,22 @@ def _run_impl(conn, run_id: str, domain: str, dataset: str, s3_input_path: str,
     # producer can write concurrently; tracker counts only what THIS
     # producer's transaction acked.
     published_count = tracker.delivered_count
+    delivered_ranges = tracker.per_partition_ranges()
+    if delivered_ranges:
+        # The delivery callback is the producer-owned source of truth for
+        # this transaction. Topic watermark reads are only best-effort around
+        # transactional visibility and may lag in the local Docker runtime.
+        produced_offset_start_by_partition = {
+            partition: start for partition, (start, _end) in delivered_ranges.items()
+        }
+        produced_offset_end_by_partition = {
+            partition: end for partition, (_start, end) in delivered_ranges.items()
+        }
+        offset_start = sum(produced_offset_start_by_partition.values())
+        offset_end = sum(produced_offset_end_by_partition.values())
+    else:
+        produced_offset_start_by_partition = {}
+        produced_offset_end_by_partition = {}
     discrepancy = published_count - dq_pass_count
     t0_passed = discrepancy == 0
 
@@ -541,37 +559,51 @@ def _run_impl(conn, run_id: str, domain: str, dataset: str, s3_input_path: str,
             "offset_end": offset_end,
             "offset_start_by_partition": offset_start_by_partition,
             "offset_end_by_partition": offset_end_by_partition,
+            "produced_offset_start_by_partition": produced_offset_start_by_partition,
+            "produced_offset_end_by_partition": produced_offset_end_by_partition,
         },
         error=error_summary,
     )
 
-    ods_pipeline.runs.update(
-        conn,
-        run_id,
-        record_count_published=published_count,
-        kafka_topic=target_topic,
-        kafka_offset_start=offset_start,
-        kafka_offset_end=offset_end,
-        status=final_status,
-        error_summary=error_summary,
-    )
-
-    # B8 (T6): persist per-partition offset ranges to run_kafka_offsets.
-    # On retry, runs.start consumers can call offsets.has_recorded_offsets
-    # to detect "Kafka committed AND PG persisted" and skip republish — the
-    # exactly-once primitive. Architect R4 noted full atomicity with the
-    # run-status update is a T12 follow-up via pattern.atomic(); here both
-    # writes commit individually but the Kafka transaction has already
-    # acked, so worst-case crash leaves run_log updated without offsets,
-    # which a resume run will repair by republishing under idempotent producer.
-    if t0_passed:
-        ods_pipeline.offsets.persist_ranges(
+    # B8 (T6): persist per-partition offset ranges in the same Postgres
+    # transaction as the terminal run status. This keeps the observable
+    # "succeeded" state inseparable from the normalized offset contract.
+    try:
+        ods_pipeline.runs.update(
             conn,
-            run_id=run_id,
-            stage="kafka_publish",
-            topic=target_topic,
-            ranges=tracker.per_partition_ranges(),
+            run_id,
+            record_count_published=published_count,
+            kafka_topic=target_topic,
+            kafka_offset_start=offset_start,
+            kafka_offset_end=offset_end,
+            status=final_status,
+            error_summary=error_summary,
+            commit=False,
         )
+        if t0_passed:
+            ods_pipeline.offsets.persist_ranges(
+                conn,
+                run_id=run_id,
+                stage="kafka_publish",
+                topic=target_topic,
+                ranges=delivered_ranges,
+                commit=False,
+            )
+        conn.commit()
+    except Exception as exc:
+        conn.rollback()
+        err_msg = f"Failed to persist terminal run state/offsets after Kafka publish: {exc}"
+        ods_pipeline.runs.update(conn, run_id, status="partial", error_summary=err_msg)
+        ods_pipeline.files.set_state(
+            conn,
+            s3_input_path,
+            run_id,
+            "failed",
+            record_count=published_count,
+            error_reason=err_msg,
+        )
+        spark.stop()
+        return 1
 
     # ------------------------------------------------------------------
     # Step 13 — Write curated→kafka lineage edge (on success)

@@ -91,6 +91,17 @@ def test_parity_uses_pairs_override():
     assert result["status"] == "ok"
 
 
+def test_parity_rejects_unsafe_pairs_override():
+    conn = MagicMock()
+    pairs = {"foo": ("schema.foo_current; DROP TABLE x", "schema.foo_history", "_ods_run_id")}
+    with pytest.raises(ValueError, match="table reference"):
+        reconciliation.check_dual_sink_parity(
+            conn, run_id=_run(), domain="x", dataset="foo",
+            business_date="2026-05-02", pairs=pairs,
+        )
+    conn.cursor.assert_not_called()
+
+
 def test_parity_writes_recon_log_row():
     """The check ends in a reconciliation_log INSERT."""
     conn, cur = _mock_conn(current=3, history=3)

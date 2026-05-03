@@ -137,6 +137,11 @@ def init_run() -> dict:
             business_date=conf["business_date"],
             file_id=conf["file_id"],
             config_version_id=config_version_id,
+            parents=[{
+                "run_id": conf["replay_of_run_id"],
+                "edge_type": "replay",
+                "replay_request_id": conf.get("replay_request_id"),
+            }] if conf.get("replay_of_run_id") else None,
         )
         ods_pipeline.runs.start(
             conn,
@@ -193,6 +198,14 @@ def init_run() -> dict:
             parent_file_id=conf["file_id"],
             edge_type="curated_to_kafka",
         )
+        if conf.get("replay_of_run_id"):
+            ods_pipeline.lineage.write_edge(
+                conn,
+                child_run_id=parent_run_id,
+                parent_run_id=conf["replay_of_run_id"],
+                parent_file_id=conf["file_id"],
+                edge_type="replay",
+            )
     finally:
         conn.close()
 
@@ -298,6 +311,7 @@ def _sink_target_offsets_by_partition(conn, run_id: str) -> dict[int, int] | Non
             metrics = json.loads(metrics)
         raw_offsets = (
             metrics.get("canonical_offset_end")
+            or metrics.get("produced_offset_end_by_partition")
             or metrics.get("offset_end_by_partition")
         )
         if raw_offsets:
@@ -420,8 +434,16 @@ def prepare_canonicalize(ctx: dict) -> dict:
     if not metrics_row or not metrics_row[0]:
         raise RuntimeError("publish stage did not record offset metrics")
     metrics = metrics_row[0]
-    starts = metrics.get("offset_start_by_partition") or {"0": metrics["offset_start"]}
-    ends = metrics.get("offset_end_by_partition") or {"0": metrics["offset_end"]}
+    starts = (
+        metrics.get("produced_offset_start_by_partition")
+        or metrics.get("offset_start_by_partition")
+        or {"0": metrics["offset_start"]}
+    )
+    ends = (
+        metrics.get("produced_offset_end_by_partition")
+        or metrics.get("offset_end_by_partition")
+        or {"0": metrics["offset_end"]}
+    )
     ranges = {
         str(partition): {
             "start": int(starts.get(str(partition), starts.get(partition, 0))),

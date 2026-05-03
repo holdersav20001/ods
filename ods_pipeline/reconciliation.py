@@ -4,6 +4,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from psycopg2 import sql
+
 
 def write_check(
     conn,
@@ -80,6 +82,19 @@ DUAL_SINK_TABLES: dict[str, tuple[str, str, str]] = {
 }
 
 
+def _split_table_ref(table_ref: str) -> tuple[str, str]:
+    schema, sep, table = table_ref.partition(".")
+    if not sep or not schema.isidentifier() or not table.isidentifier():
+        raise ValueError(f"table reference must be schema.table: {table_ref!r}")
+    return schema, table
+
+
+def _safe_column(column: str) -> str:
+    if not column.isidentifier():
+        raise ValueError(f"illegal column name: {column!r}")
+    return column
+
+
 def check_dual_sink_parity(
     conn,
     *,
@@ -111,11 +126,28 @@ def check_dual_sink_parity(
     if not table_pair:
         return {"status": "skipped", "reason": f"no dual-sink pair registered for {dataset}"}
     current_table, history_table, run_col = table_pair
+    current_schema, current_name = _split_table_ref(current_table)
+    history_schema, history_name = _split_table_ref(history_table)
+    run_col = _safe_column(run_col)
 
     with conn.cursor() as cur:
-        cur.execute(f"SELECT COUNT(*) FROM {current_table} WHERE {run_col} = %s", (run_id,))
+        cur.execute(
+            sql.SQL("SELECT COUNT(*) FROM {}.{} WHERE {} = %s").format(
+                sql.Identifier(current_schema),
+                sql.Identifier(current_name),
+                sql.Identifier(run_col),
+            ),
+            (run_id,),
+        )
         current_count = int(cur.fetchone()[0])
-        cur.execute(f"SELECT COUNT(*) FROM {history_table} WHERE {run_col} = %s", (run_id,))
+        cur.execute(
+            sql.SQL("SELECT COUNT(*) FROM {}.{} WHERE {} = %s").format(
+                sql.Identifier(history_schema),
+                sql.Identifier(history_name),
+                sql.Identifier(run_col),
+            ),
+            (run_id,),
+        )
         history_count = int(cur.fetchone()[0])
 
     delta = history_count - current_count

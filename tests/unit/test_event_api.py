@@ -41,7 +41,9 @@ def app(monkeypatch):
 
     import ods_pipeline.messages as messages
     start_run_mock = MagicMock()
+    record_result_mock = MagicMock()
     monkeypatch.setattr(messages, "start_run", start_run_mock)
+    monkeypatch.setattr(messages, "record_result", record_result_mock)
 
     app_obj = build_app(
         pg_factory=pg_factory,
@@ -49,7 +51,7 @@ def app(monkeypatch):
         producer_factory=producer_factory,
         archive_bucket="ods-test-bucket",
     )
-    yield app_obj, s3, producer, start_run_mock, factory_calls
+    yield app_obj, s3, producer, start_run_mock, record_result_mock, pg, factory_calls
 
 
 def test_healthz_returns_pattern_name(app):
@@ -61,7 +63,7 @@ def test_healthz_returns_pattern_name(app):
 
 
 def test_post_events_archives_and_publishes(app):
-    app_obj, s3, producer, start_run, _ = app
+    app_obj, s3, producer, start_run, record_result, pg, _ = app
     client = TestClient(app_obj)
 
     r = client.post("/events", json={
@@ -93,6 +95,13 @@ def test_post_events_archives_and_publishes(app):
     pkw = producer.produce.call_args.kwargs
     assert pkw["topic"] == "ods.insurance.events"
     producer.flush.assert_called_once()
+    record_result.assert_called_once()
+    rk = record_result.call_args.kwargs
+    assert rk["source_count"] == 1
+    assert rk["published_count"] == 1
+    assert rk["archive_count"] == 1
+    assert rk["kafka_topic"] == "ods.insurance.events"
+    pg.commit.assert_called_once()
 
 
 def test_post_events_synthesises_event_id_when_missing(app):
@@ -105,7 +114,7 @@ def test_post_events_synthesises_event_id_when_missing(app):
 
 
 def test_post_events_returns_502_when_s3_fails(app):
-    app_obj, s3, producer, start_run, _ = app
+    app_obj, s3, producer, start_run, _record_result, _pg, _ = app
     s3.put_object.side_effect = RuntimeError("s3 down")
     client = TestClient(app_obj)
 
@@ -114,3 +123,20 @@ def test_post_events_returns_502_when_s3_fails(app):
     assert "S3 archive failed" in r.json()["detail"]
     start_run.assert_not_called()
     producer.produce.assert_not_called()
+
+
+def test_post_events_marks_run_failed_when_kafka_fails(app):
+    app_obj, _s3, producer, start_run, record_result, pg, _ = app
+    producer.produce.side_effect = RuntimeError("kafka down")
+    client = TestClient(app_obj)
+
+    r = client.post("/events", json={"event_id": "evt-x", "payload": {"x": 1}})
+
+    assert r.status_code == 502
+    assert "Kafka publish failed" in r.json()["detail"]
+    start_run.assert_called_once()
+    assert record_result.call_count == 1
+    rk = record_result.call_args.kwargs
+    assert rk["published_count"] == 0
+    assert rk["archive_count"] == 1
+    pg.rollback.assert_called()

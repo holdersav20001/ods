@@ -36,7 +36,7 @@ def test_rerun_dry_run_returns_plan_no_side_effects():
     assert result["pipeline_type"] == "file"
     assert result["dry_run"] is True
     assert result["status"] == "dry-run"
-    assert "new_run_id" in result
+    assert "replay_request_id" in result
     airflow.trigger_dag.assert_not_called()
 
 
@@ -56,10 +56,9 @@ def test_replay_file_dry_run_for_each_run():
     result = ops.replay_file("f-1", dry_run=True)
 
     assert result["file_id"] == "f-1"
-    assert len(result["replays"]) == 2
-    assert all(r["dry_run"] for r in result["replays"])
-    new_ids = [r["new_run_id"] for r in result["replays"]]
-    assert len(set(new_ids)) == 2  # distinct uuids
+    assert result["replay"]["dry_run"] is True
+    assert result["replay"]["original_run_id"] == "r-orig"
+    assert "replay_request_id" in result["replay"]
 
 
 def test_replay_file_no_runs_raises():
@@ -85,19 +84,7 @@ def test_rerun_real_call_triggers_airflow_with_correct_conf():
     airflow = MagicMock()
     ops = _RunsOps(pg_conn=pg, airflow=airflow)
 
-    # Stub the runs.start + lineage.write_edge calls so we don't need a
-    # live DB. The CLI is the unit under test.
-    import ods_pipeline.lineage as lineage
-    import ods_pipeline.runs as runs
-    orig_start = runs.start
-    orig_write = lineage.write_edge
-    runs.start = MagicMock()
-    lineage.write_edge = MagicMock()
-    try:
-        result = ops.rerun("r-orig", dry_run=False)
-    finally:
-        runs.start = orig_start
-        lineage.write_edge = orig_write
+    result = ops.rerun("r-orig", dry_run=False)
 
     airflow.trigger_dag.assert_called_once()
     kwargs = airflow.trigger_dag.call_args.kwargs
@@ -107,6 +94,7 @@ def test_rerun_real_call_triggers_airflow_with_correct_conf():
     assert conf["domain"] == "insurance"
     assert conf["dataset"] == "policies"
     assert conf["business_date"] == "2026-05-02"
-    assert conf["run_id"] == result["new_run_id"]
+    assert conf["replay_request_id"] == result["replay_request_id"]
+    assert conf["replay_of_run_id"] == "r-orig"
     assert result["status"] == "triggered"
     assert result["dag_id"] == "dag_ingest"

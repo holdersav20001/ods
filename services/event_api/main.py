@@ -103,18 +103,54 @@ def build_app(
                                  detail=f"run start failed: {exc}")
 
         producer = producer_factory()
-        producer.produce(
-            topic=pattern.topics[0],
-            value=json.dumps({
-                "_ods_source_event_id": event_id,
-                "_ods_run_id": run_id,
-                "_ods_domain": envelope.domain,
-                "_ods_dataset": envelope.dataset,
-                "_ods_business_date": envelope.business_date,
-                "payload": envelope.payload,
-            }, default=str).encode("utf-8"),
-        )
-        producer.flush()
+        try:
+            producer.produce(
+                topic=pattern.topics[0],
+                value=json.dumps({
+                    "_ods_source_event_id": event_id,
+                    "_ods_run_id": run_id,
+                    "_ods_domain": envelope.domain,
+                    "_ods_dataset": envelope.dataset,
+                    "_ods_business_date": envelope.business_date,
+                    "payload": envelope.payload,
+                }, default=str).encode("utf-8"),
+            )
+            flush_result = producer.flush()
+            if isinstance(flush_result, int) and flush_result:
+                raise RuntimeError(f"{flush_result} Kafka message(s) not delivered")
+            messages.record_result(
+                conn,
+                run_id=run_id,
+                domain=envelope.domain,
+                dataset=envelope.dataset,
+                business_date=envelope.business_date,
+                source_count=1,
+                published_count=1,
+                archive_count=1,
+                kafka_topic=pattern.topics[0],
+                archive_ref=f"s3://{archive_bucket}/{archive_key}",
+            )
+            conn.commit()
+        except Exception as exc:
+            conn.rollback()
+            try:
+                messages.record_result(
+                    conn,
+                    run_id=run_id,
+                    domain=envelope.domain,
+                    dataset=envelope.dataset,
+                    business_date=envelope.business_date,
+                    source_count=1,
+                    published_count=0,
+                    archive_count=1,
+                    kafka_topic=pattern.topics[0],
+                    archive_ref=f"s3://{archive_bucket}/{archive_key}",
+                    extra_detail={"error": str(exc)},
+                )
+                conn.commit()
+            except Exception:
+                conn.rollback()
+            raise HTTPException(status_code=502, detail=f"Kafka publish failed: {exc}")
 
         return IngestResponse(
             run_id=run_id,
