@@ -1,0 +1,18 @@
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["tests"]
+addopts = [
+    "--strict-markers",
+    "-ra",
+]
+markers = [
+    "unit: fast unit test, no docker stack required",
+    "integration: requires docker stack (Postgres, Kafka, SR, S3, etc.)",
+    "e2e: full end-to-end pipeline test, slow and stack-heavy",
+    "slow: takes >5s; opt-in via -m slow",
+    "negative: failure / error / rollback path",
+    "requires_spark: needs pyspark importable",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]

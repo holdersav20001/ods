@@ -7,6 +7,8 @@ from typing import Optional
 
 import requests
 
+from ods_pipeline.offsets import normalise_offset_map, partitions_consumed
+
 
 CONNECT_URL = os.environ.get("CONNECT_URL", "http://kafka-connect:8083")
 
@@ -24,17 +26,41 @@ def get_offsets(connector_name: str) -> Optional[dict]:
     return r.json()
 
 
+def _connector_offsets_by_partition(offsets_payload: dict | None, topic: str) -> dict[int, int]:
+    """Extract committed sink offsets for *topic* from Kafka Connect REST payload."""
+    if not offsets_payload:
+        return {}
+    offsets: dict[int, int] = {}
+    for entry in offsets_payload.get("offsets", []):
+        partition = entry.get("partition", {}) or {}
+        if partition.get("kafka_topic") != topic:
+            continue
+        kafka_partition = partition.get("kafka_partition")
+        if kafka_partition is None:
+            kafka_partition = partition.get("partition")
+        if kafka_partition is None:
+            continue
+        committed = (entry.get("offset", {}) or {}).get("kafka_offset")
+        if committed is None:
+            continue
+        offsets[int(kafka_partition)] = int(committed)
+    return offsets
+
+
 def wait_until_offset_consumed(
     connector_name: str,
     topic: str,
     target_offset: int,
+    target_offsets_by_partition: dict[int, int] | dict[str, int] | None = None,
     timeout_s: int = 120,
     poll_interval_s: float = 3.0,
 ) -> bool:
-    """Block until the connector's committed offset for `topic` >= `target_offset`.
+    """Block until the connector has consumed the requested topic offsets.
 
-    Returns True on success, False on timeout or non-RUNNING state past deadline.
+    Prefer ``target_offsets_by_partition``. The scalar ``target_offset`` remains
+    as a legacy fallback and is evaluated as the sum of committed offsets.
     """
+    partition_targets = normalise_offset_map(target_offsets_by_partition)
     deadline = time.time() + timeout_s
     while time.time() < deadline:
         try:
@@ -49,14 +75,12 @@ def wait_until_offset_consumed(
             continue
 
         offsets_payload = get_offsets(connector_name)
-        if offsets_payload:
-            for entry in offsets_payload.get("offsets", []):
-                partition = entry.get("partition", {}) or {}
-                if partition.get("kafka_topic") != topic:
-                    continue
-                committed = (entry.get("offset", {}) or {}).get("kafka_offset", 0)
-                if committed >= target_offset:
-                    return True
+        committed_by_partition = _connector_offsets_by_partition(offsets_payload, topic)
+        if partition_targets:
+            if partitions_consumed(committed_by_partition, partition_targets):
+                return True
+        elif sum(committed_by_partition.values()) >= int(target_offset):
+            return True
 
         time.sleep(poll_interval_s)
     return False

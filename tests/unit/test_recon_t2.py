@@ -132,3 +132,41 @@ def test_t2_reconciliation_skips_publish_runs(monkeypatch):
 
     assert calls == ["append", "history", "current"]
     assert conn.closed
+
+
+def test_t2_reconciliation_records_upsert_without_history(monkeypatch):
+    module = _load_recon_module()
+    rows = [_row("canonicalize", "upsert")]
+    conn = _Conn(rows)
+    calls = []
+
+    monkeypatch.setattr(module.psycopg2, "connect", lambda *_args, **_kwargs: conn)
+    monkeypatch.setattr(module, "_table_exists", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(module, "_history_table_for", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        module,
+        "_record_current_history_missing",
+        lambda *_args: calls.append("missing_history"),
+    )
+    monkeypatch.setattr(
+        module,
+        "_reconcile_history_file_count",
+        lambda *_args: calls.append("history"),
+    )
+    monkeypatch.setattr(
+        module,
+        "_reconcile_current_consistency",
+        lambda *_args: calls.append("current"),
+    )
+
+    module.reconcile.func()
+
+    assert calls == ["missing_history"]
+
+
+def test_message_api_runs_are_source_runs():
+    module = _load_recon_module()
+
+    assert module._is_source_run(_row("message_api", "append"))
+    assert module._is_source_run(_row("canonicalize", "append"))
+    assert not module._is_source_run(_row("publish", "append"))

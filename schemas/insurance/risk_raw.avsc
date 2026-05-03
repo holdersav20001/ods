@@ -1,0 +1,18 @@
+{
+  "type": "record",
+  "name": "RiskRaw",
+  "namespace": "ods.insurance",
+  "fields": [
+    {"name": "RskID", "type": "string"},
+    {"name": "PolNo", "type": "string"},
+    {"name": "ExposureAmt", "type": ["null", "double"], "default": null},
+    {"name": "AsOfDt", "type": ["null", "string"], "default": null},
+    {"name": "_ods_business_date", "type": "string"},
+    {"name": "_ods_run_id", "type": "string"},
+    {"name": "_ods_file_id", "type": ["null", "string"], "default": null},
+    {"name": "_ods_domain", "type": ["null", "string"], "default": null},
+    {"name": "_ods_dataset", "type": ["null", "string"], "default": null},
+    {"name": "_ods_source_application", "type": ["null", "string"], "default": null},
+    {"name": "_ods_ingested_at", "type": ["null", "string"], "default": null}
+  ]
+}

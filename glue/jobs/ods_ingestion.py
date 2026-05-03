@@ -264,11 +264,14 @@ def _run_impl(conn, run_id: str, domain: str, dataset: str, s3_input_path: str,
         parents=[{"run_id": parent_run_id, "edge_type": "orchestrates"}]
         if parent_run_id else None,
     )
-    _ws(
+    ods_pipeline.stages.start(
+        conn,
+        run_id=run_id,
         stage=Stage.RAW_READ,
-        event_type=StageEvent.STARTED,
-        status="running",
         input_ref=s3_input_path,
+        airflow_dag_id=airflow_dag_id,
+        airflow_run_id=airflow_run_id,
+        spark_app_id=spark_app_id,
     )
 
     spark = _build_spark(dataset)
@@ -291,12 +294,17 @@ def _run_impl(conn, run_id: str, domain: str, dataset: str, s3_input_path: str,
     # ------------------------------------------------------------------
     source_count = df.count()
     ods_pipeline.runs.update(conn, run_id, record_count_source=source_count)
-    _ws(
+    ods_pipeline.stages.finish(
+        conn,
+        run_id=run_id,
         stage=Stage.RAW_READ,
-        event_type=StageEvent.COMPLETED,
         status="succeeded",
+        event_type=StageEvent.COMPLETED,
         input_ref=s3_input_path,
         record_count_out=source_count,
+        airflow_dag_id=airflow_dag_id,
+        airflow_run_id=airflow_run_id,
+        spark_app_id=spark_app_id,
     )
 
     # ------------------------------------------------------------------
@@ -364,11 +372,20 @@ def _run_impl(conn, run_id: str, domain: str, dataset: str, s3_input_path: str,
         record_count_dq_pass=dq_pass_count,
         record_count_dq_fail=failing_count,
     )
+    all_rows_failed_dq = source_count > 0 and dq_pass_count == 0 and failing_count > 0
     _dq_has_issues = bool(warnings or failing_count > 0)
-    dq_status = "warned" if _dq_has_issues else "succeeded"
+    dq_status = (
+        "failed" if all_rows_failed_dq
+        else "warned" if _dq_has_issues
+        else "succeeded"
+    )
     _ws(
         stage=Stage.DQ_CHECK,
-        event_type=StageEvent.WARNED if _dq_has_issues else StageEvent.COMPLETED,
+        event_type=(
+            StageEvent.FAILED if all_rows_failed_dq
+            else StageEvent.WARNED if _dq_has_issues
+            else StageEvent.COMPLETED
+        ),
         status=dq_status,
         input_ref=s3_input_path,
         record_count_in=source_count,
@@ -376,6 +393,25 @@ def _run_impl(conn, run_id: str, domain: str, dataset: str, s3_input_path: str,
         metrics={"failing_count": failing_count, "warnings": warnings or []},
         error=json.dumps(warnings) if warnings else None,
     )
+
+    if all_rows_failed_dq:
+        err = "All rows failed DQ — nothing curated."
+        ods_pipeline.runs.update(conn, run_id, status="failed", error_summary=err)
+        ods_pipeline.files.set_state(conn, s3_input_path, run_id, "failed", error_reason=err)
+        ods_pipeline.events.produce(
+            "ingestion.completed", run_id, domain, dataset,
+            business_date_str, "failed",
+            pipeline_type="ingestion",
+            record_count_source=source_count,
+            record_count_dq_pass=dq_pass_count,
+            record_count_dq_fail=failing_count,
+            error_summary=err,
+            file_id=_file_id,
+            file_md5=_md5,
+            s3_raw_path=s3_input_path,
+        )
+        spark.stop()
+        return 1
 
     # ------------------------------------------------------------------
     # Step 12 — Add ODS system columns to passing_df

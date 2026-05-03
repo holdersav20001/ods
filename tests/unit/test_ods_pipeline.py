@@ -155,14 +155,14 @@ class TestRunsUpdate:
         conn, cursor = _mock_conn()
         runs.update(conn, "run-123", status="succeeded")
         execute_call = cursor.execute.call_args
-        sql = execute_call[0][0]
+        sql = str(execute_call[0][0])
         assert "ended_at" in sql
 
     def test_non_terminal_status_no_ended_at(self):
         conn, cursor = _mock_conn()
         runs.update(conn, "run-123", record_count_source=5)
         execute_call = cursor.execute.call_args
-        sql = execute_call[0][0]
+        sql = str(execute_call[0][0])
         assert "ended_at" not in sql
 
     def test_all_allowed_fields_accepted(self):

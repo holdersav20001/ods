@@ -11,6 +11,10 @@ source_type: s3_batch
 filename_pattern: '^policies_(?P<bd>\\\\d{8})\\\\.csv$'
 key_fields: [policy_id]
 target_topic: ods.testdomain.testdataset
+canonical_topic: ods.testdomain.testdataset-canonical
+canonical_schema_id: ods.testdomain.testdataset-canonical-value
+transform_yaml_path: /home/glue_user/patterns/testdomain/testdataset.yaml
+is_canonical: false
 postgres_target_table: ods.testdomain_testdataset
 s3_curated_path: s3://ods-curated/testdomain/testdataset/
 schema_def:
@@ -56,8 +60,17 @@ def test_sync_inserts_then_bumps_version(pg_conn, tmp_path):
         p.write_text(POLICIES_YAML)
         sync_to_db(str(p), pg_conn)
         with pg_conn.cursor() as cur:
-            cur.execute("SELECT config_version_id, config_yaml_hash FROM pipeline.dataset_config WHERE domain='testdomain' AND dataset='testdataset'")
-            v1, h1 = cur.fetchone()
+            cur.execute(
+                "SELECT config_version_id, config_yaml_hash, is_canonical, "
+                "canonical_topic, canonical_schema_id, transform_yaml_path "
+                "FROM pipeline.dataset_config "
+                "WHERE domain='testdomain' AND dataset='testdataset'"
+            )
+            v1, h1, is_canonical, canonical_topic, canonical_schema_id, transform_yaml_path = cur.fetchone()
+        assert is_canonical is False
+        assert canonical_topic == "ods.testdomain.testdataset-canonical"
+        assert canonical_schema_id == "ods.testdomain.testdataset-canonical-value"
+        assert transform_yaml_path == "/home/glue_user/patterns/testdomain/testdataset.yaml"
 
         # Identical content -> no version bump.
         sync_to_db(str(p), pg_conn)

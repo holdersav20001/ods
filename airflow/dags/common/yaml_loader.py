@@ -27,8 +27,11 @@ def sync_to_db(path: str, pg_conn) -> None:
                      schema_id, key_fields, dq_rules, schema_def,
                      postgres_target_table, s3_curated_path,
                      config_version_id, config_yaml_hash, config_pinned_at,
-                     recon_tolerance_records, recon_tolerance_pct, write_mode)
-                VALUES (%s,%s,%s,%s,%s, %s,%s,%s,%s, %s,%s, 1,%s,NOW(), %s,%s, %s)
+                     recon_tolerance_records, recon_tolerance_pct, write_mode,
+                     is_canonical, canonical_topic, canonical_schema_id,
+                     transform_yaml_path)
+                VALUES (%s,%s,%s,%s,%s, %s,%s,%s,%s, %s,%s, 1,%s,NOW(), %s,%s, %s,
+                        %s,%s,%s,%s)
                 ON CONFLICT (domain, dataset) DO UPDATE SET
                     source_type=EXCLUDED.source_type,
                     filename_pattern=EXCLUDED.filename_pattern,
@@ -43,18 +46,27 @@ def sync_to_db(path: str, pg_conn) -> None:
                     config_pinned_at=NOW(),
                     recon_tolerance_records=EXCLUDED.recon_tolerance_records,
                     recon_tolerance_pct=EXCLUDED.recon_tolerance_pct,
-                    write_mode=EXCLUDED.write_mode
+                    write_mode=EXCLUDED.write_mode,
+                    is_canonical=EXCLUDED.is_canonical,
+                    canonical_topic=EXCLUDED.canonical_topic,
+                    canonical_schema_id=EXCLUDED.canonical_schema_id,
+                    transform_yaml_path=EXCLUDED.transform_yaml_path
                 """,
                 (
                     cfg['domain'], cfg['dataset'], cfg.get('source_type', 's3_batch'),
                     cfg['filename_pattern'], cfg['target_topic'],
-                    f"{cfg['domain']}.{cfg['dataset']}", json.dumps(cfg['key_fields']),
+                    cfg.get('schema_id', f"{cfg['domain']}.{cfg['dataset']}"),
+                    json.dumps(cfg['key_fields']),
                     json.dumps(cfg.get('dq_rules', {})), json.dumps(cfg.get('schema_def', {})),
                     cfg['postgres_target_table'], cfg['s3_curated_path'],
                     h,
                     int(cfg.get('recon_tolerance_records', 0)),
                     float(cfg.get('recon_tolerance_pct', 0)),
                     cfg.get('write_mode', 'upsert'),
+                    bool(cfg.get('is_canonical', True)),
+                    cfg.get('canonical_topic'),
+                    cfg.get('canonical_schema_id'),
+                    cfg.get('transform_yaml_path'),
                 ),
             )
         pg_conn.commit()

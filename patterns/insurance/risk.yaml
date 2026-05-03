@@ -1,0 +1,30 @@
+domain: insurance
+dataset: risk
+source_type: s3_batch
+is_canonical: false
+filename_pattern: "risk_(?P<bd>\\d{8})\\.csv"
+target_topic: ods.insurance.risk
+canonical_topic: ods.insurance.risk-canonical
+schema_id: ods.insurance.risk-value
+canonical_schema_id: ods.insurance.risk-canonical-value
+schema_version: 1
+postgres_target_table: ods.insurance_risk
+s3_curated_path: s3://ods-curated-local/insurance/risk/
+transform_yaml_path: /home/glue_user/patterns/insurance/risk.yaml
+key_fields: [risk_id, as_of_date]
+write_mode: upsert
+recon_tolerance_records: 0
+recon_tolerance_pct: 0
+dq_rules:
+  hard_blocks:
+    - {field: RskID, rule: not_null}
+  soft_warns: []
+transform:
+  fields:
+    - {source: RskID, target: risk_id, type: string, required: true}
+    - {source: PolNo, target: policy_id, type: string, required: true}
+    - {source: ExposureAmt, target: exposure_amount, type: double}
+    - {source: AsOfDt, target: as_of_date, type: date, format: yyyyMMdd, required: true}
+  derived:
+    - {target: risk_key, expr: "concat(risk_id, '|', cast(as_of_date as string))"}
+  required: [risk_id, policy_id, as_of_date]
