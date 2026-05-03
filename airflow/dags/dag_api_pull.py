@@ -37,7 +37,12 @@ for _root in (
         sys.path.insert(0, _root)
 
 import ods_pipeline
-from ods_pipeline.ingest.api_pull import WatermarkStore, poll_and_archive
+from ods_pipeline.ingest.api_pull import (
+    TRIGGERED_BY_API_PULL_EDGE,
+    WatermarkStore,
+    ingest_status_for_api_pull_run,
+    poll_and_archive,
+)
 from ods_pipeline.models import Stage, StageEvent
 
 
@@ -329,6 +334,11 @@ def poll_one(cfg: dict) -> dict | None:
                 pass
         conn.close()
 
+    # ``triggered_by_run_id`` lets dag_ingest record this poll as a parent
+    # link in run_log.parents. finalise_watermark looks up the downstream
+    # parent run by JSONB containment of this exact api_pull run_id, so a
+    # replay or concurrent run on the same file_id cannot promote/clear
+    # the wrong cursor.
     return {
         "file_id": file_id,
         "domain": domain,
@@ -337,6 +347,8 @@ def poll_one(cfg: dict) -> dict | None:
         "api_pull_run_id": run_id,
         "source_application": source_application,
         "new_cursor_value": archive.new_cursor_value,
+        "triggered_by_run_id": run_id,
+        "triggered_by_edge_type": "triggered_by_api_pull",
     }
 
 
@@ -360,7 +372,9 @@ def finalise_watermark(triggered_confs: list[dict | None]) -> None:
         while pending and time.monotonic() < deadline:
             still_pending: list[dict] = []
             for cfg in pending:
-                ingest_status = _latest_ingest_status(conn, cfg["file_id"])
+                ingest_status = ingest_status_for_api_pull_run(
+                    conn, cfg["api_pull_run_id"],
+                )
                 if ingest_status == "succeeded":
                     promoted = store.promote(
                         domain=cfg["domain"],
@@ -431,22 +445,9 @@ def finalise_watermark(triggered_confs: list[dict | None]) -> None:
         conn.close()
 
 
-def _latest_ingest_status(conn, file_id: str) -> str | None:
-    """Look up the most recent dag_ingest parent run for this file_id."""
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            SELECT status
-              FROM pipeline.run_log
-             WHERE file_id::text = %s
-               AND pipeline_type = 's3_batch'
-             ORDER BY started_at DESC NULLS LAST, run_id::text DESC
-             LIMIT 1
-            """,
-            (str(file_id),),
-        )
-        row = cur.fetchone()
-    return row[0] if row else None
+# _ingest_status_for_api_pull_run lives in ods_pipeline.ingest.api_pull.linkage
+# (re-exported as ingest_status_for_api_pull_run) so plain pytest, without
+# Airflow installed, can exercise the SQL contract directly.
 
 
 @task

@@ -203,13 +203,23 @@ def _run_impl(conn, run_id: str, domain: str, dataset: str, s3_input_path: str,
         business_date = extract_business_date(filename, config["filename_pattern"])
         business_date_str = business_date.strftime("%Y-%m-%d")
     elif raw_format == "jsonl":
+        # api_pull / jsonl path: business_date was set by dag_api_pull when
+        # it registered the archive in pipeline.file_catalogue. Lookup is
+        # by file_id when supplied (fast path) and by s3_raw_path otherwise.
         with conn.cursor() as _bd_cur:
-            _bd_cur.execute(
-                "SELECT business_date::text FROM pipeline.file_catalogue "
-                "WHERE s3_raw_path=%s OR file_id::text=%s "
-                "ORDER BY id DESC LIMIT 1",
-                (s3_input_path, file_id or ""),
-            )
+            if file_id:
+                _bd_cur.execute(
+                    "SELECT business_date::text FROM pipeline.file_catalogue "
+                    "WHERE file_id::text=%s",
+                    (file_id,),
+                )
+            else:
+                _bd_cur.execute(
+                    "SELECT business_date::text FROM pipeline.file_catalogue "
+                    "WHERE s3_raw_path=%s "
+                    "ORDER BY state_updated_at DESC NULLS LAST LIMIT 1",
+                    (s3_input_path,),
+                )
             _bd_row = _bd_cur.fetchone()
         if not _bd_row or not _bd_row[0]:
             raise ValueError(
