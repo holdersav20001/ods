@@ -1,17 +1,52 @@
 import hashlib, json, yaml
 
+
+# Source-config keys we never persist to dataset_config.source_config.
+# secret_ref names are kept; resolved secret values are looked up at
+# poll time from the env / Airflow Secrets Backend and never stored.
+_SECRET_KEYS = frozenset({"token", "password", "client_secret", "api_key"})
+
+
 def load_dataset_yaml(path: str) -> dict:
     with open(path) as f:
         return yaml.safe_load(f)
+
 
 def compute_hash(cfg: dict) -> str:
     canonical = json.dumps(cfg, sort_keys=True, separators=(',', ':'))
     return hashlib.sha256(canonical.encode()).hexdigest()
 
+
+def _scrub_secrets(value):
+    """Recursively drop any key in _SECRET_KEYS so we never persist secret
+    material into pipeline.dataset_config.source_config. Only the
+    ``secret_ref`` name is allowed through."""
+    if isinstance(value, dict):
+        return {
+            k: _scrub_secrets(v)
+            for k, v in value.items()
+            if k not in _SECRET_KEYS
+        }
+    if isinstance(value, list):
+        return [_scrub_secrets(v) for v in value]
+    return value
+
+
 def sync_to_db(path: str, pg_conn) -> None:
     try:
         cfg = load_dataset_yaml(path)
         h = compute_hash(cfg)
+        source_type = cfg.get('source_type', 's3_batch')
+        # filename_pattern is required for s3_batch / file pattern; api_pull
+        # datasets have no upstream filename and pass NULL after migration 24.
+        filename_pattern = cfg.get('filename_pattern')
+        if source_type == 's3_batch' and not filename_pattern:
+            raise ValueError(
+                f"dataset_config {cfg.get('domain')}/{cfg.get('dataset')} "
+                f"with source_type='s3_batch' requires filename_pattern"
+            )
+        raw_format = cfg.get('raw_format', 'csv')
+        source_config = _scrub_secrets(cfg.get('source', {})) or {}
         with pg_conn.cursor() as cur:
             cur.execute(
                 "SELECT config_yaml_hash FROM pipeline.dataset_config WHERE domain=%s AND dataset=%s",
@@ -29,9 +64,9 @@ def sync_to_db(path: str, pg_conn) -> None:
                      config_version_id, config_yaml_hash, config_pinned_at,
                      recon_tolerance_records, recon_tolerance_pct, write_mode,
                      is_canonical, canonical_topic, canonical_schema_id,
-                     transform_yaml_path)
+                     transform_yaml_path, raw_format, source_config)
                 VALUES (%s,%s,%s,%s,%s, %s,%s,%s,%s, %s,%s, 1,%s,NOW(), %s,%s, %s,
-                        %s,%s,%s,%s)
+                        %s,%s,%s,%s, %s,%s)
                 ON CONFLICT (domain, dataset) DO UPDATE SET
                     source_type=EXCLUDED.source_type,
                     filename_pattern=EXCLUDED.filename_pattern,
@@ -50,15 +85,17 @@ def sync_to_db(path: str, pg_conn) -> None:
                     is_canonical=EXCLUDED.is_canonical,
                     canonical_topic=EXCLUDED.canonical_topic,
                     canonical_schema_id=EXCLUDED.canonical_schema_id,
-                    transform_yaml_path=EXCLUDED.transform_yaml_path
+                    transform_yaml_path=EXCLUDED.transform_yaml_path,
+                    raw_format=EXCLUDED.raw_format,
+                    source_config=EXCLUDED.source_config
                 """,
                 (
-                    cfg['domain'], cfg['dataset'], cfg.get('source_type', 's3_batch'),
-                    cfg['filename_pattern'], cfg['target_topic'],
+                    cfg['domain'], cfg['dataset'], source_type,
+                    filename_pattern, cfg['target_topic'],
                     cfg.get('schema_id', f"{cfg['domain']}.{cfg['dataset']}"),
                     json.dumps(cfg['key_fields']),
                     json.dumps(cfg.get('dq_rules', {})), json.dumps(cfg.get('schema_def', {})),
-                    cfg['postgres_target_table'], cfg['s3_curated_path'],
+                    cfg.get('postgres_target_table'), cfg.get('s3_curated_path'),
                     h,
                     int(cfg.get('recon_tolerance_records', 0)),
                     float(cfg.get('recon_tolerance_pct', 0)),
@@ -67,6 +104,8 @@ def sync_to_db(path: str, pg_conn) -> None:
                     cfg.get('canonical_topic'),
                     cfg.get('canonical_schema_id'),
                     cfg.get('transform_yaml_path'),
+                    raw_format,
+                    json.dumps(source_config),
                 ),
             )
         pg_conn.commit()

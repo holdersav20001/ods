@@ -192,11 +192,35 @@ def _run_impl(conn, run_id: str, domain: str, dataset: str, s3_input_path: str,
         return 0
 
     # ------------------------------------------------------------------
-    # Step 3 — Extract business_date from filename
+    # Step 3 — Resolve business_date
     # ------------------------------------------------------------------
-    filename = s3_input_path.split("/")[-1]
-    business_date = extract_business_date(filename, config["filename_pattern"])
-    business_date_str = business_date.strftime("%Y-%m-%d")
+    # CSV / file pattern: extract from filename via configured regex.
+    # JSONL / api_pull pattern: filename has no business_date — fall back
+    # to the file_catalogue row already registered by dag_api_pull.
+    raw_format = (config.get("raw_format") or "csv").lower()
+    if raw_format == "csv":
+        filename = s3_input_path.split("/")[-1]
+        business_date = extract_business_date(filename, config["filename_pattern"])
+        business_date_str = business_date.strftime("%Y-%m-%d")
+    elif raw_format == "jsonl":
+        with conn.cursor() as _bd_cur:
+            _bd_cur.execute(
+                "SELECT business_date::text FROM pipeline.file_catalogue "
+                "WHERE s3_raw_path=%s OR file_id::text=%s "
+                "ORDER BY id DESC LIMIT 1",
+                (s3_input_path, file_id or ""),
+            )
+            _bd_row = _bd_cur.fetchone()
+        if not _bd_row or not _bd_row[0]:
+            raise ValueError(
+                f"jsonl ingestion requires file_catalogue.business_date for "
+                f"{s3_input_path!r} (file_id={file_id})"
+            )
+        business_date_str = _bd_row[0]
+    else:
+        raise ValueError(
+            f"unsupported raw_format={raw_format!r}; expected 'csv' or 'jsonl'"
+        )
 
     # ------------------------------------------------------------------
     # Step 3b — Register file in file_catalogue (upsert on MD5)
@@ -280,14 +304,21 @@ def _run_impl(conn, run_id: str, domain: str, dataset: str, s3_input_path: str,
     s3a_path = s3_input_path.replace("s3://", "s3a://")
 
     # ------------------------------------------------------------------
-    # Step 5 — Read CSV from S3
+    # Step 5 — Read raw object from S3 (csv | jsonl)
     # ------------------------------------------------------------------
-    df = (
-        spark.read
-        .option("inferSchema", "true")
-        .option("header", "true")
-        .csv(s3a_path)
-    )
+    # Spark transparently decompresses .gz on read; api_pull archives
+    # land as ``.jsonl.gz`` and are read by spark.read.json. The JSONL
+    # records carry the standard ODS metadata envelope written by
+    # ods_pipeline.ingest.api_pull.archive.write_jsonl_archive.
+    if raw_format == "jsonl":
+        df = spark.read.json(s3a_path)
+    else:
+        df = (
+            spark.read
+            .option("inferSchema", "true")
+            .option("header", "true")
+            .csv(s3a_path)
+        )
 
     # ------------------------------------------------------------------
     # Step 6 — Log file_read

@@ -42,7 +42,9 @@ def load_dataset_config(conn, domain: str, dataset: str) -> dict:
                    schema_id, schema_version, key_fields, dq_rules,
                    data_classification, version,
                    is_canonical, canonical_topic, canonical_schema_id,
-                   transform_yaml_path
+                   transform_yaml_path, source_type,
+                   COALESCE(raw_format, 'csv'),
+                   COALESCE(source_config, '{}'::jsonb)
             FROM pipeline.dataset_config
             WHERE domain = %s AND dataset = %s AND active = TRUE
             """,
@@ -56,6 +58,7 @@ def load_dataset_config(conn, domain: str, dataset: str) -> dict:
         "schema_id", "schema_version", "key_fields", "dq_rules",
         "data_classification", "version", "is_canonical",
         "canonical_topic", "canonical_schema_id", "transform_yaml_path",
+        "source_type", "raw_format", "source_config",
     ]
     return dict(zip(cols, row))
 

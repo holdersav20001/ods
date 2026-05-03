@@ -30,6 +30,7 @@ class Stage:
     """Valid values for ``pipeline.run_stage_log.stage``."""
 
     RAW_READ        = "raw_read"         # ingestion: read CSV/file from S3 raw
+    RAW_POLL        = "raw_poll"         # api_pull: HTTP poll source API for records
     SCHEMA_VALIDATE = "schema_validate"  # validate columns against schema registry
     DQ_CHECK        = "dq_check"         # data quality rules evaluation
     CURATED_WRITE   = "curated_write"    # write Parquet to S3 curated

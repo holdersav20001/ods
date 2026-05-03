@@ -1,0 +1,62 @@
+domain: insurance
+dataset: api_pull_demo
+source_type: api_pull
+pattern_type: api
+write_mode: upsert
+key_fields:
+  - request_id
+target_topic: ods.insurance.api_pull_demo
+canonical_topic: ods.insurance.api_pull_demo.canonical
+postgres_target_table: ods.insurance_api_pull_demo
+s3_curated_path: s3://ods-curated-local/insurance/api_pull_demo/
+schema_id: ods.insurance.api_pull_demo-value
+canonical_schema_id: ods.insurance.api_pull_demo.canonical-value
+schema_version: 1
+data_classification: Internal
+raw_format: jsonl
+recon_tolerance_records: 0
+recon_tolerance_pct: 0
+is_canonical: true
+dq_rules:
+  hard_blocks: []
+schema_def:
+  fields:
+    - name: request_id
+      type: string
+      required: true
+    - name: payload
+      type: string
+source:
+  application: demo_api
+  url: ${API_PULL_DEMO_URL}
+  method: GET
+  raw_format: jsonl
+  auth:
+    type: bearer
+    secret_ref: API_PULL_DEMO_TOKEN
+  cursor:
+    style: since_timestamp
+    request_param: updated_since
+    response_field: updated_at
+    initial: "2026-01-01T00:00:00Z"
+  page:
+    style: link_header
+  timeout_seconds: 30
+  retries: 3
+transform:
+  fields:
+    - target: request_id
+      source: _ods_source_request_id
+      required: true
+    - target: domain
+      source: _ods_domain
+    - target: dataset
+      source: _ods_dataset
+    - target: business_date
+      source: _ods_business_date
+      type: date
+    - target: payload
+      source: payload
+      type: string
+  required:
+    - request_id
