@@ -13,6 +13,7 @@ _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
+import boto3
 import ods_pipeline
 from canonicalize import apply_transform, load_mapping, matches_context
 from confluent_kafka import Consumer, Producer, TopicPartition
@@ -141,22 +142,52 @@ def _consume_bounded(
         consumer.close()
 
 
-def _write_dlq(df, domain: str, dataset: str, business_date: str,
-               run_id: str) -> str:
-    env = os.environ.get("ENV", "local")
-    path = (
-        ods_pipeline.dlq.s3_prefix(
-            env=env,
+def _dlq_s3_client():
+    return boto3.client(
+        "s3",
+        endpoint_url=os.environ.get("LOCALSTACK_ENDPOINT"),
+        aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID"),
+        aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY"),
+        region_name=os.environ.get("AWS_DEFAULT_REGION", "eu-west-1"),
+    )
+
+
+def _write_dlq(
+    df,
+    domain: str,
+    dataset: str,
+    business_date: str,
+    run_id: str,
+    *,
+    file_id: str | None = None,
+) -> str:
+    writer = ods_pipeline.dlq.DlqWriter(
+        _dlq_s3_client(),
+        env=os.environ.get("ENV", "local"),
+    )
+    dlq_uris: list[str] = []
+    for attempt, row in enumerate(df.collect(), start=1):
+        payload = row.asDict(recursive=True)
+        envelope = ods_pipeline.dlq.envelope(
+            payload=payload,
+            run_id=run_id,
             domain=domain,
             dataset=dataset,
+            source_application=payload.get("_ods_source_application") or "canonicalize",
+            error_type="canonicalize_transform_failed",
+            error_message=str(
+                payload.get("_ods_error_reason")
+                or payload.get("_ods_error")
+                or payload.get("error")
+                or "transform failed"
+            ),
             stage="canonicalize",
-            business_date=business_date or None,
-            run_id=run_id,
-        ).replace("s3://", "s3a://")
-        + "failed.parquet"
-    )
-    df.write.mode("overwrite").parquet(path)
-    return path
+            source_metadata=payload,
+            file_id=file_id or payload.get("_ods_file_id"),
+            business_date=business_date or payload.get("_ods_business_date"),
+        )
+        dlq_uris.append(writer.write(envelope, stage="canonicalize", attempt=attempt))
+    return dlq_uris[0] if len(dlq_uris) == 1 else json.dumps(dlq_uris)
 
 
 def _sum_ranges(ranges: dict[int, tuple[int, int]]) -> int:
@@ -274,7 +305,14 @@ def run(
 
         dlq_path = None
         if fail_count:
-            dlq_path = _write_dlq(fail_df, domain, dataset, business_date or "", run_id)
+            dlq_path = _write_dlq(
+                fail_df,
+                domain,
+                dataset,
+                business_date or "",
+                run_id,
+                file_id=file_id,
+            )
 
         ods_pipeline.stages.write(
             conn,

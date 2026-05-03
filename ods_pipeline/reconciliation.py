@@ -1,6 +1,7 @@
 """pipeline.reconciliation_log operations."""
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from typing import Any
 
@@ -79,6 +80,18 @@ DUAL_SINK_TABLES: dict[str, tuple[str, str, str]] = {
     "policies": ("ods.insurance_policy",
                  "ods.insurance_policy_history",
                  "_ods_run_id"),
+}
+
+
+# dataset -> (current_table, history_table, key_columns, compare_columns, order_column)
+CURRENT_HISTORY_TABLES: dict[str, tuple[str, str, tuple[str, ...], tuple[str, ...], str]] = {
+    "policies": (
+        "ods.insurance_policy",
+        "ods.insurance_policy_history",
+        ("policy_id",),
+        ("status", "premium", "effective_date", "_ods_file_id", "_ods_run_id"),
+        "_ods_ingested_at",
+    ),
 }
 
 
@@ -183,3 +196,183 @@ def check_dual_sink_parity(
         "delta": delta,
         "detail": detail,
     }
+
+
+def compare_history_vs_current(
+    conn,
+    *,
+    run_id: str,
+    domain: str,
+    dataset: str,
+    business_date: str | None,
+    tables: Mapping[str, tuple[str, str, tuple[str, ...], tuple[str, ...], str]] | None = None,
+    sample_limit: int = 20,
+    commit: bool = True,
+) -> dict[str, Any]:
+    """Compare current-state rows to latest matching history rows.
+
+    Count parity can prove both sinks received the same number of rows, but it
+    cannot prove the current table holds the same values as the append history
+    table's latest row per business key. This check builds a latest-history
+    view with ``row_number()`` and compares configured columns using
+    ``IS DISTINCT FROM`` so NULLs are handled correctly.
+    """
+    registry = tables or CURRENT_HISTORY_TABLES
+    table_config = registry.get(dataset)
+    if not table_config:
+        return {"status": "skipped", "reason": f"no current/history pair registered for {dataset}"}
+
+    current_table, history_table, key_columns, compare_columns, order_column = table_config
+    current_schema, current_name = _split_table_ref(current_table)
+    history_schema, history_name = _split_table_ref(history_table)
+    key_columns = tuple(_safe_column(column) for column in key_columns)
+    compare_columns = tuple(_safe_column(column) for column in compare_columns)
+    order_column = _safe_column(order_column)
+    if not key_columns:
+        raise ValueError("at least one key column is required")
+    if not compare_columns:
+        raise ValueError("at least one compare column is required")
+
+    key_join = sql.SQL(" AND ").join(
+        sql.SQL("c.{col} = h.{col}").format(col=sql.Identifier(column))
+        for column in key_columns
+    )
+    diff_predicate = sql.SQL(" OR ").join(
+        sql.SQL("c.{col} IS DISTINCT FROM h.{col}").format(col=sql.Identifier(column))
+        for column in compare_columns
+    )
+    key_json = sql.SQL(", ").join(
+        sql.SQL("{literal}, c.{col}").format(
+            literal=sql.Literal(column),
+            col=sql.Identifier(column),
+        )
+        for column in key_columns
+    )
+    value_json = sql.SQL(", ").join(
+        sql.SQL("{literal}, jsonb_build_object('current', c.{col}, 'history', h.{col})").format(
+            literal=sql.Literal(column),
+            col=sql.Identifier(column),
+        )
+        for column in compare_columns
+    )
+    partition_by = sql.SQL(", ").join(sql.Identifier(column) for column in key_columns)
+    history_filters = [sql.SQL("{} = %s").format(sql.Identifier("_ods_business_date"))]
+    current_filters = [sql.SQL("{} = %s").format(sql.Identifier("_ods_business_date"))]
+    params: list[Any] = [business_date, business_date, sample_limit]
+    if business_date is None:
+        history_filters = [sql.SQL("%s IS NULL")]
+        current_filters = [sql.SQL("%s IS NULL")]
+
+    query = sql.SQL(
+        """
+        WITH latest_history AS (
+            SELECT *
+              FROM (
+                    SELECT h.*,
+                           row_number() OVER (
+                               PARTITION BY {partition_by}
+                               ORDER BY {order_col} DESC NULLS LAST
+                           ) AS rn
+                      FROM {history_schema}.{history_table} h
+                     WHERE {history_where}
+                   ) ranked
+             WHERE rn = 1
+        ),
+        current_rows AS (
+            SELECT *
+              FROM {current_schema}.{current_table} c
+             WHERE {current_where}
+        ),
+        mismatches AS (
+            SELECT jsonb_build_object({key_json}) AS key,
+                   jsonb_build_object({value_json}) AS differences
+              FROM current_rows c
+              JOIN latest_history h ON {key_join}
+             WHERE {diff_predicate}
+        ),
+        missing_history AS (
+            SELECT jsonb_build_object({key_json}) AS key
+              FROM current_rows c
+              LEFT JOIN latest_history h ON {key_join}
+             WHERE h.{first_key} IS NULL
+        ),
+        counts AS (
+            SELECT
+                (SELECT COUNT(*) FROM current_rows) AS current_count,
+                (SELECT COUNT(*) FROM latest_history) AS history_count,
+                (SELECT COUNT(*) FROM mismatches) AS mismatch_count,
+                (SELECT COUNT(*) FROM missing_history) AS missing_history_count
+        )
+        SELECT counts.current_count,
+               counts.history_count,
+               counts.mismatch_count,
+               counts.missing_history_count,
+               COALESCE((
+                   SELECT jsonb_agg(sample)
+                     FROM (
+                           SELECT jsonb_build_object(
+                                      'type', 'mismatch',
+                                      'key', key,
+                                      'differences', differences
+                                  ) AS sample
+                             FROM mismatches
+                            LIMIT %s
+                          ) s
+               ), '[]'::jsonb) ||
+               COALESCE((
+                   SELECT jsonb_agg(sample)
+                     FROM (
+                           SELECT jsonb_build_object(
+                                      'type', 'missing_history',
+                                      'key', key
+                                  ) AS sample
+                             FROM missing_history
+                            LIMIT %s
+                          ) s
+               ), '[]'::jsonb) AS samples
+          FROM counts
+        """
+    ).format(
+        partition_by=partition_by,
+        order_col=sql.Identifier(order_column),
+        history_schema=sql.Identifier(history_schema),
+        history_table=sql.Identifier(history_name),
+        current_schema=sql.Identifier(current_schema),
+        current_table=sql.Identifier(current_name),
+        history_where=sql.SQL(" AND ").join(history_filters),
+        current_where=sql.SQL(" AND ").join(current_filters),
+        key_join=key_join,
+        diff_predicate=diff_predicate,
+        key_json=key_json,
+        value_json=value_json,
+        first_key=sql.Identifier(key_columns[0]),
+    )
+    params.append(sample_limit)
+
+    with conn.cursor() as cur:
+        cur.execute(query, params)
+        current_count, history_count, mismatch_count, missing_history_count, samples = cur.fetchone()
+
+    issue_count = int(mismatch_count) + int(missing_history_count)
+    status = "ok" if issue_count == 0 else "failed"
+    detail_payload = {
+        "current_count": int(current_count),
+        "history_count": int(history_count),
+        "mismatch_count": int(mismatch_count),
+        "missing_history_count": int(missing_history_count),
+        "samples": samples,
+    }
+    write_check(
+        conn,
+        check_type="current_history_row_value",
+        run_id=run_id,
+        domain=domain,
+        dataset=dataset,
+        business_date=business_date,
+        source_count=int(history_count),
+        postgres_count=int(current_count),
+        status=status,
+        detail=json.dumps(detail_payload, default=str, sort_keys=True),
+        commit=commit,
+    )
+    return {"status": status, **detail_payload}

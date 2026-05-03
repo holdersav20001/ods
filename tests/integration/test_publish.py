@@ -6,7 +6,7 @@ import time
 import boto3
 import psycopg2
 import pytest
-from confluent_kafka import Consumer, KafkaError
+from confluent_kafka import Consumer, KafkaError, TopicPartition
 
 S3_ENDPOINT = "http://localhost:4566"
 CURATED_BUCKET = "ods-curated-local"
@@ -113,6 +113,25 @@ def consume_messages(topic, timeout=15.0):
         messages.append(msg.value())
     consumer.close()
     return messages
+
+
+def topic_high_watermark_sum(topic):
+    consumer = Consumer({
+        "bootstrap.servers": KAFKA_BROKERS,
+        "group.id": f"test-watermark-{uuid.uuid4()}",
+    })
+    try:
+        md = consumer.list_topics(topic, timeout=10).topics[topic]
+        total = 0
+        for partition in md.partitions:
+            _, high = consumer.get_watermark_offsets(
+                TopicPartition(topic, partition),
+                timeout=10,
+            )
+            total += high
+        return total
+    finally:
+        consumer.close()
 
 
 GOOD_CSV = (
@@ -260,3 +279,124 @@ def test_publish_happy_path(s3, pg):
         (pub_run_id,),
     )
     assert cur.fetchone()[0] == "completed"
+
+
+def test_publish_rerun_does_not_republish_completed_curated_path(s3, pg):
+    ingest_run_id = str(uuid.uuid4())
+    pub_run_id = str(uuid.uuid4())
+    business_date = "2026-05-04"
+    raw_key = "insurance/policies/date=20260504/policies_20260504.csv"
+    curated_path = "s3://ods-curated-local/insurance/policies/date=2026-05-04/"
+
+    with pg.cursor() as cur:
+        cur.execute("DELETE FROM ods.insurance_policy WHERE _ods_business_date::text=%s", (business_date,))
+        cur.execute(
+            """
+            DELETE FROM pipeline.lineage_edge
+             WHERE child_run_id IN (
+                   SELECT run_id FROM pipeline.run_log
+                    WHERE domain='insurance' AND dataset='policies' AND business_date=%s
+             )
+                OR parent_file_id IN (
+                   SELECT file_id FROM pipeline.file_catalogue
+                    WHERE domain='insurance' AND dataset='policies' AND business_date=%s
+             )
+            """,
+            (business_date, business_date),
+        )
+        cur.execute(
+            """
+            DELETE FROM pipeline.run_stage_log
+             WHERE run_id IN (
+                   SELECT run_id FROM pipeline.run_log
+                    WHERE domain='insurance' AND dataset='policies' AND business_date=%s
+             )
+            """,
+            (business_date,),
+        )
+        cur.execute(
+            "DELETE FROM pipeline.run_kafka_offsets WHERE run_id IN ("
+            "SELECT run_id FROM pipeline.run_log WHERE domain='insurance' "
+            "AND dataset='policies' AND business_date=%s)",
+            (business_date,),
+        )
+        cur.execute(
+            "DELETE FROM pipeline.reconciliation_log WHERE domain='insurance' "
+            "AND dataset='policies' AND business_date=%s",
+            (business_date,),
+        )
+        cur.execute(
+            "DELETE FROM pipeline.run_events WHERE domain='insurance' "
+            "AND dataset='policies' AND business_date=%s",
+            (business_date,),
+        )
+        cur.execute(
+            "DELETE FROM pipeline.run_log WHERE domain='insurance' "
+            "AND dataset='policies' AND business_date=%s",
+            (business_date,),
+        )
+        cur.execute(
+            "DELETE FROM pipeline.file_catalogue WHERE domain='insurance' "
+            "AND dataset='policies' AND business_date=%s",
+            (business_date,),
+        )
+        cur.execute(
+            "DELETE FROM pipeline.file_state WHERE s3_path IN (%s, %s)",
+            (f"s3://ods-raw-local/{raw_key}", curated_path),
+        )
+    pg.commit()
+
+    s3.put_object(Bucket="ods-raw-local", Key=raw_key, Body=GOOD_CSV.encode())
+    ingestion = run_ingestion_job(ingest_run_id, f"s3://ods-raw-local/{raw_key}")
+    assert ingestion.returncode == 0, ingestion.stderr
+
+    first = run_publish_job(pub_run_id, curated_path)
+    assert first.returncode == 0, first.stderr
+    high_after_first = topic_high_watermark_sum(TOPIC)
+    with pg.cursor() as cur:
+        cur.execute(
+            """
+            SELECT COUNT(*), COALESCE(SUM(record_count), 0)
+              FROM pipeline.run_kafka_offsets
+             WHERE run_id = %s::uuid
+            """,
+            (pub_run_id,),
+        )
+        offset_rows_after_first = cur.fetchone()
+        cur.execute(
+            """
+            SELECT COUNT(*)
+              FROM pipeline.run_stage_log
+             WHERE run_id = %s::uuid
+               AND stage = 'kafka_publish'
+            """,
+            (pub_run_id,),
+        )
+        stage_count_after_first = cur.fetchone()[0]
+
+    second = run_publish_job(pub_run_id, curated_path)
+    assert second.returncode == 0, second.stderr
+    high_after_second = topic_high_watermark_sum(TOPIC)
+
+    with pg.cursor() as cur:
+        cur.execute(
+            """
+            SELECT COUNT(*), COALESCE(SUM(record_count), 0)
+              FROM pipeline.run_kafka_offsets
+             WHERE run_id = %s::uuid
+            """,
+            (pub_run_id,),
+        )
+        assert cur.fetchone() == offset_rows_after_first
+        cur.execute(
+            """
+            SELECT COUNT(*)
+              FROM pipeline.run_stage_log
+             WHERE run_id = %s::uuid
+               AND stage = 'kafka_publish'
+            """,
+            (pub_run_id,),
+        )
+        assert cur.fetchone()[0] == stage_count_after_first
+
+    assert high_after_second == high_after_first

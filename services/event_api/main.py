@@ -20,6 +20,7 @@ wire the app to the same backing services used by the rest of the stack.
 from __future__ import annotations
 
 import json
+import os
 import uuid
 from collections.abc import Mapping
 from typing import Any
@@ -161,3 +162,36 @@ def build_app(
         )
 
     return app
+
+
+def build_app_from_env() -> FastAPI:
+    """Build the deployable app from environment variables."""
+    import boto3
+    import psycopg2
+    from confluent_kafka import Producer
+
+    pg_dsn = os.environ.get(
+        "PIPELINE_PG_DSN",
+        "host=postgres port=5432 dbname=ods_dev user=ods password=ods",
+    )
+    archive_bucket = os.environ.get("EVENT_ARCHIVE_BUCKET", "ods-event-demo")
+    s3_endpoint = os.environ.get("LOCALSTACK_ENDPOINT")
+    kafka_bootstrap = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "broker:29092")
+
+    s3_client = boto3.client(
+        "s3",
+        endpoint_url=s3_endpoint,
+        aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID"),
+        aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY"),
+        region_name=os.environ.get("AWS_DEFAULT_REGION", "eu-west-1"),
+    )
+
+    return build_app(
+        pg_factory=lambda: psycopg2.connect(pg_dsn),
+        s3_client=s3_client,
+        producer_factory=lambda: Producer({"bootstrap.servers": kafka_bootstrap}),
+        archive_bucket=archive_bucket,
+    )
+
+
+app = build_app_from_env()
