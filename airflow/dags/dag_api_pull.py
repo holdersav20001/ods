@@ -40,6 +40,7 @@ import ods_pipeline
 from ods_pipeline.ingest.api_pull import (
     TRIGGERED_BY_API_PULL_EDGE,
     WatermarkStore,
+    derive_dag_ingest_parent_run_id,
     ingest_status_for_api_pull_run,
     poll_and_archive,
 )
@@ -334,11 +335,17 @@ def poll_one(cfg: dict) -> dict | None:
                 pass
         conn.close()
 
-    # ``triggered_by_run_id`` lets dag_ingest record this poll as a parent
-    # link in run_log.parents. finalise_watermark looks up the downstream
-    # parent run by JSONB containment of this exact api_pull run_id, so a
-    # replay or concurrent run on the same file_id cannot promote/clear
-    # the wrong cursor.
+    # Two layers of linkage so finalise_watermark observes the EXACT
+    # downstream execution launched by THIS poll, even under
+    # TriggerDagRunOperator retries / manual replays:
+    #
+    #   1. ``triggered_by_run_id`` + ``triggered_by_edge_type`` —
+    #      written by dag_ingest.init_run into run_log.parents.
+    #   2. ``parent_run_id`` — pre-minted deterministically (uuid5 of
+    #      ``api_pull_run_id``) and consumed by dag_ingest.init_run as
+    #      the s3_batch parent run_id, so the linkage helper can do an
+    #      exact PK lookup, not a "latest by edge" scan.
+    expected_parent_run_id = derive_dag_ingest_parent_run_id(run_id)
     return {
         "file_id": file_id,
         "domain": domain,
@@ -348,7 +355,9 @@ def poll_one(cfg: dict) -> dict | None:
         "source_application": source_application,
         "new_cursor_value": archive.new_cursor_value,
         "triggered_by_run_id": run_id,
-        "triggered_by_edge_type": "triggered_by_api_pull",
+        "triggered_by_edge_type": TRIGGERED_BY_API_PULL_EDGE,
+        "parent_run_id": expected_parent_run_id,
+        "dag_ingest_parent_run_id": expected_parent_run_id,
     }
 
 
@@ -373,7 +382,9 @@ def finalise_watermark(triggered_confs: list[dict | None]) -> None:
             still_pending: list[dict] = []
             for cfg in pending:
                 ingest_status = ingest_status_for_api_pull_run(
-                    conn, cfg["api_pull_run_id"],
+                    conn,
+                    cfg["api_pull_run_id"],
+                    expected_parent_run_id=cfg.get("dag_ingest_parent_run_id"),
                 )
                 if ingest_status == "succeeded":
                     promoted = store.promote(

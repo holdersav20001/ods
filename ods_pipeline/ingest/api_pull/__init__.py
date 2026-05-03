@@ -19,6 +19,7 @@ from ods_pipeline.ingest.api_pull.auth import AuthProvider, BearerAuth, build_au
 from ods_pipeline.ingest.api_pull.cursors import Cursor, build_cursor
 from ods_pipeline.ingest.api_pull.linkage import (
     TRIGGERED_BY_API_PULL_EDGE,
+    derive_dag_ingest_parent_run_id,
     ingest_status_for_api_pull_run,
 )
 from ods_pipeline.ingest.api_pull.poller import poll_and_archive
@@ -33,6 +34,7 @@ __all__ = [
     "WatermarkStore",
     "build_auth",
     "build_cursor",
+    "derive_dag_ingest_parent_run_id",
     "ingest_status_for_api_pull_run",
     "poll_and_archive",
     "write_jsonl_archive",

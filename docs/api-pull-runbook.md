@@ -50,6 +50,33 @@ SELECT s.output_ref AS archive_uri,
  WHERE s.run_id=$1::uuid AND s.stage='message_archive';
 ```
 
+### How the linkage prevents wrong-cursor promotion
+
+`dag_api_pull` pre-mints the dag_ingest parent run_id deterministically
+from the api_pull run_id:
+
+```python
+parent_run_id = uuid.uuid5(uuid.NAMESPACE_OID,
+                           f"api_pull:{api_pull_run_id}")
+```
+
+It passes that as ``parent_run_id`` in the dag_ingest trigger conf, AND
+records ``triggered_by_api_pull`` as a parent edge in
+``run_log.parents``. ``finalise_watermark`` then looks up
+the downstream run by primary key (`run_log.run_id = parent_run_id`)
+**and** verifies the parent edge — so:
+
+- A "latest by file_id" replay cannot match (PK does not match).
+- TriggerDagRunOperator retries that mint a different PK cannot
+  promote the wrong row (PK does not match).
+- A spurious row inserted at the same PK without the edge is rejected
+  by the edge check.
+
+If the caller supplies no ``expected_parent_run_id`` (legacy / test
+paths), the lookup falls back to JSONB containment on the edge alone
+and returns ``None`` if more than one row matches — "ambiguous, do not
+promote".
+
 ### Replay a failed pull
 
 A pull's archive is immutable on S3 (path keyed by ``run_id``).

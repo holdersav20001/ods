@@ -26,6 +26,7 @@ import pytest
 
 from ods_pipeline.ingest.api_pull import (
     WatermarkStore,
+    derive_dag_ingest_parent_run_id,
     ingest_status_for_api_pull_run,
 )
 
@@ -160,6 +161,113 @@ def test_unrelated_replay_does_not_leak_status(pg_conn, cleanup):
         "lookup must not match a dag_ingest run launched by a different "
         "api_pull poll, even on the same file_id"
     )
+
+
+def test_two_rows_with_same_edge_returns_none_when_no_expected_parent(
+    pg_conn, cleanup,
+):
+    """Defensive: if SOMEHOW two dag_ingest rows both carry the
+    triggered_by_api_pull edge for the same api_pull_run_id (retry,
+    manual replay, bug), the edge-only fallback lookup MUST return
+    None — 'ambiguous, do not promote'."""
+    api_pull_run_id = str(uuid.uuid4())
+    file_id_a = str(uuid.uuid4())
+    file_id_b = str(uuid.uuid4())
+    _insert_file_catalogue(pg_conn, file_id=file_id_a, run_id=api_pull_run_id)
+    _insert_file_catalogue(pg_conn, file_id=file_id_b, run_id=api_pull_run_id)
+
+    _insert_run_log(
+        pg_conn,
+        run_id=str(uuid.uuid4()),
+        file_id=file_id_a,
+        parents=[{"run_id": api_pull_run_id, "edge_type": "triggered_by_api_pull"}],
+        status="succeeded",
+    )
+    _insert_run_log(
+        pg_conn,
+        run_id=str(uuid.uuid4()),
+        file_id=file_id_b,
+        parents=[{"run_id": api_pull_run_id, "edge_type": "triggered_by_api_pull"}],
+        status="failed",
+    )
+
+    # No expected_parent_run_id supplied — fallback path. Two matching
+    # rows means we cannot tell which is OUR downstream run.
+    assert ingest_status_for_api_pull_run(
+        pg_conn, api_pull_run_id,
+    ) is None
+
+
+def test_exact_parent_run_id_match_disambiguates(pg_conn, cleanup):
+    """When dag_api_pull pre-mints the deterministic parent_run_id and
+    passes it as expected_parent_run_id, the lookup is by PK so the
+    presence of OTHER rows carrying the same edge cannot mislead it.
+    """
+    api_pull_run_id = str(uuid.uuid4())
+    expected_parent = derive_dag_ingest_parent_run_id(api_pull_run_id)
+    file_id_real = str(uuid.uuid4())
+    file_id_other = str(uuid.uuid4())
+    _insert_file_catalogue(pg_conn, file_id=file_id_real, run_id=api_pull_run_id)
+    _insert_file_catalogue(pg_conn, file_id=file_id_other, run_id=api_pull_run_id)
+
+    # The dag_ingest run actually triggered by us — uses the
+    # deterministic parent_run_id.
+    _insert_run_log(
+        pg_conn,
+        run_id=expected_parent,
+        file_id=file_id_real,
+        parents=[{"run_id": api_pull_run_id, "edge_type": "triggered_by_api_pull"}],
+        status="succeeded",
+    )
+    # A spurious second row carrying the same edge but a DIFFERENT PK.
+    _insert_run_log(
+        pg_conn,
+        run_id=str(uuid.uuid4()),
+        file_id=file_id_other,
+        parents=[{"run_id": api_pull_run_id, "edge_type": "triggered_by_api_pull"}],
+        status="failed",
+    )
+
+    # Edge-only lookup is ambiguous.
+    assert ingest_status_for_api_pull_run(
+        pg_conn, api_pull_run_id,
+    ) is None
+    # Exact-PK lookup pinpoints OUR run.
+    assert ingest_status_for_api_pull_run(
+        pg_conn, api_pull_run_id, expected_parent_run_id=expected_parent,
+    ) == "succeeded"
+
+
+def test_exact_parent_run_id_rejects_pk_collision_without_edge(pg_conn, cleanup):
+    """Defence-in-depth: a row with the expected PK but missing the
+    triggered_by_api_pull edge must NOT be observed."""
+    api_pull_run_id = str(uuid.uuid4())
+    expected_parent = derive_dag_ingest_parent_run_id(api_pull_run_id)
+    file_id = str(uuid.uuid4())
+    _insert_file_catalogue(pg_conn, file_id=file_id, run_id=api_pull_run_id)
+
+    # Same PK, different edge type.
+    _insert_run_log(
+        pg_conn,
+        run_id=expected_parent,
+        file_id=file_id,
+        parents=[{"run_id": api_pull_run_id, "edge_type": "replay"}],
+        status="succeeded",
+    )
+
+    assert ingest_status_for_api_pull_run(
+        pg_conn, api_pull_run_id, expected_parent_run_id=expected_parent,
+    ) is None
+
+
+def test_derive_parent_run_id_is_deterministic_and_namespaced():
+    a = derive_dag_ingest_parent_run_id("abc")
+    b = derive_dag_ingest_parent_run_id("abc")
+    c = derive_dag_ingest_parent_run_id("xyz")
+    assert a == b
+    assert a != c
+    # uuid5 over NAMESPACE_OID yields a v5 UUID.
+    assert uuid.UUID(a).version == 5
 
 
 def test_replay_cannot_promote_pending_cursor(pg_conn, cleanup):

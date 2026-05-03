@@ -14,7 +14,7 @@ items below are tracked but not in slice 1.
 | 3 | Failure/recovery + DAG smoke integration tests | P0 | TBD | **Done** — `test_api_pull_failure_recovery_live.py` + `test_dag_api_pull_smoke.py`. |
 | 4 | Onboarding / runbook docs | P1 | TBD | **Done** — `docs/api-pull-onboarding.md` + `docs/api-pull-runbook.md`. |
 | 5 | Additional cursor styles: etag, offset, full_replace | P2 | TBD | Deferred — driven by real source requirements. |
-| 6 | Tighten finalise_watermark → dag_ingest run linkage (no replay/race promotion) | P0 | TBD | **Done** — explicit `triggered_by_api_pull` edge in `run_log.parents`; lookup via JSONB containment in `ods_pipeline.ingest.api_pull.linkage`. Proven by `test_api_pull_watermark_linkage.py`. |
+| 6 | Tighten finalise_watermark → dag_ingest run linkage (no replay/race promotion) | P0 | TBD | **Done** — deterministic `parent_run_id = uuid5("api_pull:" + api_pull_run_id)` pre-minted by `dag_api_pull` and consumed by `dag_ingest.init_run`; `ingest_status_for_api_pull_run` matches by exact PK + verifies the `triggered_by_api_pull` edge. Edge-only fallback returns `None` on multiple matches ("ambiguous, do not promote"). Proven by `test_api_pull_watermark_linkage.py`. |
 
 P0 must land in Slice 2. P1 should land before first non-demo dataset
 onboards. P2 is opportunistic — driven by real source requirements.

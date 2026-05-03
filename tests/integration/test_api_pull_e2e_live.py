@@ -53,6 +53,7 @@ from common import yaml_loader  # type: ignore  # noqa: E402
 from ods_pipeline.ingest.api_pull import (  # noqa: E402
     TRIGGERED_BY_API_PULL_EDGE,
     WatermarkStore,
+    derive_dag_ingest_parent_run_id,
     ingest_status_for_api_pull_run,
     poll_and_archive,
 )
@@ -485,7 +486,10 @@ def test_e2e_stub_to_curated_parquet_with_watermark_promotion(
     #    equivalent) via docker run. This exercises the new raw_format
     #    branch in glue/jobs/ods_ingestion.py end-to-end.
     # ------------------------------------------------------------------
-    parent_run_id = str(uuid.uuid4())
+    # Use the same deterministic parent_run_id dag_api_pull.poll_one
+    # would have pre-minted so the linkage helper exercises the
+    # exact-PK match.
+    parent_run_id = derive_dag_ingest_parent_run_id(api_pull_run_id)
     ingest_run_id = str(uuid.uuid4())
 
     # Stand in for dag_ingest.init_run: create the s3_batch parent run
@@ -578,6 +582,7 @@ def test_e2e_stub_to_curated_parquet_with_watermark_promotion(
 
     assert ingest_status_for_api_pull_run(
         pg_conn, api_pull_run_id,
+        expected_parent_run_id=parent_run_id,
     ) == "succeeded"
 
     promoted = store.promote(

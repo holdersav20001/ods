@@ -77,10 +77,13 @@ def init_run() -> dict:
     if missing:
         raise RuntimeError(f"dag_run.conf missing keys: {missing}")
 
-    parent_run_id = str(uuid.uuid4())
-    ingest_run_id = str(uuid.uuid4())
-    publish_run_id = str(uuid.uuid4())
-    canonicalize_run_id = str(uuid.uuid4())
+    # Callers (e.g. dag_api_pull) may pre-mint these so they can
+    # deterministically locate the parent run in run_log later. Falling
+    # back to fresh UUIDs preserves existing dag_drop_to_raw behaviour.
+    parent_run_id = conf.get("parent_run_id") or str(uuid.uuid4())
+    ingest_run_id = conf.get("ingest_run_id") or str(uuid.uuid4())
+    publish_run_id = conf.get("publish_run_id") or str(uuid.uuid4())
+    canonicalize_run_id = conf.get("canonicalize_run_id") or str(uuid.uuid4())
 
     conn = psycopg2.connect(PG_DSN)
     try:

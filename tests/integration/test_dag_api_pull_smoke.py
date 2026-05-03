@@ -31,7 +31,8 @@ _REQUIRED_INGEST_CONF_KEYS = ("file_id", "domain", "dataset", "business_date")
 # the parents/JSONB linkage and the watermark sensor can do their job.
 _REQUIRED_LINKAGE_KEYS = ("api_pull_run_id", "triggered_by_run_id",
                           "triggered_by_edge_type", "source_application",
-                          "new_cursor_value")
+                          "new_cursor_value",
+                          "parent_run_id", "dag_ingest_parent_run_id")
 
 
 _AIRFLOW_CONTAINER = "avivaods-airflow-scheduler-1"
@@ -63,16 +64,22 @@ def _expected_poll_one_payload() -> dict:
     """Mirror the dict shape dag_api_pull.poll_one returns when archive
     succeeds. Kept here as a contract test fixture rather than importing
     the DAG module, so this test runs without Airflow installed."""
+    from ods_pipeline.ingest.api_pull import derive_dag_ingest_parent_run_id
+
+    api_pull_run_id = "00000000-0000-0000-0000-000000000010"
+    expected_parent = derive_dag_ingest_parent_run_id(api_pull_run_id)
     return {
         "file_id": "00000000-0000-0000-0000-000000000001",
         "domain": "insurance",
         "dataset": "api_pull_demo",
         "business_date": "2026-05-02",
-        "api_pull_run_id": "00000000-0000-0000-0000-000000000010",
+        "api_pull_run_id": api_pull_run_id,
         "source_application": "demo_api",
         "new_cursor_value": "2026-04-04T00:00:00Z",
-        "triggered_by_run_id": "00000000-0000-0000-0000-000000000010",
+        "triggered_by_run_id": api_pull_run_id,
         "triggered_by_edge_type": "triggered_by_api_pull",
+        "parent_run_id": expected_parent,
+        "dag_ingest_parent_run_id": expected_parent,
     }
 
 
