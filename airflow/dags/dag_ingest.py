@@ -77,10 +77,13 @@ def init_run() -> dict:
     if missing:
         raise RuntimeError(f"dag_run.conf missing keys: {missing}")
 
-    parent_run_id = str(uuid.uuid4())
-    ingest_run_id = str(uuid.uuid4())
-    publish_run_id = str(uuid.uuid4())
-    canonicalize_run_id = str(uuid.uuid4())
+    # Callers (e.g. dag_api_pull) may pre-mint these so they can
+    # deterministically locate the parent run in run_log later. Falling
+    # back to fresh UUIDs preserves existing dag_drop_to_raw behaviour.
+    parent_run_id = conf.get("parent_run_id") or str(uuid.uuid4())
+    ingest_run_id = conf.get("ingest_run_id") or str(uuid.uuid4())
+    publish_run_id = conf.get("publish_run_id") or str(uuid.uuid4())
+    canonicalize_run_id = conf.get("canonicalize_run_id") or str(uuid.uuid4())
 
     conn = psycopg2.connect(PG_DSN)
     try:
@@ -128,6 +131,27 @@ def init_run() -> dict:
             )
         is_canonical = bool(is_canonical)
 
+        # parents is a generic linkage list. Callers may declare:
+        #   - replay_of_run_id          : retry/replay edge to a prior run
+        #   - triggered_by_run_id +
+        #     triggered_by_edge_type    : explicit "this dag_ingest run was
+        #                                 launched by THAT control-plane run".
+        # The triggered_by edge keeps dag_ingest source-pattern agnostic
+        # while letting upstream DAGs (dag_api_pull today) prove which
+        # downstream execution to observe — preventing replay-on-the-same
+        # file_id from racing the wrong run state into a watermark commit.
+        parent_links: list[dict] = []
+        if conf.get("replay_of_run_id"):
+            parent_links.append({
+                "run_id": conf["replay_of_run_id"],
+                "edge_type": "replay",
+                "replay_request_id": conf.get("replay_request_id"),
+            })
+        if conf.get("triggered_by_run_id"):
+            parent_links.append({
+                "run_id": conf["triggered_by_run_id"],
+                "edge_type": conf.get("triggered_by_edge_type", "triggered_by"),
+            })
         ods_pipeline.runs.start(
             conn,
             run_id=parent_run_id,
@@ -137,11 +161,7 @@ def init_run() -> dict:
             business_date=conf["business_date"],
             file_id=conf["file_id"],
             config_version_id=config_version_id,
-            parents=[{
-                "run_id": conf["replay_of_run_id"],
-                "edge_type": "replay",
-                "replay_request_id": conf.get("replay_request_id"),
-            }] if conf.get("replay_of_run_id") else None,
+            parents=parent_links or None,
         )
         ods_pipeline.runs.start(
             conn,

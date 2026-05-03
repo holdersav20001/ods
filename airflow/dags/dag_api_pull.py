@@ -37,7 +37,13 @@ for _root in (
         sys.path.insert(0, _root)
 
 import ods_pipeline
-from ods_pipeline.ingest.api_pull import WatermarkStore, poll_and_archive
+from ods_pipeline.ingest.api_pull import (
+    TRIGGERED_BY_API_PULL_EDGE,
+    WatermarkStore,
+    derive_dag_ingest_parent_run_id,
+    ingest_status_for_api_pull_run,
+    poll_and_archive,
+)
 from ods_pipeline.models import Stage, StageEvent
 
 
@@ -329,6 +335,17 @@ def poll_one(cfg: dict) -> dict | None:
                 pass
         conn.close()
 
+    # Two layers of linkage so finalise_watermark observes the EXACT
+    # downstream execution launched by THIS poll, even under
+    # TriggerDagRunOperator retries / manual replays:
+    #
+    #   1. ``triggered_by_run_id`` + ``triggered_by_edge_type`` —
+    #      written by dag_ingest.init_run into run_log.parents.
+    #   2. ``parent_run_id`` — pre-minted deterministically (uuid5 of
+    #      ``api_pull_run_id``) and consumed by dag_ingest.init_run as
+    #      the s3_batch parent run_id, so the linkage helper can do an
+    #      exact PK lookup, not a "latest by edge" scan.
+    expected_parent_run_id = derive_dag_ingest_parent_run_id(run_id)
     return {
         "file_id": file_id,
         "domain": domain,
@@ -337,6 +354,10 @@ def poll_one(cfg: dict) -> dict | None:
         "api_pull_run_id": run_id,
         "source_application": source_application,
         "new_cursor_value": archive.new_cursor_value,
+        "triggered_by_run_id": run_id,
+        "triggered_by_edge_type": TRIGGERED_BY_API_PULL_EDGE,
+        "parent_run_id": expected_parent_run_id,
+        "dag_ingest_parent_run_id": expected_parent_run_id,
     }
 
 
@@ -360,7 +381,11 @@ def finalise_watermark(triggered_confs: list[dict | None]) -> None:
         while pending and time.monotonic() < deadline:
             still_pending: list[dict] = []
             for cfg in pending:
-                ingest_status = _latest_ingest_status(conn, cfg["file_id"])
+                ingest_status = ingest_status_for_api_pull_run(
+                    conn,
+                    cfg["api_pull_run_id"],
+                    expected_parent_run_id=cfg.get("dag_ingest_parent_run_id"),
+                )
                 if ingest_status == "succeeded":
                     promoted = store.promote(
                         domain=cfg["domain"],
@@ -431,22 +456,9 @@ def finalise_watermark(triggered_confs: list[dict | None]) -> None:
         conn.close()
 
 
-def _latest_ingest_status(conn, file_id: str) -> str | None:
-    """Look up the most recent dag_ingest parent run for this file_id."""
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            SELECT status
-              FROM pipeline.run_log
-             WHERE file_id::text = %s
-               AND pipeline_type = 's3_batch'
-             ORDER BY started_at DESC NULLS LAST, run_id::text DESC
-             LIMIT 1
-            """,
-            (str(file_id),),
-        )
-        row = cur.fetchone()
-    return row[0] if row else None
+# _ingest_status_for_api_pull_run lives in ods_pipeline.ingest.api_pull.linkage
+# (re-exported as ingest_status_for_api_pull_run) so plain pytest, without
+# Airflow installed, can exercise the SQL contract directly.
 
 
 @task

@@ -7,14 +7,14 @@ items below are tracked but not in slice 1.
 
 ## Tracking summary
 
-| # | Item | Priority | Owner |
-|---|------|----------|-------|
-| 1 | Full E2E: dag_api_pull → dag_ingest → Glue → Kafka → canonicalize → JDBC → recon | P0 | TBD |
-| 2 | Dashboard API Pull view | P1 | TBD |
-| 3 | Failure/recovery + DAG smoke integration tests | P0 | TBD |
-| 4 | Onboarding / runbook docs | P1 | TBD |
-| 5 | Additional cursor styles: etag, offset, full_replace | P2 | TBD |
-| 6 | Tighten finalise_watermark → dag_ingest run linkage (no replay/race promotion) | P0 | TBD |
+| # | Item | Priority | Owner | Status |
+|---|------|----------|-------|--------|
+| 1 | Full E2E: dag_api_pull → dag_ingest → Glue → Kafka → canonicalize → JDBC → recon | P0 | TBD | **Partially done** — stub → archive → Glue JSONL ingestion → curated parquet covered by `tests/integration/test_api_pull_e2e_live.py`. Kafka publish + canonicalize + JDBC sink + cross-stage recon still deferred (shares code with file pattern; covered by `test_run_events.py` for the file path). |
+| 2 | Dashboard API Pull view | P1 | TBD | Deferred |
+| 3 | Failure/recovery + DAG smoke integration tests | P0 | TBD | **Done** — `test_api_pull_failure_recovery_live.py` + `test_dag_api_pull_smoke.py`. |
+| 4 | Onboarding / runbook docs | P1 | TBD | **Done** — `docs/api-pull-onboarding.md` + `docs/api-pull-runbook.md`. |
+| 5 | Additional cursor styles: etag, offset, full_replace | P2 | TBD | Deferred — driven by real source requirements. |
+| 6 | Tighten finalise_watermark → dag_ingest run linkage (no replay/race promotion) | P0 | TBD | **Done** — deterministic `parent_run_id = uuid5("api_pull:" + api_pull_run_id)` pre-minted by `dag_api_pull` and consumed by `dag_ingest.init_run`; `ingest_status_for_api_pull_run` matches by exact PK + verifies the `triggered_by_api_pull` edge. Edge-only fallback returns `None` on multiple matches ("ambiguous, do not promote"). Proven by `test_api_pull_watermark_linkage.py`. |
 
 P0 must land in Slice 2. P1 should land before first non-demo dataset
 onboards. P2 is opportunistic — driven by real source requirements.
