@@ -14,8 +14,8 @@ cleanliness. The FastAPI surface itself is thin: it wires HTTP -> the
 existing control-plane primitives.
 
 Side-effect collaborators (S3, Kafka producer, Postgres) are constructed
-by ``build_app`` from injected factories so the test harness can swap
-mocks in without monkey-patching.
+by ``build_app`` from injected factories so local/integration runners can
+wire the app to the same backing services used by the rest of the stack.
 """
 from __future__ import annotations
 
@@ -55,8 +55,8 @@ def build_app(
 ) -> FastAPI:
     """Assemble the FastAPI app with collaborators injected.
 
-    Tests pass mock clients; production wires boto3 + confluent_kafka +
-    psycopg2 via the helpers in ``services.event_api.deps``.
+    Local tests and production can pass real boto3, confluent_kafka, and
+    psycopg2 collaborators without changing the HTTP surface.
     """
     app = FastAPI(title="ODS Event Demo API")
     pattern = get_pattern("insurance.event_demo")
@@ -102,8 +102,8 @@ def build_app(
             raise HTTPException(status_code=500,
                                  detail=f"run start failed: {exc}")
 
-        producer = producer_factory()
         try:
+            producer = producer_factory()
             producer.produce(
                 topic=pattern.topics[0],
                 value=json.dumps({
