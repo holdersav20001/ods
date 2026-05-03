@@ -1,0 +1,24 @@
+{
+  "type": "record",
+  "name": "ApiPullDemo",
+  "namespace": "ods.insurance",
+  "fields": [
+    {"name": "request_id", "type": "string"},
+    {"name": "payload", "type": ["null", "string"], "default": null},
+    {"name": "_ods_source_request_id", "type": ["null", "string"], "default": null},
+    {"name": "_ods_source_message_id", "type": ["null", "string"], "default": null},
+    {"name": "_ods_source_event_id", "type": ["null", "string"], "default": null},
+    {"name": "_ods_source_batch_id", "type": ["null", "string"], "default": null},
+    {"name": "_ods_source_application", "type": ["null", "string"], "default": null},
+    {"name": "_ods_domain", "type": ["null", "string"], "default": null},
+    {"name": "_ods_dataset", "type": ["null", "string"], "default": null},
+    {"name": "_ods_business_date", "type": ["null", "string"], "default": null},
+    {"name": "_ods_source_cursor", "type": ["null", "string"], "default": null},
+    {"name": "_ods_archive_s3_uri", "type": ["null", "string"], "default": null},
+    {"name": "_ods_schema_id", "type": ["null", "string"], "default": null},
+    {"name": "_ods_schema_version", "type": ["null", "long"], "default": null},
+    {"name": "_ods_run_id", "type": "string"},
+    {"name": "_ods_file_id", "type": ["null", "string"], "default": null},
+    {"name": "_ods_ingested_at", "type": ["null", "string"], "default": null}
+  ]
+}

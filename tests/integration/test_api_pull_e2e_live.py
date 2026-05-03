@@ -1,8 +1,9 @@
 """End-to-end live test for the API pull pattern.
 
-Drives the full pipeline up to (and including) Glue JSONL ingestion via
-real components: a host FastAPI stub source, real LocalStack S3, real
-Postgres, and the real Glue Spark image invoked through ``docker run``.
+Drives the canonical API-pull demo path via real components: a host
+FastAPI stub source, real LocalStack S3, real Postgres, real Kafka,
+Schema Registry, Kafka Connect, and the real Glue Spark image invoked
+through ``docker run``.
 
 Coverage:
 
@@ -20,6 +21,11 @@ docs/api-pull-backlog.md item 1):
   * Canonicalize stage and JDBC sink wait — these require Avro schema
     registration and a JDBC connector for the api_pull dataset; they
     are deferred to the next slice once the connector is provisioned.
+
+Note: the list above is kept for historical context. The current test
+does cover Kafka publish and JDBC sink for api_pull_demo. Canonicalize is
+not part of this specific dataset because it is configured as canonical
+(`is_canonical=true`).
 
 Skipped automatically when docker / the Glue image are not available.
 """
@@ -61,6 +67,8 @@ from ods_pipeline.ingest.api_pull import (  # noqa: E402
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 LOCALSTACK_ENDPOINT = os.environ.get("LOCALSTACK_ENDPOINT", "http://localhost:4566")
+SCHEMA_REGISTRY_URL = os.environ.get("SCHEMA_REGISTRY_URL", "http://localhost:8081")
+CONNECT_URL = os.environ.get("CONNECT_URL", "http://localhost:8083")
 RAW_BUCKET = "ods-raw-local"
 CURATED_BUCKET = "ods-curated-local"
 NETWORK = "ods-network"
@@ -72,6 +80,15 @@ TOKEN_ENV = "API_PULL_E2E_TOKEN"
 TOKEN = "e2e-bearer-token"
 YAML_PATH = os.path.join(
     REPO_ROOT, "patterns", "insurance", "api_pull_demo.yaml",
+)
+API_PULL_SCHEMA_PATH = os.path.join(
+    REPO_ROOT, "schemas", "insurance", "api_pull_demo.avsc",
+)
+API_PULL_CONNECTOR_PATH = os.path.join(
+    REPO_ROOT, "docker", "connect-config", "jdbc-sink-api-pull-demo.json",
+)
+API_PULL_SINK_MIGRATION = os.path.join(
+    REPO_ROOT, "db", "migrations", "25_api_pull_demo_sink.sql",
 )
 
 
@@ -117,6 +134,12 @@ def _ensure_environment():
         pytest.skip("postgres container not running")
     if not _container_running("avivaods-localstack-1"):
         pytest.skip("localstack container not running")
+    if not _container_running("avivaods-broker-1"):
+        pytest.skip("kafka broker container not running")
+    if not _container_running("avivaods-schema-registry-1"):
+        pytest.skip("schema registry container not running")
+    if not _container_running("avivaods-kafka-connect-1"):
+        pytest.skip("kafka connect container not running")
 
 
 # ---------------------------------------------------------------------------
@@ -222,6 +245,10 @@ def dataset_config_synced(pg_conn):
     """Sync patterns/insurance/api_pull_demo.yaml into pipeline.dataset_config
     via the production yaml_loader. The DAG and Glue ingestion both
     resolve config through this row."""
+    with open(API_PULL_SINK_MIGRATION, encoding="utf-8") as migration:
+        with pg_conn.cursor() as cur:
+            cur.execute(migration.read())
+    pg_conn.commit()
     yaml_loader.sync_to_db(YAML_PATH, pg_conn)
     yield
     pg_conn.rollback()
@@ -251,6 +278,12 @@ def control_plane_clean(pg_conn):
                 (DOMAIN, DATASET),
             )
             cur.execute(
+                "DELETE FROM pipeline.run_kafka_offsets "
+                "WHERE run_id IN (SELECT run_id FROM pipeline.run_log "
+                "                  WHERE domain=%s AND dataset=%s)",
+                (DOMAIN, DATASET),
+            )
+            cur.execute(
                 "DELETE FROM pipeline.lineage_edge "
                 "WHERE child_run_id IN (SELECT run_id FROM pipeline.run_log "
                 "                        WHERE domain=%s AND dataset=%s)",
@@ -273,8 +306,17 @@ def control_plane_clean(pg_conn):
             )
             cur.execute(
                 "DELETE FROM pipeline.file_state "
-                "WHERE s3_path LIKE %s",
-                (f"s3://{RAW_BUCKET}/api_pull/{DOMAIN}/{DATASET}/%",),
+                "WHERE s3_path LIKE %s OR s3_path LIKE %s",
+                (
+                    f"s3://{RAW_BUCKET}/api_pull/{DOMAIN}/{DATASET}/%",
+                    f"s3://{CURATED_BUCKET}/{DOMAIN}/{DATASET}/%",
+                ),
+            )
+            cur.execute(
+                "DELETE FROM ods.insurance_api_pull_demo "
+                "WHERE request_id IN ('req-001', 'req-002', 'req-003') "
+                "   OR _ods_dataset=%s",
+                (DATASET,),
             )
         pg_conn.commit()
 
@@ -329,6 +371,27 @@ def _run_glue_jsonl_ingest(*, run_id, file_id, s3_input_path,
     return subprocess.run(cmd, capture_output=True, text=True, timeout=420)
 
 
+def _run_glue_publish(*, run_id, file_id, s3_input_path,
+                     parent_run_id) -> subprocess.CompletedProcess:
+    cmd = [
+        "docker", "run", "--rm", "--network", NETWORK,
+        *_glue_env_args(),
+        "-e", "KAFKA_BOOTSTRAP_SERVERS=broker:29092",
+        "ods-glue:local", "spark-submit",
+        "--py-files",
+        "/home/glue_user/workspace/jobs/utils.py,"
+        "/home/glue_user/workspace/jobs/dq.py",
+        "/home/glue_user/workspace/jobs/ods_s3_publish.py",
+        "--run_id", run_id,
+        "--domain", DOMAIN,
+        "--dataset", DATASET,
+        "--s3_input_path", s3_input_path,
+        "--file_id", file_id,
+        "--parent_run_id", parent_run_id,
+    ]
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=420)
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -365,6 +428,53 @@ def _stage_statuses(conn, run_id: str) -> dict[str, str]:
     return out
 
 
+def _register_api_pull_schema() -> None:
+    with open(API_PULL_SCHEMA_PATH, encoding="utf-8") as schema_file:
+        schema = json.dumps(json.load(schema_file))
+    resp = requests.post(
+        f"{SCHEMA_REGISTRY_URL}/subjects/ods.insurance.api_pull_demo-value/versions",
+        json={"schemaType": "AVRO", "schema": schema},
+        headers={"Content-Type": "application/vnd.schemaregistry.v1+json"},
+        timeout=10,
+    )
+    assert resp.status_code in (200, 201, 409), resp.text
+
+
+def _provision_api_pull_sink() -> None:
+    requests.delete(f"{CONNECT_URL}/connectors/jdbc-sink-api-pull-demo", timeout=10)
+    with open(API_PULL_CONNECTOR_PATH, encoding="utf-8") as connector_file:
+        config = json.load(connector_file)
+    resp = requests.post(
+        f"{CONNECT_URL}/connectors",
+        json=config,
+        headers={"Content-Type": "application/json"},
+        timeout=10,
+    )
+    assert resp.status_code in (200, 201, 409), resp.text
+
+
+def _wait_api_pull_sink_rows(conn, file_id: str, timeout: int = 120) -> list[tuple]:
+    deadline = time.time() + timeout
+    rows: list[tuple] = []
+    while time.time() < deadline:
+        conn.rollback()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT request_id, payload, _ods_run_id, _ods_file_id
+                  FROM ods.insurance_api_pull_demo
+                 WHERE _ods_file_id=%s
+                 ORDER BY request_id
+                """,
+                (str(file_id),),
+            )
+            rows = cur.fetchall()
+        if len(rows) == 3:
+            return rows
+        time.sleep(2)
+    return rows
+
+
 # ---------------------------------------------------------------------------
 # Test
 # ---------------------------------------------------------------------------
@@ -375,6 +485,9 @@ def test_e2e_stub_to_curated_parquet_with_watermark_promotion(
     dataset_config_synced, control_plane_clean,
 ):
     """Full happy path through Glue JSONL ingestion + watermark promote."""
+    _register_api_pull_schema()
+    _provision_api_pull_sink()
+
     api_pull_run_id = str(uuid.uuid4())
     business_date = "2026-05-02"
 
@@ -552,8 +665,67 @@ def test_e2e_stub_to_curated_parquet_with_watermark_promotion(
     assert state == "curated", (state, curated_path)
     assert curated_path and curated_path.startswith("s3://ods-curated-local/"), curated_path
 
-    # Lineage api_to_archive (written by us) AND raw_to_curated
-    # (written by ods_ingestion) must both exist.
+    # ------------------------------------------------------------------
+    # 4b) Publish curated Parquet to Kafka and verify the JDBC sink lands
+    #     the same three records in Postgres.
+    # ------------------------------------------------------------------
+    publish_run_id = str(uuid.uuid4())
+    publish_result = _run_glue_publish(
+        run_id=publish_run_id,
+        file_id=file_id,
+        s3_input_path=curated_path,
+        parent_run_id=parent_run_id,
+    )
+    assert publish_result.returncode == 0, (
+        "glue publish failed:\n"
+        f"STDOUT:\n{publish_result.stdout[-4000:]}\n"
+        f"STDERR:\n{publish_result.stderr[-4000:]}"
+    )
+
+    sink_rows = _wait_api_pull_sink_rows(pg_conn, file_id)
+    assert [(row[0], row[2], row[3]) for row in sink_rows] == [
+        ("req-001", ingest_run_id, str(file_id)),
+        ("req-002", ingest_run_id, str(file_id)),
+        ("req-003", ingest_run_id, str(file_id)),
+    ]
+    decoded_payloads = [json.loads(row[1]) for row in sink_rows]
+    assert {payload["amount"] for payload in decoded_payloads} == {99.0, 120.5, 250.0}
+
+    with pg_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT status, record_count_published, kafka_topic
+              FROM pipeline.run_log
+             WHERE run_id=%s
+            """,
+            (publish_run_id,),
+        )
+        publish_log = cur.fetchone()
+        cur.execute(
+            """
+            SELECT status, source_count, kafka_count, discrepancy_count
+              FROM pipeline.reconciliation_log
+             WHERE run_id=%s AND check_type='t0_publish_count'
+            """,
+            (publish_run_id,),
+        )
+        publish_recon = cur.fetchone()
+        cur.execute(
+            """
+            SELECT COUNT(*), COALESCE(SUM(record_count), 0)
+              FROM pipeline.run_kafka_offsets
+             WHERE run_id=%s
+            """,
+            (publish_run_id,),
+        )
+        offset_summary = cur.fetchone()
+    assert publish_log == ("succeeded", 3, "ods.insurance.api_pull_demo")
+    assert publish_recon == ("ok", 3, 3, 0)
+    assert offset_summary[0] >= 1
+    assert offset_summary[1] == 3
+
+    # Lineage api_to_archive (written by us), raw_to_curated (written by
+    # ods_ingestion), and curated_to_kafka (written by publish) must exist.
     with pg_conn.cursor() as cur:
         cur.execute(
             "SELECT edge_type FROM pipeline.lineage_edge "
@@ -563,6 +735,7 @@ def test_e2e_stub_to_curated_parquet_with_watermark_promotion(
         edges = {row[0] for row in cur.fetchall()}
     assert "api_to_archive" in edges, edges
     assert "raw_to_curated" in edges, edges
+    assert "curated_to_kafka" in edges, edges
 
     # Reconciliation row from poll.
     with pg_conn.cursor() as cur:

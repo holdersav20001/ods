@@ -26,6 +26,7 @@ import ods_pipeline
 import requests
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
+from pyspark.sql.types import StructType
 
 from utils import (
     extract_business_date,
@@ -322,6 +323,18 @@ def _run_impl(conn, run_id: str, domain: str, dataset: str, s3_input_path: str,
     # ods_pipeline.ingest.api_pull.archive.write_jsonl_archive.
     if raw_format == "jsonl":
         df = spark.read.json(s3a_path)
+        if "payload" in df.columns:
+            payload_type = df.schema["payload"].dataType
+            if isinstance(payload_type, StructType):
+                payload_field_names = {field.name for field in payload_type.fields}
+                if "request_id" not in df.columns and "request_id" in payload_field_names:
+                    df = df.withColumn(
+                        "request_id",
+                        F.col("payload.request_id").cast("string"),
+                    )
+                df = df.withColumn("payload", F.to_json(F.col("payload")))
+        if "request_id" not in df.columns and "_ods_source_request_id" in df.columns:
+            df = df.withColumn("request_id", F.col("_ods_source_request_id"))
     else:
         df = (
             spark.read

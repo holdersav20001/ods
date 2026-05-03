@@ -8,7 +8,7 @@ until curl -sf http://kafka-connect:8083/ > /dev/null; do
 done
 echo "Kafka Connect is up."
 
-for f in /cfg/jdbc-sink-policies.json /cfg/jdbc-sink-policy-history.json /cfg/jdbc-sink-risk.json /cfg/s3-sink-policies.json; do
+for f in /cfg/jdbc-sink-policies.json /cfg/jdbc-sink-policy-history.json /cfg/jdbc-sink-risk.json /cfg/jdbc-sink-api-pull-demo.json /cfg/s3-sink-policies.json; do
   name=$(grep -o '"name"[[:space:]]*:[[:space:]]*"[^"]*"' "$f" | head -1 | sed 's/.*"\([^"]*\)"$/\1/')
   echo "Re-registering connector: $name"
   curl -sf -X DELETE "http://kafka-connect:8083/connectors/$name" > /dev/null 2>&1 || true
