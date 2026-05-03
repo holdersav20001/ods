@@ -326,12 +326,9 @@ def _run_impl(conn, run_id: str, domain: str, dataset: str, s3_input_path: str,
         if "payload" in df.columns:
             payload_type = df.schema["payload"].dataType
             if isinstance(payload_type, StructType):
-                payload_field_names = {field.name for field in payload_type.fields}
-                if "request_id" not in df.columns and "request_id" in payload_field_names:
-                    df = df.withColumn(
-                        "request_id",
-                        F.col("payload.request_id").cast("string"),
-                    )
+                for field in payload_type.fields:
+                    if field.name not in df.columns:
+                        df = df.withColumn(field.name, F.col(f"payload.{field.name}"))
                 df = df.withColumn("payload", F.to_json(F.col("payload")))
         if "request_id" not in df.columns and "_ods_source_request_id" in df.columns:
             df = df.withColumn("request_id", F.col("_ods_source_request_id"))

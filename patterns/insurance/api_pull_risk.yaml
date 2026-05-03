@@ -1,0 +1,52 @@
+domain: insurance
+dataset: api_pull_risk
+source_type: api_pull
+pattern_type: api
+raw_format: jsonl
+is_canonical: false
+target_topic: ods.insurance.api_pull_risk
+canonical_topic: ods.insurance.api_pull_risk-canonical
+schema_id: ods.insurance.api_pull_risk-value
+canonical_schema_id: ods.insurance.api_pull_risk-canonical-value
+schema_version: 1
+postgres_target_table: ods.insurance_api_pull_risk
+transform_yaml_path: /home/glue_user/patterns/insurance/api_pull_risk.yaml
+key_fields: [risk_id, as_of_date]
+write_mode: append
+recon_tolerance_records: 0
+recon_tolerance_pct: 0
+source:
+  application: demo_api_risk
+  url: ${API_PULL_RISK_URL}
+  auth:
+    type: bearer
+    secret_ref: API_PULL_RISK_TOKEN
+  cursor:
+    style: since_timestamp
+    request_param: updated_since
+    response_field: updated_at
+    initial: "2026-01-01T00:00:00Z"
+  page:
+    style: none
+  timeout_seconds: 10
+  retries: 0
+schema_def:
+  fields:
+    - {name: risk_id, type: string}
+    - {name: policy_id, type: string}
+    - {name: exposure_amount, type: double}
+    - {name: as_of_date, type: date}
+    - {name: risk_key, type: string}
+dq_rules:
+  hard_blocks:
+    - {field: RskID, rule: not_null}
+  soft_warns: []
+transform:
+  fields:
+    - {source: RskID, target: risk_id, type: string, required: true}
+    - {source: PolNo, target: policy_id, type: string, required: true}
+    - {source: ExposureAmt, target: exposure_amount, type: double}
+    - {source: AsOfDt, target: as_of_date, type: date, format: yyyyMMdd, required: true}
+  derived:
+    - {target: risk_key, expr: "concat(risk_id, '|', cast(as_of_date as string))"}
+  required: [risk_id, policy_id, as_of_date]

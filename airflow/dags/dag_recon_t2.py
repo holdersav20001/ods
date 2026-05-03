@@ -10,12 +10,21 @@ from __future__ import annotations
 
 import os
 
-import pendulum
 import psycopg2
 import psycopg2.extras
-from airflow import DAG
-from airflow.decorators import task
 from psycopg2 import sql
+
+try:
+    import pendulum
+    from airflow import DAG
+    from airflow.decorators import task
+except ModuleNotFoundError:
+    pendulum = None
+    DAG = None
+
+    def task(fn):
+        fn.func = fn
+        return fn
 
 PG_DSN = os.environ.get(
     "PIPELINE_PG_DSN",
@@ -127,7 +136,11 @@ def _accepted_count(row) -> int:
 
 
 def _is_source_run(row) -> bool:
-    return row["pipeline_type"] in ("ingestion", "s3_batch", "canonicalize", "message_api")
+    if row["pipeline_type"] == "canonicalize":
+        return True
+    if row.get("is_canonical") is False and row["pipeline_type"] in ("ingestion", "s3_batch"):
+        return False
+    return row["pipeline_type"] in ("ingestion", "s3_batch", "message_api")
 
 
 def _key_fields(row) -> list[str]:
@@ -383,6 +396,7 @@ def reconcile() -> None:
                 SELECT r.run_id, r.pipeline_type, r.domain, r.dataset, r.business_date,
                        r.file_id, r.record_count_source, r.record_count_dq_pass,
                        d.postgres_target_table, d.write_mode, d.key_fields, d.schema_def,
+                       COALESCE(d.is_canonical, TRUE) AS is_canonical,
                        COALESCE(d.recon_tolerance_records, 0) AS tol_rec,
                        COALESCE(d.recon_tolerance_pct, 0) AS tol_pct
                   FROM pipeline.run_log r
@@ -432,12 +446,13 @@ def reconcile() -> None:
         conn.close()
 
 
-with DAG(
-    dag_id="dag_recon_t2",
-    start_date=pendulum.datetime(2026, 4, 28, tz="UTC"),
-    schedule="@hourly",
-    catchup=False,
-    max_active_runs=1,
-    tags=["ods", "reconciliation"],
-):
-    reconcile()
+if DAG is not None:
+    with DAG(
+        dag_id="dag_recon_t2",
+        start_date=pendulum.datetime(2026, 4, 28, tz="UTC"),
+        schedule="@hourly",
+        catchup=False,
+        max_active_runs=1,
+        tags=["ods", "reconciliation"],
+    ):
+        reconcile()

@@ -194,6 +194,30 @@ def _sum_ranges(ranges: dict[int, tuple[int, int]]) -> int:
     return sum(max(0, end - start) for start, end in ranges.values())
 
 
+def _drop_all_null_fields(rows: list[dict]) -> list[dict]:
+    """Remove fields Spark cannot infer because every value is null.
+
+    AvroDeserializer returns nullable fields with ``None`` values. For sparse
+    optional metadata columns, a bounded batch can legitimately contain only
+    nulls, and Spark's local schema inference raises
+    ``ValueError: Some of types cannot be determined``. Dropping those columns
+    is safe here: transform mappings treat absent source columns as NULL.
+    """
+    if not rows:
+        return rows
+    all_keys = set().union(*(row.keys() for row in rows))
+    all_null = {
+        key for key in all_keys
+        if all(row.get(key) is None for row in rows)
+    }
+    if not all_null:
+        return rows
+    return [
+        {key: value for key, value in row.items() if key not in all_null}
+        for row in rows
+    ]
+
+
 def _metadata_fields(raw_columns: set[str]) -> list[dict[str, str]]:
     keep = [
         "_ods_file_id",
@@ -281,6 +305,7 @@ def run(
 
         spark = _build_spark(dataset)
         if rows:
+            rows = _drop_all_null_fields(rows)
             raw_df = spark.createDataFrame(rows)
         else:
             raw_df = spark.createDataFrame([], "placeholder string").drop("placeholder")
@@ -411,6 +436,7 @@ def run(
             run_id,
             status="succeeded" if status == "ok" else "failed",
             record_count_source=raw_count,
+            record_count_dq_pass=pass_count,
             record_count_dq_fail=fail_count,
             record_count_published=canonical_count,
             kafka_topic=canonical_topic,

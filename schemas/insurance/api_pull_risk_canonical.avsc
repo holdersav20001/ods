@@ -1,0 +1,20 @@
+{
+  "type": "record",
+  "name": "ApiPullRiskCanonical",
+  "namespace": "ods.insurance",
+  "fields": [
+    {"name": "risk_id", "type": "string"},
+    {"name": "policy_id", "type": "string"},
+    {"name": "exposure_amount", "type": ["null", "double"], "default": null},
+    {"name": "as_of_date", "type": {"type": "int", "logicalType": "date"}},
+    {"name": "risk_key", "type": ["null", "string"], "default": null},
+    {"name": "_ods_business_date", "type": "string"},
+    {"name": "_ods_run_id", "type": "string"},
+    {"name": "_ods_raw_run_id", "type": ["null", "string"], "default": null},
+    {"name": "_ods_canonicalize_run_id", "type": ["null", "string"], "default": null},
+    {"name": "_ods_file_id", "type": ["null", "string"], "default": null},
+    {"name": "_ods_domain", "type": ["null", "string"], "default": null},
+    {"name": "_ods_dataset", "type": ["null", "string"], "default": null},
+    {"name": "_ods_source_application", "type": ["null", "string"], "default": null}
+  ]
+}

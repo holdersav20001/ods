@@ -4,22 +4,23 @@ Slice 1 proved the core API pull contract: schema, pattern registration,
 poller, JSONL archive, watermark pending/commit, lineage, reconciliation,
 DAG wiring, and JSONL ingestion.
 
-The remaining P0 E2E is now complete for the canonical API pull demo
-(`patterns/insurance/api_pull_demo.yaml`, `is_canonical=true`):
-`tests/integration/test_api_pull_e2e_live.py` proves stub API -> S3 JSONL
-archive -> Glue JSONL ingestion -> curated Parquet -> Kafka Avro publish
--> `jdbc-sink-api-pull-demo` -> Postgres rows, plus API archive
-reconciliation, T0 publish reconciliation, offset persistence, lineage,
-and watermark promotion.
-
-Non-canonical API-pull canonicalize coverage remains future work for the
-first real non-canonical API source.
+The P0 E2E coverage now includes both API Pull shapes:
+- Canonical demo (`patterns/insurance/api_pull_demo.yaml`,
+  `is_canonical=true`): stub API -> S3 JSONL archive -> Glue JSONL
+  ingestion -> curated Parquet -> Kafka Avro publish ->
+  `jdbc-sink-api-pull-demo` -> Postgres rows, plus archive/T0
+  reconciliation, offsets, lineage, and watermark promotion.
+- Non-canonical demo (`patterns/insurance/api_pull_risk.yaml`,
+  `is_canonical=false`): stub API -> S3 JSONL archive -> Glue JSONL
+  ingestion -> raw Kafka topic -> canonicalize -> canonical Kafka topic
+  -> `jdbc-sink-insurance-api-pull-risk` -> Postgres rows, plus T1 and
+  T2 reconciliation.
 
 ## Tracking Summary
 
 | # | Item | Priority | Owner | Status |
 |---|------|----------|-------|--------|
-| 1 | Full E2E: dag_api_pull -> dag_ingest -> Glue -> Kafka -> optional canonicalize -> JDBC -> recon | P0 | TBD | Done for the canonical API pull demo. Non-canonical API-pull canonicalize coverage remains future work when a real non-canonical API source is onboarded. |
+| 1 | Full E2E: dag_api_pull -> dag_ingest -> Glue -> Kafka -> optional canonicalize -> JDBC -> recon | P0 | TBD | Done for canonical and non-canonical API pull demos in `tests/integration/test_api_pull_e2e_live.py`. |
 | 2 | Dashboard API Pull view | P1 | TBD | Deferred |
 | 3 | Failure/recovery + DAG smoke integration tests | P0 | TBD | Done: `test_api_pull_failure_recovery_live.py` + `test_dag_api_pull_smoke.py`. |
 | 4 | Onboarding / runbook docs | P1 | TBD | Done: `docs/api-pull-onboarding.md` + `docs/api-pull-runbook.md`. |
@@ -35,9 +36,8 @@ opportunistic and driven by real source requirements.
 Kafka raw -> optional canonicalize -> JDBC sink -> reconciliation,
 against the docker-compose stack, not a pytest-only mocked path.
 
-**Status**: complete for `patterns/insurance/api_pull_demo.yaml`, which
-is configured as canonical and therefore follows the direct archive ->
-curated -> Kafka -> JDBC path.
+**Status**: complete for both the canonical `api_pull_demo` path and the
+non-canonical `api_pull_risk` path.
 
 **Acceptance covered**:
 - Stub source returns JSON records.
@@ -54,12 +54,22 @@ curated -> Kafka -> JDBC path.
   triggered `dag_ingest` parent run succeeds.
 - Re-running with the committed cursor archives zero new records and
   does not advance the cursor.
+- Non-canonical API Pull risk publishes source-shape Avro to
+  `ods.insurance.api_pull_risk`, canonicalizes to
+  `ods.insurance.api_pull_risk-canonical`, lands rows in
+  `ods.insurance_api_pull_risk`, and records successful T1/T2
+  reconciliation.
 
 **Files**:
 - `tests/integration/test_api_pull_e2e_live.py`
 - `schemas/insurance/api_pull_demo.avsc`
 - `docker/connect-config/jdbc-sink-api-pull-demo.json`
 - `db/migrations/25_api_pull_demo_sink.sql`
+- `patterns/insurance/api_pull_risk.yaml`
+- `schemas/insurance/api_pull_risk_raw.avsc`
+- `schemas/insurance/api_pull_risk_canonical.avsc`
+- `docker/connect-config/jdbc-sink-api-pull-risk.json`
+- `db/migrations/26_api_pull_risk_sink.sql`
 
 ## 2. Dashboard API Pull View
 

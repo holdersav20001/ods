@@ -76,19 +76,36 @@ NETWORK = "ods-network"
 DOMAIN = "insurance"
 DATASET = "api_pull_demo"
 SOURCE_APPLICATION = "demo_api_e2e"
+RISK_DATASET = "api_pull_risk"
+RISK_SOURCE_APPLICATION = "demo_api_risk"
 TOKEN_ENV = "API_PULL_E2E_TOKEN"
 TOKEN = "e2e-bearer-token"
 YAML_PATH = os.path.join(
     REPO_ROOT, "patterns", "insurance", "api_pull_demo.yaml",
 )
+RISK_YAML_PATH = os.path.join(
+    REPO_ROOT, "patterns", "insurance", "api_pull_risk.yaml",
+)
 API_PULL_SCHEMA_PATH = os.path.join(
     REPO_ROOT, "schemas", "insurance", "api_pull_demo.avsc",
+)
+API_PULL_RISK_RAW_SCHEMA_PATH = os.path.join(
+    REPO_ROOT, "schemas", "insurance", "api_pull_risk_raw.avsc",
+)
+API_PULL_RISK_CANONICAL_SCHEMA_PATH = os.path.join(
+    REPO_ROOT, "schemas", "insurance", "api_pull_risk_canonical.avsc",
 )
 API_PULL_CONNECTOR_PATH = os.path.join(
     REPO_ROOT, "docker", "connect-config", "jdbc-sink-api-pull-demo.json",
 )
+API_PULL_RISK_CONNECTOR_PATH = os.path.join(
+    REPO_ROOT, "docker", "connect-config", "jdbc-sink-api-pull-risk.json",
+)
 API_PULL_SINK_MIGRATION = os.path.join(
     REPO_ROOT, "db", "migrations", "25_api_pull_demo_sink.sql",
+)
+API_PULL_RISK_SINK_MIGRATION = os.path.join(
+    REPO_ROOT, "db", "migrations", "26_api_pull_risk_sink.sql",
 )
 
 
@@ -181,6 +198,39 @@ def _build_stub_app() -> FastAPI:
             content=json.dumps(kept), media_type="application/json",
         )
 
+    @app.get("/risk-items")
+    def risk_items(
+        updated_since: str = Query("2026-01-01T00:00:00Z"),
+        authorization: str = Header(default=""),
+    ) -> Response:
+        if authorization != f"Bearer {TOKEN}":
+            raise HTTPException(status_code=401, detail="bad token")
+        records = [
+            {
+                "RskID": "API-R1",
+                "PolNo": "POL-API-1",
+                "ExposureAmt": 120.5,
+                "AsOfDt": "20260502",
+                "updated_at": "2026-04-02T00:00:00Z",
+            },
+            {
+                "RskID": "API-R2",
+                "PolNo": "POL-API-2",
+                "ExposureAmt": 99.0,
+                "AsOfDt": "20260502",
+                "updated_at": "2026-04-03T00:00:00Z",
+            },
+            {
+                "RskID": "API-R3",
+                "PolNo": "POL-API-3",
+                "ExposureAmt": 250.0,
+                "AsOfDt": None,
+                "updated_at": "2026-04-04T00:00:00Z",
+            },
+        ]
+        kept = [r for r in records if r["updated_at"] > updated_since]
+        return Response(content=json.dumps(kept), media_type="application/json")
+
     return app
 
 
@@ -248,15 +298,19 @@ def dataset_config_synced(pg_conn):
     with open(API_PULL_SINK_MIGRATION, encoding="utf-8") as migration:
         with pg_conn.cursor() as cur:
             cur.execute(migration.read())
+    with open(API_PULL_RISK_SINK_MIGRATION, encoding="utf-8") as migration:
+        with pg_conn.cursor() as cur:
+            cur.execute(migration.read())
     pg_conn.commit()
     yaml_loader.sync_to_db(YAML_PATH, pg_conn)
+    yaml_loader.sync_to_db(RISK_YAML_PATH, pg_conn)
     yield
     pg_conn.rollback()
     with pg_conn.cursor() as cur:
         cur.execute(
             "DELETE FROM pipeline.dataset_config "
-            "WHERE domain=%s AND dataset=%s",
-            (DOMAIN, DATASET),
+            "WHERE domain=%s AND dataset IN (%s, %s)",
+            (DOMAIN, DATASET, RISK_DATASET),
         )
     pg_conn.commit()
 
@@ -274,42 +328,45 @@ def control_plane_clean(pg_conn):
             cur.execute(
                 "DELETE FROM pipeline.run_stage_log "
                 "WHERE run_id IN (SELECT run_id FROM pipeline.run_log "
-                "                  WHERE domain=%s AND dataset=%s)",
-                (DOMAIN, DATASET),
+                "                  WHERE domain=%s AND dataset IN (%s, %s))",
+                (DOMAIN, DATASET, RISK_DATASET),
             )
             cur.execute(
                 "DELETE FROM pipeline.run_kafka_offsets "
                 "WHERE run_id IN (SELECT run_id FROM pipeline.run_log "
-                "                  WHERE domain=%s AND dataset=%s)",
-                (DOMAIN, DATASET),
+                "                  WHERE domain=%s AND dataset IN (%s, %s))",
+                (DOMAIN, DATASET, RISK_DATASET),
             )
             cur.execute(
                 "DELETE FROM pipeline.lineage_edge "
                 "WHERE child_run_id IN (SELECT run_id FROM pipeline.run_log "
-                "                        WHERE domain=%s AND dataset=%s)",
-                (DOMAIN, DATASET),
+                "                        WHERE domain=%s AND dataset IN (%s, %s))",
+                (DOMAIN, DATASET, RISK_DATASET),
             )
             cur.execute(
                 "DELETE FROM pipeline.reconciliation_log "
-                "WHERE domain=%s AND dataset=%s",
-                (DOMAIN, DATASET),
+                "WHERE domain=%s AND dataset IN (%s, %s)",
+                (DOMAIN, DATASET, RISK_DATASET),
             )
             cur.execute(
                 "DELETE FROM pipeline.run_log "
-                "WHERE domain=%s AND dataset=%s",
-                (DOMAIN, DATASET),
+                "WHERE domain=%s AND dataset IN (%s, %s)",
+                (DOMAIN, DATASET, RISK_DATASET),
             )
             cur.execute(
                 "DELETE FROM pipeline.file_catalogue "
-                "WHERE domain=%s AND dataset=%s",
-                (DOMAIN, DATASET),
+                "WHERE domain=%s AND dataset IN (%s, %s)",
+                (DOMAIN, DATASET, RISK_DATASET),
             )
             cur.execute(
                 "DELETE FROM pipeline.file_state "
-                "WHERE s3_path LIKE %s OR s3_path LIKE %s",
+                "WHERE s3_path LIKE %s OR s3_path LIKE %s "
+                "   OR s3_path LIKE %s OR s3_path LIKE %s",
                 (
                     f"s3://{RAW_BUCKET}/api_pull/{DOMAIN}/{DATASET}/%",
                     f"s3://{CURATED_BUCKET}/{DOMAIN}/{DATASET}/%",
+                    f"s3://{RAW_BUCKET}/api_pull/{DOMAIN}/{RISK_DATASET}/%",
+                    f"s3://{CURATED_BUCKET}/{DOMAIN}/{RISK_DATASET}/%",
                 ),
             )
             cur.execute(
@@ -317,6 +374,16 @@ def control_plane_clean(pg_conn):
                 "WHERE request_id IN ('req-001', 'req-002', 'req-003') "
                 "   OR _ods_dataset=%s",
                 (DATASET,),
+            )
+            cur.execute(
+                "DELETE FROM ods.insurance_api_pull_risk "
+                "WHERE risk_id LIKE 'API-R%%' OR _ods_dataset=%s",
+                (RISK_DATASET,),
+            )
+            cur.execute(
+                "DELETE FROM pipeline.api_pull_watermark "
+                "WHERE domain=%s AND dataset=%s AND source_application=%s",
+                (DOMAIN, RISK_DATASET, RISK_SOURCE_APPLICATION),
             )
         pg_conn.commit()
 
@@ -352,7 +419,8 @@ def _glue_env_args() -> list[str]:
 
 
 def _run_glue_jsonl_ingest(*, run_id, file_id, s3_input_path,
-                          parent_run_id) -> subprocess.CompletedProcess:
+                          parent_run_id, domain=DOMAIN,
+                          dataset=DATASET) -> subprocess.CompletedProcess:
     cmd = [
         "docker", "run", "--rm", "--network", NETWORK,
         *_glue_env_args(),
@@ -362,8 +430,8 @@ def _run_glue_jsonl_ingest(*, run_id, file_id, s3_input_path,
         "/home/glue_user/workspace/jobs/dq.py",
         "/home/glue_user/workspace/jobs/ods_ingestion.py",
         "--run_id", run_id,
-        "--domain", DOMAIN,
-        "--dataset", DATASET,
+        "--domain", domain,
+        "--dataset", dataset,
         "--s3_input_path", s3_input_path,
         "--file_id", file_id,
         "--parent_run_id", parent_run_id,
@@ -372,7 +440,8 @@ def _run_glue_jsonl_ingest(*, run_id, file_id, s3_input_path,
 
 
 def _run_glue_publish(*, run_id, file_id, s3_input_path,
-                     parent_run_id) -> subprocess.CompletedProcess:
+                     parent_run_id, domain=DOMAIN,
+                     dataset=DATASET) -> subprocess.CompletedProcess:
     cmd = [
         "docker", "run", "--rm", "--network", NETWORK,
         *_glue_env_args(),
@@ -383,11 +452,44 @@ def _run_glue_publish(*, run_id, file_id, s3_input_path,
         "/home/glue_user/workspace/jobs/dq.py",
         "/home/glue_user/workspace/jobs/ods_s3_publish.py",
         "--run_id", run_id,
-        "--domain", DOMAIN,
-        "--dataset", DATASET,
+        "--domain", domain,
+        "--dataset", dataset,
         "--s3_input_path", s3_input_path,
         "--file_id", file_id,
         "--parent_run_id", parent_run_id,
+    ]
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=420)
+
+
+def _run_glue_canonicalize(
+    *,
+    run_id,
+    file_id,
+    parent_run_id,
+    offset_ranges: dict[int, dict[str, int]],
+    business_date: str,
+) -> subprocess.CompletedProcess:
+    cmd = [
+        "docker", "run", "--rm", "--network", NETWORK,
+        *_glue_env_args(),
+        "-e", "KAFKA_BOOTSTRAP_SERVERS=broker:29092",
+        "-v", f"{REPO_ROOT}/patterns:/home/glue_user/patterns",
+        "ods-glue:local", "spark-submit",
+        "--py-files",
+        "/home/glue_user/workspace/jobs/utils.py,"
+        "/home/glue_user/workspace/jobs/dq.py,"
+        "/home/glue_user/workspace/jobs/canonicalize.py",
+        "/home/glue_user/workspace/jobs/ods_canonicalize.py",
+        "--run_id", run_id,
+        "--domain", DOMAIN,
+        "--dataset", RISK_DATASET,
+        "--raw_topic", "ods.insurance.api_pull_risk",
+        "--canonical_topic", "ods.insurance.api_pull_risk-canonical",
+        "--transform_yaml_path", "/home/glue_user/patterns/insurance/api_pull_risk.yaml",
+        "--offset_ranges", json.dumps(offset_ranges),
+        "--file_id", file_id,
+        "--parent_run_id", parent_run_id,
+        "--business_date", business_date,
     ]
     return subprocess.run(cmd, capture_output=True, text=True, timeout=420)
 
@@ -428,11 +530,11 @@ def _stage_statuses(conn, run_id: str) -> dict[str, str]:
     return out
 
 
-def _register_api_pull_schema() -> None:
-    with open(API_PULL_SCHEMA_PATH, encoding="utf-8") as schema_file:
+def _register_schema(subject: str, schema_path: str) -> None:
+    with open(schema_path, encoding="utf-8") as schema_file:
         schema = json.dumps(json.load(schema_file))
     resp = requests.post(
-        f"{SCHEMA_REGISTRY_URL}/subjects/ods.insurance.api_pull_demo-value/versions",
+        f"{SCHEMA_REGISTRY_URL}/subjects/{subject}/versions",
         json={"schemaType": "AVRO", "schema": schema},
         headers={"Content-Type": "application/vnd.schemaregistry.v1+json"},
         timeout=10,
@@ -440,9 +542,13 @@ def _register_api_pull_schema() -> None:
     assert resp.status_code in (200, 201, 409), resp.text
 
 
-def _provision_api_pull_sink() -> None:
-    requests.delete(f"{CONNECT_URL}/connectors/jdbc-sink-api-pull-demo", timeout=10)
-    with open(API_PULL_CONNECTOR_PATH, encoding="utf-8") as connector_file:
+def _register_api_pull_schema() -> None:
+    _register_schema("ods.insurance.api_pull_demo-value", API_PULL_SCHEMA_PATH)
+
+
+def _provision_connector(name: str, connector_path: str) -> None:
+    requests.delete(f"{CONNECT_URL}/connectors/{name}", timeout=10)
+    with open(connector_path, encoding="utf-8") as connector_file:
         config = json.load(connector_file)
     resp = requests.post(
         f"{CONNECT_URL}/connectors",
@@ -451,6 +557,43 @@ def _provision_api_pull_sink() -> None:
         timeout=10,
     )
     assert resp.status_code in (200, 201, 409), resp.text
+
+
+def _provision_api_pull_sink() -> None:
+    _provision_connector("jdbc-sink-api-pull-demo", API_PULL_CONNECTOR_PATH)
+
+
+def _recreate_topic(topic: str) -> None:
+    subprocess.run(
+        ["docker", "exec", "avivaods-broker-1", "kafka-topics",
+         "--bootstrap-server", "localhost:9092", "--delete", "--topic", topic],
+        capture_output=True,
+    )
+    describe_cmd = [
+        "docker", "exec", "avivaods-broker-1", "kafka-topics",
+        "--bootstrap-server", "localhost:9092", "--describe", "--topic", topic,
+    ]
+    for _ in range(30):
+        probe = subprocess.run(describe_cmd, capture_output=True)
+        if probe.returncode != 0:
+            break
+        time.sleep(1)
+    create_cmd = [
+        "docker", "exec", "avivaods-broker-1", "kafka-topics",
+        "--bootstrap-server", "localhost:9092", "--create", "--topic", topic,
+        "--partitions", "1", "--replication-factor", "1",
+    ]
+    for _ in range(10):
+        result = subprocess.run(create_cmd, capture_output=True)
+        if result.returncode == 0:
+            return
+        combined = (result.stderr + result.stdout).decode("utf-8", errors="ignore").lower()
+        if "already exists" in combined:
+            return
+        if "topicexists" not in combined:
+            result.check_returncode()
+        time.sleep(1)
+    result.check_returncode()
 
 
 def _wait_api_pull_sink_rows(conn, file_id: str, timeout: int = 120) -> list[tuple]:
@@ -473,6 +616,68 @@ def _wait_api_pull_sink_rows(conn, file_id: str, timeout: int = 120) -> list[tup
             return rows
         time.sleep(2)
     return rows
+
+
+def _wait_api_pull_risk_rows(conn, canonicalize_run_id: str, timeout: int = 120) -> list[tuple]:
+    deadline = time.time() + timeout
+    rows: list[tuple] = []
+    while time.time() < deadline:
+        conn.rollback()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT risk_id, policy_id, exposure_amount::text, as_of_date::text,
+                       _ods_canonicalize_run_id
+                  FROM ods.insurance_api_pull_risk
+                 WHERE _ods_canonicalize_run_id=%s
+                 ORDER BY risk_id
+                """,
+                (canonicalize_run_id,),
+            )
+            rows = cur.fetchall()
+        if len(rows) == 2:
+            return rows
+        time.sleep(2)
+    return rows
+
+
+def _offset_ranges_for_run(conn, run_id: str) -> dict[int, dict[str, int]]:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT partition, offset_start, offset_end
+              FROM pipeline.run_kafka_offsets
+             WHERE run_id=%s AND stage='kafka_publish'
+             ORDER BY partition
+            """,
+            (run_id,),
+        )
+        rows = cur.fetchall()
+    return {
+        int(partition): {"start": int(start), "end": int(end)}
+        for partition, start, end in rows
+    }
+
+
+def _run_t2_reconcile() -> None:
+    old_dsn = os.environ.get("PIPELINE_PG_DSN")
+    os.environ["PIPELINE_PG_DSN"] = (
+        "host=127.0.0.1 port=5440 dbname=ods_dev user=ods password=ods"
+    )
+    try:
+        import importlib.util
+
+        module_path = os.path.join(REPO_ROOT, "airflow", "dags", "dag_recon_t2.py")
+        spec = importlib.util.spec_from_file_location("dag_recon_t2_live", module_path)
+        assert spec and spec.loader
+        dag_recon_t2 = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(dag_recon_t2)
+        dag_recon_t2.reconcile.func()
+    finally:
+        if old_dsn is None:
+            os.environ.pop("PIPELINE_PG_DSN", None)
+        else:
+            os.environ["PIPELINE_PG_DSN"] = old_dsn
 
 
 # ---------------------------------------------------------------------------
@@ -808,3 +1013,205 @@ def test_e2e_stub_to_curated_parquet_with_watermark_promotion(
     )
     assert second_archive.no_changes is True
     assert second_archive.record_count == 0
+
+
+def test_e2e_api_pull_noncanonical_to_canonical_jdbc_with_t1_t2_recon(
+    stub_url, s3_client, pg_conn, set_token,
+    dataset_config_synced, control_plane_clean,
+):
+    """API Pull non-canonical source -> raw Kafka -> canonical Kafka -> JDBC."""
+    _register_schema("ods.insurance.api_pull_risk-value", API_PULL_RISK_RAW_SCHEMA_PATH)
+    _register_schema(
+        "ods.insurance.api_pull_risk-canonical-value",
+        API_PULL_RISK_CANONICAL_SCHEMA_PATH,
+    )
+    _recreate_topic("ods.insurance.api_pull_risk")
+    _recreate_topic("ods.insurance.api_pull_risk-canonical")
+    _provision_connector(
+        "jdbc-sink-insurance-api-pull-risk",
+        API_PULL_RISK_CONNECTOR_PATH,
+    )
+
+    import ods_pipeline
+
+    api_pull_run_id = str(uuid.uuid4())
+    business_date = "2026-05-02"
+    risk_url = stub_url.replace("/items", "/risk-items")
+
+    archive = poll_and_archive(
+        dataset_config={
+            "domain": DOMAIN,
+            "dataset": RISK_DATASET,
+            "schema_id": "ods.insurance.api_pull_risk-value",
+            "schema_version": 1,
+            "source": {
+                "application": RISK_SOURCE_APPLICATION,
+                "url": risk_url,
+                "auth": {"type": "bearer", "secret_ref": TOKEN_ENV},
+                "cursor": {
+                    "style": "since_timestamp",
+                    "request_param": "updated_since",
+                    "response_field": "updated_at",
+                    "initial": "2026-01-01T00:00:00Z",
+                },
+                "page": {"style": "none"},
+                "timeout_seconds": 10,
+                "retries": 0,
+            },
+        },
+        s3_client=s3_client,
+        archive_bucket=RAW_BUCKET,
+        committed_cursor_value=None,
+        run_id=api_pull_run_id,
+        business_date=business_date,
+    )
+    assert archive.record_count == 3
+
+    ods_pipeline.runs.start(
+        pg_conn,
+        run_id=api_pull_run_id,
+        pipeline_type="api_pull",
+        domain=DOMAIN,
+        dataset=RISK_DATASET,
+        business_date=business_date,
+    )
+    file_id = ods_pipeline.files.upsert(
+        pg_conn,
+        domain=DOMAIN,
+        dataset=RISK_DATASET,
+        business_date=business_date,
+        file_md5=archive.file_md5,
+        s3_raw_path=archive.s3_uri,
+        file_size_bytes=archive.file_size_bytes,
+        source_row_count=archive.record_count,
+        state="received",
+        last_run_id=api_pull_run_id,
+    )
+    ods_pipeline.lineage.write_edge(
+        pg_conn,
+        child_run_id=api_pull_run_id,
+        parent_file_id=file_id,
+        edge_type="api_to_archive",
+        source_ref=risk_url,
+        target_ref=archive.s3_uri,
+        record_count=archive.record_count,
+    )
+    ods_pipeline.reconciliation.write_check(
+        pg_conn,
+        check_type="api_pull_archive_count",
+        run_id=api_pull_run_id,
+        domain=DOMAIN,
+        dataset=RISK_DATASET,
+        business_date=business_date,
+        source_count=archive.record_count,
+        status="ok",
+    )
+
+    parent_run_id = derive_dag_ingest_parent_run_id(api_pull_run_id)
+    ingest_run_id = str(uuid.uuid4())
+    ods_pipeline.runs.start(
+        pg_conn,
+        run_id=parent_run_id,
+        pipeline_type="s3_batch",
+        domain=DOMAIN,
+        dataset=RISK_DATASET,
+        business_date=business_date,
+        file_id=file_id,
+        parents=[{
+            "run_id": api_pull_run_id,
+            "edge_type": TRIGGERED_BY_API_PULL_EDGE,
+        }],
+    )
+
+    ingest_result = _run_glue_jsonl_ingest(
+        run_id=ingest_run_id,
+        file_id=file_id,
+        s3_input_path=archive.s3_uri,
+        parent_run_id=parent_run_id,
+        dataset=RISK_DATASET,
+    )
+    assert ingest_result.returncode == 0, (
+        "glue jsonl ingestion failed:\n"
+        f"STDOUT:\n{ingest_result.stdout[-4000:]}\n"
+        f"STDERR:\n{ingest_result.stderr[-4000:]}"
+    )
+
+    with pg_conn.cursor() as cur:
+        cur.execute(
+            "SELECT s3_curated_path FROM pipeline.file_catalogue WHERE file_id=%s",
+            (file_id,),
+        )
+        curated_path = cur.fetchone()[0]
+    assert curated_path
+
+    publish_run_id = str(uuid.uuid4())
+    publish_result = _run_glue_publish(
+        run_id=publish_run_id,
+        file_id=file_id,
+        s3_input_path=curated_path,
+        parent_run_id=parent_run_id,
+        dataset=RISK_DATASET,
+    )
+    assert publish_result.returncode == 0, (
+        "glue raw publish failed:\n"
+        f"STDOUT:\n{publish_result.stdout[-4000:]}\n"
+        f"STDERR:\n{publish_result.stderr[-4000:]}"
+    )
+
+    pg_conn.rollback()
+    offset_ranges = _offset_ranges_for_run(pg_conn, publish_run_id)
+    assert offset_ranges
+
+    canonicalize_run_id = str(uuid.uuid4())
+    canonicalize_result = _run_glue_canonicalize(
+        run_id=canonicalize_run_id,
+        file_id=file_id,
+        parent_run_id=publish_run_id,
+        offset_ranges=offset_ranges,
+        business_date=business_date,
+    )
+    assert canonicalize_result.returncode == 0, (
+        "glue canonicalize failed:\n"
+        f"STDOUT:\n{canonicalize_result.stdout[-4000:]}\n"
+        f"STDERR:\n{canonicalize_result.stderr[-4000:]}"
+    )
+
+    rows = _wait_api_pull_risk_rows(pg_conn, canonicalize_run_id)
+    assert rows == [
+        ("API-R1", "POL-API-1", "120.5", "2026-05-02", canonicalize_run_id),
+        ("API-R2", "POL-API-2", "99", "2026-05-02", canonicalize_run_id),
+    ]
+
+    with pg_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT status, source_count, kafka_count, discrepancy_count
+              FROM pipeline.reconciliation_log
+             WHERE run_id=%s AND check_type='t1_canonicalize_count'
+            """,
+            (canonicalize_run_id,),
+        )
+        t1 = cur.fetchone()
+    assert t1 == ("ok", 2, 2, 0)
+
+    _run_t2_reconcile()
+    pg_conn.rollback()
+    with pg_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT status, source_count, postgres_count, discrepancy_count
+              FROM pipeline.reconciliation_log
+             WHERE run_id=%s AND check_type='t2_append_file_count'
+             ORDER BY created_at DESC LIMIT 1
+            """,
+            (canonicalize_run_id,),
+        )
+        t2 = cur.fetchone()
+    assert t2 == ("passed", 2, 2, 0)
+
+    ods_pipeline.runs.update(pg_conn, parent_run_id, status="succeeded")
+    assert ingest_status_for_api_pull_run(
+        pg_conn,
+        api_pull_run_id,
+        expected_parent_run_id=parent_run_id,
+    ) == "succeeded"

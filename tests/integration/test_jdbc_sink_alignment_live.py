@@ -16,6 +16,7 @@ CONNECTOR_SCHEMA = {
     "ods.insurance.policies": ROOT / "schemas" / "insurance" / "policies.avsc",
     "ods.insurance.risk-canonical": ROOT / "schemas" / "insurance" / "risk_canonical.avsc",
     "ods.insurance.api_pull_demo": ROOT / "schemas" / "insurance" / "api_pull_demo.avsc",
+    "ods.insurance.api_pull_risk-canonical": ROOT / "schemas" / "insurance" / "api_pull_risk_canonical.avsc",
 }
 
 
@@ -84,6 +85,7 @@ def _primary_key_columns(pg_conn, table_ref: str) -> set[str]:
         "docker/connect-config/jdbc-sink-policy-history.json",
         "docker/connect-config/jdbc-sink-risk.json",
         "docker/connect-config/jdbc-sink-api-pull-demo.json",
+        "docker/connect-config/jdbc-sink-api-pull-risk.json",
     ],
 )
 def test_connector_value_schema_fields_exist_in_target_table(pg_conn, path):
