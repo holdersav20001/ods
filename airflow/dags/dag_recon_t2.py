@@ -18,7 +18,12 @@ try:
     import pendulum
     from airflow import DAG
     from airflow.decorators import task
-except ModuleNotFoundError:
+except ImportError:
+    # Catch ImportError (not just ModuleNotFoundError) so partial Airflow
+    # installs that expose ``airflow`` but not ``airflow.DAG`` still let
+    # the reconcile() helper run from plain pytest. Reproducer: local
+    # venv has ``airflow`` shim from another package; ``from airflow
+    # import DAG`` raises ImportError, which is NOT a ModuleNotFoundError.
     pendulum = None
     DAG = None
 
