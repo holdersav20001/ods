@@ -1,0 +1,63 @@
+# Direct-Kafka API pull demo dataset.
+#
+# Implements the design at docs/api-pull-direct-kafka-design.md. Coexists
+# with the file-pipeline api_pull datasets (api_pull_demo, api_pull_risk).
+#
+# Build phase will:
+#   1. Add `delivery` to dataset_config.source_config sync in yaml_loader.
+#   2. Add the long-running runner that reads this row and dispatches.
+#   3. Add the S3 sink connector + JDBC sink connector + Avro schema
+#      registration (all already templated alongside this YAML).
+domain: insurance
+dataset: api_pull_lowlat_demo
+source_type: api_pull
+pattern_type: api
+delivery: direct_kafka            # NEW. Picks the long-running runner
+                                  # instead of dag_api_pull poll_one path.
+                                  # Defaults to 'file_pipeline' elsewhere.
+raw_format: avro                  # End-to-end Avro on the wire; no Parquet
+                                  # curated step in this shape.
+is_canonical: true                # Skip canonicalize for the demo. The
+                                  # raw topic IS the canonical topic.
+write_mode: upsert
+key_fields: [request_id]
+target_topic: ods.insurance.api_pull_lowlat_demo
+schema_id: ods.insurance.api_pull_lowlat_demo-value
+schema_version: 1
+postgres_target_table: ods.insurance_api_pull_lowlat_demo
+recon_tolerance_records: 0
+recon_tolerance_pct: 0
+data_classification: Internal
+dq_rules:
+  hard_blocks: []
+  soft_warns: []
+schema_def:
+  fields:
+    - {name: request_id, type: string}
+    - {name: amount, type: double}
+    - {name: updated_at, type: string}
+source:
+  application: lowlat_api
+  url: ${API_PULL_LOWLAT_DEMO_URL}
+  auth:
+    type: bearer
+    secret_ref: API_PULL_LOWLAT_DEMO_TOKEN
+  cursor:
+    style: since_timestamp
+    request_param: updated_since
+    response_field: updated_at
+    initial: "2026-05-01T00:00:00Z"
+  page:
+    style: link_header
+  poll_interval_seconds: 5        # Long-running loop, not Airflow tick.
+  batch_max_records: 500          # Cap per producer flush.
+  produce_acks: all               # Required for idempotent producer.
+  retries: 3
+  timeout_seconds: 10
+transform:
+  fields:
+    - {source: request_id, target: request_id, type: string, required: true}
+    - {source: amount, target: amount, type: double}
+    - {source: updated_at, target: updated_at, type: string}
+  required:
+    - request_id
