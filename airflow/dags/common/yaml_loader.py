@@ -64,9 +64,9 @@ def sync_to_db(path: str, pg_conn) -> None:
                      config_version_id, config_yaml_hash, config_pinned_at,
                      recon_tolerance_records, recon_tolerance_pct, write_mode,
                      is_canonical, canonical_topic, canonical_schema_id,
-                     transform_yaml_path, raw_format, source_config)
+                     transform_yaml_path, raw_format, source_config, delivery)
                 VALUES (%s,%s,%s,%s,%s, %s,%s,%s,%s, %s,%s, 1,%s,NOW(), %s,%s, %s,
-                        %s,%s,%s,%s, %s,%s)
+                        %s,%s,%s,%s, %s,%s, %s)
                 ON CONFLICT (domain, dataset) DO UPDATE SET
                     source_type=EXCLUDED.source_type,
                     filename_pattern=EXCLUDED.filename_pattern,
@@ -87,7 +87,8 @@ def sync_to_db(path: str, pg_conn) -> None:
                     canonical_schema_id=EXCLUDED.canonical_schema_id,
                     transform_yaml_path=EXCLUDED.transform_yaml_path,
                     raw_format=EXCLUDED.raw_format,
-                    source_config=EXCLUDED.source_config
+                    source_config=EXCLUDED.source_config,
+                    delivery=EXCLUDED.delivery
                 """,
                 (
                     cfg['domain'], cfg['dataset'], source_type,
@@ -106,6 +107,7 @@ def sync_to_db(path: str, pg_conn) -> None:
                     cfg.get('transform_yaml_path'),
                     raw_format,
                     json.dumps(source_config),
+                    cfg.get('delivery', 'file_pipeline'),
                 ),
             )
         pg_conn.commit()

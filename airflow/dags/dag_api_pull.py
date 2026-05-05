@@ -44,6 +44,7 @@ from ods_pipeline.ingest.api_pull import (
     ingest_status_for_api_pull_run,
     poll_and_archive,
 )
+from ods_pipeline.ingest.api_pull_kafka import run_once as run_once_direct_kafka
 from ods_pipeline.models import Stage, StageEvent
 
 
@@ -55,6 +56,8 @@ S3_RAW_BUCKET = os.environ.get("S3_RAW_BUCKET", "ods-raw-local")
 S3_ENDPOINT = os.environ.get("S3_ENDPOINT", "http://localstack:4566")
 DOWNSTREAM_POLL_SECONDS = float(os.environ.get("API_PULL_DOWNSTREAM_POLL_SECONDS", "5"))
 DOWNSTREAM_TIMEOUT_SECONDS = float(os.environ.get("API_PULL_DOWNSTREAM_TIMEOUT_SECONDS", "1800"))
+KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "broker:29092")
+SCHEMA_REGISTRY_URL = os.environ.get("SCHEMA_REGISTRY_URL", "http://schema-registry:8081")
 
 
 def _connect_pg():
@@ -86,7 +89,7 @@ def list_active_api_datasets() -> list[dict]:
                 """
                 SELECT domain, dataset, schema_id, schema_version,
                        target_topic, raw_format, source_config,
-                       config_version_id
+                       config_version_id, COALESCE(delivery, 'file_pipeline')
                   FROM pipeline.dataset_config
                  WHERE active = TRUE AND source_type = 'api_pull'
                 """
@@ -98,7 +101,7 @@ def list_active_api_datasets() -> list[dict]:
     out: list[dict] = []
     for (
         domain, dataset, schema_id, schema_version, target_topic,
-        raw_format, source_config, config_version_id,
+        raw_format, source_config, config_version_id, delivery,
     ) in rows:
         if isinstance(source_config, str):
             source_config = json.loads(source_config)
@@ -111,8 +114,267 @@ def list_active_api_datasets() -> list[dict]:
             "raw_format": raw_format,
             "source": source_config or {},
             "config_version_id": config_version_id,
+            "delivery": delivery or "file_pipeline",
         })
     return out
+
+
+def _fetch_schema_str(subject: str) -> str:
+    """Pull the latest registered Avro schema from Schema Registry.
+
+    Used by the direct-Kafka dispatch path. Lives inline so a partial
+    Schema Registry outage cannot break poll_one for file-pipeline
+    datasets — the helper is only invoked when ``delivery=='direct_kafka'``.
+    """
+    import requests
+
+    resp = requests.get(
+        f"{SCHEMA_REGISTRY_URL}/subjects/{subject}/versions/latest",
+        timeout=10,
+    )
+    resp.raise_for_status()
+    return resp.json()["schema"]
+
+
+def _poll_one_direct_kafka(cfg: dict) -> dict | None:
+    """Direct-Kafka delivery: long-running runner publishes per-record
+    Avro to the raw topic and records the offset window. No
+    ``dag_ingest`` is triggered; ``finalise_watermark`` waits on the
+    JDBC sink consumer offsets to promote the cursor.
+
+    See ``docs/api-pull-direct-kafka-design.md``.
+    """
+    domain = cfg["domain"]
+    dataset = cfg["dataset"]
+    source = cfg.get("source") or {}
+    source_application = str(source.get("application", f"{domain}.{dataset}"))
+    cursor_style = str((source.get("cursor") or {}).get("style", "since_timestamp"))
+    business_date = datetime.now(timezone.utc).date().isoformat()
+    run_id = str(uuid.uuid4())
+
+    conn = _connect_pg()
+    store = WatermarkStore(conn)
+    locked = False
+    published = None
+    try:
+        watermark = store.read(
+            domain=domain,
+            dataset=dataset,
+            source_application=source_application,
+            cursor_type=cursor_style,
+        )
+        locked = store.try_lock(
+            domain=domain,
+            dataset=dataset,
+            source_application=source_application,
+            run_id=run_id,
+        )
+        if not locked:
+            return None
+
+        ods_pipeline.runs.start(
+            conn,
+            run_id=run_id,
+            pipeline_type="api_pull",
+            domain=domain,
+            dataset=dataset,
+            business_date=business_date,
+            kafka_topic=cfg.get("target_topic"),
+            config_version_id=cfg.get("config_version_id"),
+        )
+        ods_pipeline.stages.start(
+            conn,
+            run_id=run_id,
+            stage=Stage.RAW_POLL,
+            metrics={
+                "source_application": source_application,
+                "cursor_style": cursor_style,
+                "delivery": "direct_kafka",
+                "committed_cursor_value": watermark.committed_cursor_value,
+            },
+        )
+
+        schema_str = _fetch_schema_str(cfg["schema_id"])
+        published = run_once_direct_kafka(
+            dataset_config={
+                "domain": domain,
+                "dataset": dataset,
+                "schema_id": cfg["schema_id"],
+                "schema_version": cfg.get("schema_version", 1),
+                "target_topic": cfg["target_topic"],
+                "source": source,
+            },
+            kafka_bootstrap=KAFKA_BOOTSTRAP,
+            schema_registry_url=SCHEMA_REGISTRY_URL,
+            schema_str=schema_str,
+            committed_cursor_value=watermark.committed_cursor_value,
+            run_id=run_id,
+            business_date=business_date,
+        )
+
+        ods_pipeline.stages.finish(
+            conn,
+            run_id=run_id,
+            stage=Stage.RAW_POLL,
+            status="succeeded" if not published.no_changes else "skipped",
+            event_type=StageEvent.COMPLETED if not published.no_changes else StageEvent.SKIPPED,
+            output_ref=f"kafka://{published.target_topic}",
+            record_count_out=published.record_count,
+            metrics={
+                "page_count": published.page_count,
+                "old_cursor_value": published.old_cursor_value,
+                "new_cursor_value": published.new_cursor_value,
+                "source_request_id": published.source_request_id,
+                "offset_start_by_partition": published.offset_start_by_partition,
+                "offset_end_by_partition": published.offset_end_by_partition,
+            },
+        )
+
+        if published.no_changes:
+            ods_pipeline.runs.update(
+                conn,
+                run_id,
+                status="succeeded",
+                record_count_source=0,
+                record_count_published=0,
+            )
+            ods_pipeline.events.produce(
+                "api_pull.skipped_no_changes",
+                run_id=run_id,
+                domain=domain,
+                dataset=dataset,
+                business_date=business_date,
+                status="succeeded",
+            )
+            return None
+
+        ods_pipeline.stages.write(
+            conn,
+            run_id=run_id,
+            stage=Stage.KAFKA_PUBLISH,
+            status="succeeded",
+            event_type=StageEvent.COMPLETED,
+            output_ref=f"kafka://{published.target_topic}",
+            record_count_in=published.record_count,
+            record_count_out=published.record_count,
+            metrics={
+                "offset_start_by_partition": published.offset_start_by_partition,
+                "offset_end_by_partition": published.offset_end_by_partition,
+            },
+        )
+
+        # Lineage: api → kafka topic. No file_id (direct-Kafka shape
+        # does not pre-archive); use a synthetic uuid5 so dashboards
+        # joining on file_id keep working.
+        synthetic_file_id = str(
+            uuid.uuid5(uuid.NAMESPACE_OID, f"api_pull_kafka:{run_id}")
+        )
+        ods_pipeline.lineage.write_edge(
+            conn,
+            child_run_id=run_id,
+            parent_file_id=None,
+            edge_type="api_to_kafka",
+            source_ref=str(source.get("url", "")),
+            target_ref=f"kafka://{published.target_topic}",
+            record_count=published.record_count,
+        )
+
+        # Recon: produce-count vs offset delta. Equal by construction
+        # (idempotent producer ACKs every record), but write the row so
+        # operators can spot an unexpected delivery-failure path.
+        offset_delta = sum(
+            (published.offset_end_by_partition.get(p, 0)
+             - published.offset_start_by_partition.get(p, 0))
+            for p in published.offset_end_by_partition
+        )
+        ods_pipeline.reconciliation.write_check(
+            conn,
+            check_type="api_pull_publish_count",
+            run_id=run_id,
+            domain=domain,
+            dataset=dataset,
+            business_date=business_date,
+            source_count=published.record_count,
+            kafka_count=offset_delta,
+            postgres_count=None,
+            status="ok" if offset_delta == published.record_count else "failed",
+            detail=json.dumps({
+                "fetched_count": published.record_count,
+                "produced_offset_delta": offset_delta,
+                "page_count": published.page_count,
+                "source_request_id": published.source_request_id,
+                "old_cursor_value": published.old_cursor_value,
+                "new_cursor_value": published.new_cursor_value,
+                "offset_start_by_partition": published.offset_start_by_partition,
+                "offset_end_by_partition": published.offset_end_by_partition,
+            }, sort_keys=True),
+        )
+
+        if published.new_cursor_value:
+            store.record_pending(
+                domain=domain,
+                dataset=dataset,
+                source_application=source_application,
+                run_id=run_id,
+                new_cursor_value=published.new_cursor_value,
+            )
+
+        ods_pipeline.runs.update(
+            conn,
+            run_id,
+            record_count_source=published.record_count,
+            record_count_published=published.record_count,
+        )
+        ods_pipeline.events.produce(
+            "api_pull.archived",
+            run_id=run_id,
+            domain=domain,
+            dataset=dataset,
+            business_date=business_date,
+            status="running",
+        )
+    except Exception as exc:
+        try:
+            ods_pipeline.runs.update(
+                conn,
+                run_id,
+                status="failed",
+                error_summary=f"api_pull direct_kafka failed: {exc}",
+            )
+            ods_pipeline.stages.write(
+                conn,
+                run_id=run_id,
+                stage=Stage.RAW_POLL,
+                status="failed",
+                event_type=StageEvent.FAILED,
+                error=str(exc),
+            )
+        except Exception:
+            pass
+        raise
+    finally:
+        if locked:
+            try:
+                store.unlock(
+                    domain=domain,
+                    dataset=dataset,
+                    source_application=source_application,
+                )
+            except Exception:
+                pass
+        conn.close()
+
+    return {
+        "delivery": "direct_kafka",
+        "domain": domain,
+        "dataset": dataset,
+        "business_date": business_date,
+        "api_pull_run_id": run_id,
+        "source_application": source_application,
+        "new_cursor_value": published.new_cursor_value,
+        "kafka_topic": published.target_topic,
+        "offset_end_by_partition": published.offset_end_by_partition,
+    }
 
 
 @task
@@ -123,7 +385,15 @@ def poll_one(cfg: dict) -> dict | None:
     is skipped) when there are no new records — the watermark is left
     unchanged so the next schedule re-issues the same window if that
     changes upstream.
+
+    Dispatches on ``cfg['delivery']``. ``direct_kafka`` routes to the
+    Avro-producing runner and returns a marker dict (no dag_ingest
+    trigger needed). ``file_pipeline`` (default) keeps the existing
+    S3-archive + dag_ingest path.
     """
+    if (cfg or {}).get("delivery") == "direct_kafka":
+        return _poll_one_direct_kafka(cfg)
+
     domain = cfg["domain"]
     dataset = cfg["dataset"]
     source = cfg.get("source") or {}
@@ -361,14 +631,67 @@ def poll_one(cfg: dict) -> dict | None:
     }
 
 
+def _direct_kafka_sink_status(cfg: dict) -> str | None:
+    """Return ``'succeeded'``, ``'failed'`` or ``None`` (still running)
+    for the JDBC sink that consumes this poll's produced offsets.
+
+    Uses ``confluent_kafka.AdminClient`` to compare the JDBC consumer
+    group's committed offsets to the per-partition end-offsets we
+    captured at produce time. ``connect-jdbc-sink-<dataset>`` is the
+    consumer group name produced by Kafka Connect for our sinks; the
+    canonical-style sinks reuse the same naming.
+    """
+    try:
+        from confluent_kafka import Consumer, TopicPartition
+    except Exception:
+        return None
+
+    end_offsets = cfg.get("offset_end_by_partition") or {}
+    if not end_offsets:
+        return None
+    topic = cfg["kafka_topic"]
+    sink_name = f"jdbc-sink-{cfg['dataset']}".replace("_", "-")
+    group_id = f"connect-{sink_name}"
+
+    consumer = Consumer({
+        "bootstrap.servers": KAFKA_BOOTSTRAP,
+        "group.id": group_id,
+        "enable.auto.commit": False,
+        "session.timeout.ms": 6000,
+    })
+    try:
+        tps = [TopicPartition(topic, int(p)) for p in end_offsets.keys()]
+        committed = consumer.committed(tps, timeout=10)
+    except Exception:
+        return None
+    finally:
+        try:
+            consumer.close()
+        except Exception:
+            pass
+
+    consumed = {int(tp.partition): int(tp.offset) for tp in committed if tp.offset >= 0}
+    if not consumed:
+        return None
+    for partition, target in end_offsets.items():
+        # Connect commits offsets as "next-message" — compare ≥.
+        if consumed.get(int(partition), -1) < int(target):
+            return None
+    return "succeeded"
+
+
 @task(trigger_rule=TriggerRule.ALL_DONE)
 def finalise_watermark(triggered_confs: list[dict | None]) -> None:
-    """Wait for each triggered dag_ingest run to finish, then promote or
-    clear the corresponding pending cursor.
+    """Wait for each poll's downstream to finish, then promote or clear
+    the corresponding pending cursor.
 
-    Implemented as a polling sensor task rather than coupling
-    dag_ingest.finalise to the api_pull control-plane: dag_ingest stays
-    pattern-agnostic and dag_api_pull owns its own commit lifecycle.
+    Two delivery modes, two oracles:
+      - file_pipeline: poll ``run_log`` for the linked ``dag_ingest``
+        parent run via ``ingest_status_for_api_pull_run``.
+      - direct_kafka: poll Kafka Connect consumer-group offsets for
+        the dataset's JDBC sink via ``_direct_kafka_sink_status``.
+
+    Same two-phase commit contract; same timeout / retry envelope.
     """
     pending = [c for c in (triggered_confs or []) if c]
     if not pending:
@@ -381,11 +704,14 @@ def finalise_watermark(triggered_confs: list[dict | None]) -> None:
         while pending and time.monotonic() < deadline:
             still_pending: list[dict] = []
             for cfg in pending:
-                ingest_status = ingest_status_for_api_pull_run(
-                    conn,
-                    cfg["api_pull_run_id"],
-                    expected_parent_run_id=cfg.get("dag_ingest_parent_run_id"),
-                )
+                if cfg.get("delivery") == "direct_kafka":
+                    ingest_status = _direct_kafka_sink_status(cfg)
+                else:
+                    ingest_status = ingest_status_for_api_pull_run(
+                        conn,
+                        cfg["api_pull_run_id"],
+                        expected_parent_run_id=cfg.get("dag_ingest_parent_run_id"),
+                    )
                 if ingest_status == "succeeded":
                     promoted = store.promote(
                         domain=cfg["domain"],
@@ -463,9 +789,14 @@ def finalise_watermark(triggered_confs: list[dict | None]) -> None:
 
 @task
 def filter_triggerable(polled: list[dict | None]) -> list[dict]:
-    """Drop None entries (no_changes / lock loss) so TriggerDagRunOperator
-    only receives valid dag_ingest configs."""
-    return [p for p in (polled or []) if p]
+    """Drop None entries (no_changes / lock loss) AND direct-Kafka entries
+    so TriggerDagRunOperator only receives configs for the file-pipeline
+    path. Direct-Kafka has no ``dag_ingest`` to trigger; its sink lag is
+    awaited by ``finalise_watermark`` instead."""
+    return [
+        p for p in (polled or [])
+        if p and p.get("delivery", "file_pipeline") == "file_pipeline"
+    ]
 
 
 with DAG(

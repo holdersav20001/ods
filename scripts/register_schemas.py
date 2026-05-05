@@ -34,6 +34,7 @@ if __name__ == "__main__":
         ("ods.insurance.api_pull_demo-value",      "schemas/insurance/api_pull_demo.avsc"),
         ("ods.insurance.api_pull_risk-value",      "schemas/insurance/api_pull_risk_raw.avsc"),
         ("ods.insurance.api_pull_risk-canonical-value", "schemas/insurance/api_pull_risk_canonical.avsc"),
+        ("ods.insurance.api_pull_lowlat_demo-value",   "schemas/insurance/api_pull_lowlat_demo.avsc"),
     ]
     for subject, path in schemas:
         register_schema(subject, path)
