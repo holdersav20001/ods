@@ -26,6 +26,7 @@ The P0 E2E coverage now includes both API Pull shapes:
 | 4 | Onboarding / runbook docs | P1 | TBD | Done: `docs/api-pull-onboarding.md` + `docs/api-pull-runbook.md`. |
 | 5 | Additional cursor styles: etag, offset, full_replace | P2 | TBD | Deferred, driven by real source requirements. |
 | 6 | Tighten finalise_watermark -> dag_ingest run linkage | P0 | TBD | Done: deterministic `parent_run_id = uuid5("api_pull:" + api_pull_run_id)` pre-minted by `dag_api_pull` and consumed by `dag_ingest.init_run`; `ingest_status_for_api_pull_run` matches by exact PK + verifies the `triggered_by_api_pull` edge. |
+| 7 | Direct API → Kafka pull pattern (event-style, no Glue / Parquet) | P2 | TBD | Deferred. Today api_pull goes API → S3 raw archive → Glue → Parquet → raw Kafka → ... — chosen by design doc §2 to reuse the file pipeline. An alternative shape mirrors the `event` pattern: poller publishes per-record direct to raw Kafka and a Kafka Connect S3 sink writes the archive in parallel. Lower latency, fewer moving parts; harder replay (no pre-Kafka immutable archive keyed by file_id), file-level lineage shape changes, recon must be re-derived from offsets instead of file counts. Build only if a real source needs sub-minute latency. |
 
 P1 should land before first non-demo dataset onboards. P2 is
 opportunistic and driven by real source requirements.
@@ -130,6 +131,58 @@ FastAPI dashboard module.
 in `ods_pipeline/ingest/api_pull/cursors.py` plus one branch in
 `build_cursor`. The poller body should not change. Build these only when
 a real source requires them.
+
+## 7. Direct API → Kafka Pull Pattern
+
+**Goal**: an alternative `api_pull` shape that mirrors the `event` push
+pattern — poller publishes per record / per page directly to raw Kafka,
+and a Kafka Connect S3 sink writes the archive from Kafka in parallel.
+No Glue subprocess, no Parquet curated step, no `dag_ingest` reuse.
+
+**Why deferred**:
+
+- Today's flow (API → S3 raw → Glue Parquet → raw Kafka → optional
+  canonicalize → sink) reuses every existing file-pattern guarantee:
+  immutable archive keyed by `file_id` BEFORE Kafka, file-level
+  lineage, schema validation + DQ before publish, count-based
+  reconciliation, replay from `file_id`.
+- The direct path loses some of those: replay must come from a Kafka
+  offset window or a downstream S3 sink (which lags), file-level
+  lineage either disappears or needs re-derivation from offsets, and
+  reconciliation flips from "fetched count == archived count == kafka
+  count" to "fetched count == kafka offset delta == s3 sink rows".
+- Latency win is ~1-2 minutes (Glue subprocess + curated parquet step
+  is the main delay). Worth it only when a real source needs that.
+
+**Sketch**:
+
+```
+External API
+   │  poller publishes per record / per page directly to Kafka
+   ▼
+RAW Kafka  ── Kafka Connect S3 sink ─►  S3 ARCHIVE (parquet or jsonl)
+   │  optional canonicalize
+   ▼
+CANONICAL Kafka
+   │  JDBC sink
+   ▼
+Postgres
+```
+
+**Open questions before building**:
+
+- Which dataset has a clear sub-minute latency requirement? (Drives the
+  decision; do not pre-build.)
+- Do we keep `file_catalogue` in this shape? If yes, register from a
+  Kafka Connect SMT or a backfill DAG that reads the S3 sink output. If
+  no, replace `file_id` lineage with `(topic, partition, start_offset,
+  end_offset)` lineage.
+- Reconciliation contract: probably `t0_publish_count` becomes the
+  archive contract instead of `api_pull_archive_count`; T2 still
+  applies; T1 unchanged.
+- Watermark commit: still two-phase, but "downstream success" becomes
+  "S3 sink consumed our offsets" and "JDBC sink consumed our offsets",
+  not "dag_ingest parent run succeeded".
 
 ## 6. Watermark -> dag_ingest Linkage
 
