@@ -143,6 +143,11 @@ def _accepted_count(row) -> int:
 def _is_source_run(row) -> bool:
     if row["pipeline_type"] == "canonicalize":
         return True
+    # direct_postgres datasets skip Kafka entirely; the postgres-write
+    # run IS the authoritative source for T2 row-value recon. There's
+    # no canonicalize step to fall back to.
+    if row["pipeline_type"] == "direct_postgres":
+        return True
     if row.get("is_canonical") is False and row["pipeline_type"] in ("ingestion", "s3_batch"):
         return False
     return row["pipeline_type"] in ("ingestion", "s3_batch", "message_api")

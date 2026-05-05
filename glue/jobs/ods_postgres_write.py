@@ -39,6 +39,7 @@ from pyspark.sql import SparkSession  # noqa: E402
 from pyspark.sql import functions as F  # noqa: E402
 
 from utils import load_dataset_config  # noqa: E402
+from canonicalize import apply_transform, load_mapping  # noqa: E402
 
 Stage = ods_pipeline.Stage
 StageEvent = ods_pipeline.StageEvent
@@ -242,11 +243,7 @@ def run(*, run_id: str, domain: str, dataset: str, s3_input_path: str,
         if isinstance(key_fields, str):
             key_fields = json.loads(key_fields)
         is_canonical = bool(config.get("is_canonical", True))
-        if not is_canonical:
-            raise NotImplementedError(
-                "non-canonical direct_postgres datasets are not in slice 1; "
-                "see docs/file-direct-postgres-design.md item §6 follow-up"
-            )
+        transform_yaml_path = config.get("transform_yaml_path")
 
         ods_pipeline.runs.start(
             conn,
@@ -274,6 +271,49 @@ def run(*, run_id: str, domain: str, dataset: str, s3_input_path: str,
 
         s3a_path = s3_input_path.replace("s3://", "s3a://")
         df = spark.read.parquet(s3a_path)
+
+        # Inline canonicalize for non-canonical datasets. Curated parquet
+        # carries source-shape columns (e.g. RskID, AsOfDt); the target
+        # table holds canonical-shape columns (risk_id, as_of_date).
+        # apply_transform produces ONLY the mapped business columns and
+        # drops ODS metadata, so we re-attach the metadata block after
+        # transforming. Required-field failures in this slice raise —
+        # non-canonical direct_postgres datasets are reference / lookup
+        # style, so a hard failure is correct here (not a DLQ flow).
+        if not is_canonical:
+            if not transform_yaml_path:
+                raise ValueError(
+                    f"dataset {domain}/{dataset}: is_canonical=false "
+                    f"requires transform_yaml_path"
+                )
+            ods_metadata_cols = [c for c in df.columns if c.startswith("_ods_")]
+            mapping = load_mapping(transform_yaml_path)
+            transformed, fail_df, warnings = apply_transform(df, mapping)
+            fail_count = fail_df.count() if fail_df is not None else 0
+            if fail_count > 0:
+                raise RuntimeError(
+                    f"transform required-field failures: {fail_count} rows; "
+                    f"warnings={warnings}"
+                )
+            # Re-attach ODS metadata via row-aligned join on a synthetic
+            # row index. apply_transform preserves row order and count
+            # via selectExpr; the join just stitches the columns back.
+            from pyspark.sql.window import Window
+            row_window = Window.orderBy(F.monotonically_increasing_id())
+            df_with_idx = df.withColumn("_row_idx", F.row_number().over(row_window))
+            tx_with_idx = transformed.withColumn(
+                "_row_idx", F.row_number().over(row_window),
+            )
+            df = (
+                tx_with_idx
+                .join(
+                    df_with_idx.select("_row_idx", *ods_metadata_cols),
+                    on="_row_idx",
+                    how="inner",
+                )
+                .drop("_row_idx")
+            )
+
         # Curated parquet was written by ods_ingestion with its own
         # _ods_run_id; rebrand each row with THIS write's run_id so
         # downstream recon (curated count vs postgres rows tagged with

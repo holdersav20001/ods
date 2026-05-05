@@ -50,7 +50,8 @@ def _datasets(conn):
     with conn.cursor() as cur:
         cur.execute(
             """
-            SELECT domain, dataset, filename_pattern
+            SELECT domain, dataset, filename_pattern,
+                   COALESCE(delivery, 'file_pipeline')
               FROM pipeline.dataset_config
              WHERE active = TRUE AND source_type = 's3_batch'
             """
@@ -82,7 +83,7 @@ def scan_and_register():
 
         datasets = _datasets(conn)
         for filename in files:
-            for domain, dataset, pattern in datasets:
+            for domain, dataset, pattern, delivery in datasets:
                 m = re.match(pattern, filename)
                 if not m:
                     continue
@@ -131,6 +132,7 @@ def scan_and_register():
                         "domain": domain,
                         "dataset": dataset,
                         "business_date": bd_iso,
+                        "delivery": delivery,
                     }
                 )
                 break
@@ -143,6 +145,27 @@ def scan_and_register():
     return new_files
 
 
+@task
+def split_by_delivery(files: list[dict]) -> dict:
+    """Partition new files by ``delivery`` so each TriggerDagRunOperator
+    routes to the right downstream DAG."""
+    by_delivery = {"file_pipeline": [], "direct_postgres": []}
+    for f in files or []:
+        d = f.get("delivery", "file_pipeline")
+        by_delivery.setdefault(d, []).append(f)
+    return by_delivery
+
+
+@task
+def for_kafka(routes: dict) -> list[dict]:
+    return routes.get("file_pipeline", [])
+
+
+@task
+def for_direct_pg(routes: dict) -> list[dict]:
+    return routes.get("direct_postgres", [])
+
+
 with DAG(
     dag_id="dag_drop_to_raw",
     start_date=pendulum.datetime(2026, 4, 28, tz="UTC"),
@@ -152,7 +175,12 @@ with DAG(
     tags=["ods"],
 ):
     files = scan_and_register()
+    routes = split_by_delivery(files)
     TriggerDagRunOperator.partial(
         task_id="trigger_ingest",
         trigger_dag_id="dag_ingest",
-    ).expand(conf=files)
+    ).expand(conf=for_kafka(routes))
+    TriggerDagRunOperator.partial(
+        task_id="trigger_ingest_direct_postgres",
+        trigger_dag_id="dag_ingest_direct_postgres",
+    ).expand(conf=for_direct_pg(routes))
