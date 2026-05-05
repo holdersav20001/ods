@@ -1,0 +1,28 @@
+# File → direct-Postgres demo (upsert).
+#
+# Reference / lookup table refreshed daily. No Kafka leg. Reuses Glue
+# ingestion + curated Parquet. New job ods_postgres_write.py merges
+# rows into the target via stage-and-merge keyed on country_code.
+domain: insurance
+dataset: file_direct_pg_upsert_demo
+source_type: s3_batch
+delivery: direct_postgres
+filename_pattern: '^country_codes_(?P<bd>\d{8})\.csv$'
+raw_format: csv
+is_canonical: true
+write_mode: upsert
+key_fields: [country_code]
+schema_id: ods.insurance.file_direct_pg_upsert_demo-value
+schema_version: 1
+postgres_target_table: ods.insurance_file_direct_pg_upsert_demo
+s3_curated_path: s3://ods-curated-local/insurance/file_direct_pg_upsert_demo/
+data_classification: Internal
+recon_tolerance_records: 0
+recon_tolerance_pct: 0
+schema_def:
+  fields:
+    - {name: country_code, type: string}
+    - {name: country_name, type: string}
+dq_rules:
+  hard_blocks: []
+  soft_warns: []

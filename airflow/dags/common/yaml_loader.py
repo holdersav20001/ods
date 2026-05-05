@@ -37,6 +37,7 @@ def sync_to_db(path: str, pg_conn) -> None:
         cfg = load_dataset_yaml(path)
         h = compute_hash(cfg)
         source_type = cfg.get('source_type', 's3_batch')
+        delivery = cfg.get('delivery', 'file_pipeline')
         # filename_pattern is required for s3_batch / file pattern; api_pull
         # datasets have no upstream filename and pass NULL after migration 24.
         filename_pattern = cfg.get('filename_pattern')
@@ -44,6 +45,14 @@ def sync_to_db(path: str, pg_conn) -> None:
             raise ValueError(
                 f"dataset_config {cfg.get('domain')}/{cfg.get('dataset')} "
                 f"with source_type='s3_batch' requires filename_pattern"
+            )
+        # target_topic is required for Kafka-leg deliveries. direct_postgres
+        # has no Kafka leg, so accept NULL there.
+        target_topic = cfg.get('target_topic')
+        if delivery in ('file_pipeline', 'direct_kafka') and not target_topic:
+            raise ValueError(
+                f"dataset_config {cfg.get('domain')}/{cfg.get('dataset')} "
+                f"with delivery={delivery!r} requires target_topic"
             )
         raw_format = cfg.get('raw_format', 'csv')
         source_config = _scrub_secrets(cfg.get('source', {})) or {}
@@ -92,7 +101,7 @@ def sync_to_db(path: str, pg_conn) -> None:
                 """,
                 (
                     cfg['domain'], cfg['dataset'], source_type,
-                    filename_pattern, cfg['target_topic'],
+                    filename_pattern, target_topic,
                     cfg.get('schema_id', f"{cfg['domain']}.{cfg['dataset']}"),
                     json.dumps(cfg['key_fields']),
                     json.dumps(cfg.get('dq_rules', {})), json.dumps(cfg.get('schema_def', {})),
