@@ -103,16 +103,16 @@ flowchart LR
   classDef recon  fill:#e6f7ee,stroke:#0f8a4f,color:#0f8a4f,stroke-dasharray: 4 2
 
   SFTP[SFTP supplier]:::src
-  S3R[(S3 raw - CSV)]:::store
-  S3C[(S3 curated - Parquet)]:::store
-  KRAW[Kafka raw\nods.dom.ds]:::kafka
-  KCAN[Kafka canonical\nods.dom.ds-canonical]:::kafka
-  PG[(Postgres\nods.dom_ds)]:::pg
+  S3R[("S3 raw<br/>CSV")]:::store
+  S3C[("S3 curated<br/>Parquet")]:::store
+  KRAW["Kafka raw<br/>ods.dom.ds"]:::kafka
+  KCAN["Kafka canonical<br/>ods.dom.ds-canonical"]:::kafka
+  PG[("Postgres<br/>ods.dom_ds")]:::pg
 
   SFTP -- dag_drop_to_raw --> S3R
-  S3R -- "Glue ods_ingestion\n(schema_validate, dq_check)" --> S3C
-  S3C -- "Glue ods_s3_publish\nParquet to Avro" --> KRAW
-  KRAW -- "Glue ods_canonicalize\n(is_canonical=false)" --> KCAN
+  S3R -- "Glue ods_ingestion<br/>schema_validate, dq_check" --> S3C
+  S3C -- "Glue ods_s3_publish<br/>Parquet to Avro" --> KRAW
+  KRAW -- "Glue ods_canonicalize<br/>is_canonical=false" --> KCAN
   KRAW -- "JDBC sink (canonical)" --> PG
   KCAN -- "JDBC sink (non-canonical)" --> PG
 
@@ -144,9 +144,9 @@ flowchart LR
 
   CALLER[POST /events]:::src
   API[event_api FastAPI]:::src
-  S3[(S3 archive\nJSONL)]:::store
-  KRAW[Kafka raw\nods.dom.ds]:::kafka
-  PG[(Postgres\nods.dom_ds)]:::pg
+  S3[("S3 archive<br/>JSONL")]:::store
+  KRAW["Kafka raw<br/>ods.dom.ds"]:::kafka
+  PG[("Postgres<br/>ods.dom_ds")]:::pg
 
   CALLER --> API
   API -- "archive" --> S3
@@ -181,14 +181,14 @@ flowchart LR
   classDef recon  fill:#e6f7ee,stroke:#0f8a4f,color:#0f8a4f,stroke-dasharray: 4 2
 
   EXT[External API]:::src
-  S3R[(S3 raw\nJSONL.gz)]:::store
-  FC[(file_catalogue\nrow per archive)]:::store
-  S3C[(S3 curated\nParquet)]:::store
-  KRAW[Kafka raw\nods.dom.ds]:::kafka
+  S3R[("S3 raw<br/>JSONL.gz")]:::store
+  FC[("file_catalogue<br/>row per archive")]:::store
+  S3C[("S3 curated<br/>Parquet")]:::store
+  KRAW["Kafka raw<br/>ods.dom.ds"]:::kafka
   KCAN[Kafka canonical]:::kafka
-  PG[(Postgres\nods.dom_ds)]:::pg
+  PG[("Postgres<br/>ods.dom_ds")]:::pg
 
-  EXT -- "dag_api_pull poll_one\nbearer auth + cursor" --> S3R
+  EXT -- "dag_api_pull poll_one<br/>bearer auth + cursor" --> S3R
   S3R --> FC
   FC -- "trigger dag_ingest" --> S3C
   S3C --> KRAW
@@ -228,18 +228,18 @@ flowchart LR
   classDef recon  fill:#e6f7ee,stroke:#0f8a4f,color:#0f8a4f,stroke-dasharray: 4 2
 
   EXT[External API]:::src
-  RUN[ods_pipeline.ingest.api_pull_kafka.run_once\nidempotent + transactional Avro producer]:::src
-  KRAW[Kafka raw\nods.dom.ds]:::kafka
-  S3[(S3 archive\nParquet via Connect S3 sink)]:::store
-  PG[(Postgres\nods.dom_ds)]:::pg
+  RUN["api_pull_kafka.run_once<br/>idempotent + transactional Avro producer"]:::src
+  KRAW["Kafka raw<br/>ods.dom.ds"]:::kafka
+  S3[("S3 archive<br/>Parquet via Connect S3 sink")]:::store
+  PG[("Postgres<br/>ods.dom_ds")]:::pg
 
   EXT --> RUN
   RUN -- "produce per-record" --> KRAW
-  KRAW -- "Connect S3 sink\n(time-partitioned)" --> S3
+  KRAW -- "Connect S3 sink time-partitioned" --> S3
   KRAW -- "JDBC sink" --> PG
 
   RP[api_pull_publish_count]:::recon -.-> KRAW
-  R2[T2 sink_count\n(consumer-group offset)]:::recon -.-> PG
+  R2["T2 sink_count<br/>consumer-group offset"]:::recon -.-> PG
 ```
 
 Watermark commit signal flips: instead of waiting on a `dag_ingest`
@@ -266,13 +266,13 @@ flowchart LR
   SFTP[SFTP supplier]:::src
   S3R[(S3 raw\nCSV)]:::store
   S3C[(S3 curated\nParquet)]:::store
-  STG[(Postgres stage\ntemp table per run)]:::pg
-  PG[(Postgres target\nods.dom_ds)]:::pg
+  STG[("Postgres stage<br/>temp table per run")]:::pg
+  PG[("Postgres target<br/>ods.dom_ds")]:::pg
 
   SFTP --> S3R
   S3R -- "Glue ods_ingestion" --> S3C
-  S3C -- "Glue ods_postgres_write\n(append OR stage-and-merge)" --> STG
-  STG -- "INSERT ON CONFLICT\nthen DROP stage" --> PG
+  S3C -- "Glue ods_postgres_write<br/>append OR stage-and-merge" --> STG
+  STG -- "INSERT ON CONFLICT<br/>then DROP stage" --> PG
 
   R[direct_postgres_count]:::recon -.-> PG
 ```
