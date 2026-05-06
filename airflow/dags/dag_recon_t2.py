@@ -16,6 +16,7 @@ from psycopg2 import sql
 
 try:
     import pendulum
+
     from airflow import DAG
     from airflow.decorators import task
 except ImportError:

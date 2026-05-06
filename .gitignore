@@ -10,3 +10,5 @@ build/
 .claude/
 *.zip
 test_results.txt
+.coverage
+coverage.xml

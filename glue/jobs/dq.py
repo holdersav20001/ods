@@ -28,13 +28,12 @@ DQConfigurationError is raised BEFORE any Spark action when:
 
 from __future__ import annotations
 
-from datetime import datetime, date as _date
+from datetime import datetime
 from typing import Optional
 
-from pyspark.sql import DataFrame
+from pyspark.sql import Column, DataFrame
 from pyspark.sql import functions as F
 from pyspark.sql.types import ArrayType, StringType, StructField, StructType
-
 
 # ---------------------------------------------------------------------------
 # Known rule types (used for early validation)

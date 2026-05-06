@@ -16,7 +16,6 @@ import os
 
 import requests
 
-
 CONNECT_URL = os.environ.get("CONNECT_URL", "http://kafka-connect:8083")
 _PG_JDBC    = os.environ.get("JDBC_URL",       "jdbc:postgresql://postgres:5432/ods_dev")
 _PG_USER    = os.environ.get("POSTGRES_USER",   "ods")

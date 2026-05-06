@@ -4,7 +4,6 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 from typing import Any, Mapping
 
-
 FILE_RECORD_FIELDS: tuple[str, ...] = (
     "_ods_file_id",
     "_ods_run_id",

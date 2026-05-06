@@ -1,12 +1,16 @@
-import os, glob
-import pendulum, psycopg2
+import glob
+import os
+import sys
+
+import pendulum
+import psycopg2
+
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 
-import sys
 sys.path.insert(0, os.path.dirname(__file__))
-from common.yaml_loader import sync_to_db
 from common.connector_provisioner import provision_all_from_db
+from common.yaml_loader import sync_to_db
 
 DATASETS_DIR = os.environ.get('DATASETS_DIR', '/opt/airflow/datasets')
 PG_DSN = os.environ.get('PIPELINE_PG_DSN', 'host=postgres port=5432 dbname=ods_dev user=ods password=ods')

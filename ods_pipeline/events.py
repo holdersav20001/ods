@@ -8,7 +8,6 @@ import sys
 
 from ods_pipeline._db import build_dsn
 
-
 TOPIC = "ods.pipeline.run-events"
 _SUBJECT = f"{TOPIC}-value"
 

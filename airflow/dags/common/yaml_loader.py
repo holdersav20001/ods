@@ -1,5 +1,21 @@
-import hashlib, json, yaml
+import hashlib
+import json
+import os
+import sys
 
+import yaml
+
+# Make ods_pipeline importable from this DAG file even when the
+# Airflow scheduler runs us with a stripped sys.path.
+_HERE = os.path.dirname(__file__)
+for _root in (
+    os.path.abspath(os.path.join(_HERE, "..", "..", "..")),
+    os.path.abspath(os.path.join(_HERE, "..", "..")),
+):
+    if _root not in sys.path:
+        sys.path.insert(0, _root)
+
+from ods_pipeline.config import validate_dataset_config  # noqa: E402
 
 # Source-config keys we never persist to dataset_config.source_config.
 # secret_ref names are kept; resolved secret values are looked up at
@@ -35,6 +51,10 @@ def _scrub_secrets(value):
 def sync_to_db(path: str, pg_conn) -> None:
     try:
         cfg = load_dataset_yaml(path)
+        # Fail BEFORE the INSERT so impossible combinations are caught
+        # at sync time with a single operator-readable message rather
+        # than discovered six hours later in a failing run.
+        validate_dataset_config(cfg)
         h = compute_hash(cfg)
         source_type = cfg.get('source_type', 's3_batch')
         delivery = cfg.get('delivery', 'file_pipeline')

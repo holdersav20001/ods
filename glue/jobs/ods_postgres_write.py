@@ -34,12 +34,12 @@ _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-import ods_pipeline  # noqa: E402
+from canonicalize import apply_transform, load_mapping  # noqa: E402
 from pyspark.sql import SparkSession  # noqa: E402
 from pyspark.sql import functions as F  # noqa: E402
-
 from utils import load_dataset_config  # noqa: E402
-from canonicalize import apply_transform, load_mapping  # noqa: E402
+
+import ods_pipeline  # noqa: E402
 
 Stage = ods_pipeline.Stage
 StageEvent = ods_pipeline.StageEvent

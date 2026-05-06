@@ -29,7 +29,6 @@ from __future__ import annotations
 import json
 import uuid
 
-
 TRIGGERED_BY_API_PULL_EDGE = "triggered_by_api_pull"
 
 

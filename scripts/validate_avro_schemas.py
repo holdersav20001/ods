@@ -6,7 +6,6 @@ from pathlib import Path
 
 from fastavro import parse_schema
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 

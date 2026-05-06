@@ -20,7 +20,6 @@ from collections import Counter
 from collections.abc import Iterable
 from typing import Any
 
-
 # ---------------------------------------------------------------------------
 # argparse wiring
 # ---------------------------------------------------------------------------
@@ -197,6 +196,7 @@ def _default_bucket() -> str:  # pragma: no cover
 
 def _connect_pg():  # pragma: no cover
     import os
+
     import psycopg2
     return psycopg2.connect(
         host=os.environ.get("PG_HOST", "127.0.0.1"),
@@ -209,6 +209,7 @@ def _connect_pg():  # pragma: no cover
 
 def _make_producer():  # pragma: no cover
     import os
+
     from confluent_kafka import Producer
     return Producer({"bootstrap.servers": os.environ.get("KAFKA_BOOTSTRAP",
                                                           "localhost:9092")})

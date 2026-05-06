@@ -11,13 +11,11 @@ Run after E2E tests pass.
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 from pathlib import Path
 
 import psycopg2
 import requests
-
 
 OUT = Path("docs/evidence")
 OUT.mkdir(parents=True, exist_ok=True)

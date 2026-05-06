@@ -13,10 +13,10 @@ import boto3
 import paramiko
 import pendulum
 import psycopg2
+
 from airflow import DAG
 from airflow.decorators import task
 from airflow.operators.trigger_dagrun import TriggerDagRunOperator
-
 
 PG_DSN = os.environ.get(
     "PIPELINE_PG_DSN",

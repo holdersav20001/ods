@@ -1,5 +1,7 @@
 from __future__ import annotations
-import os, sys
+
+import os
+import sys
 from dataclasses import dataclass
 
 # Ensure ods_pipeline is importable both locally and in Airflow.
@@ -12,6 +14,7 @@ for _root in (
         sys.path.insert(0, _root)
 
 import ods_pipeline
+
 
 @dataclass
 class T0Result:

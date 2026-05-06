@@ -15,7 +15,6 @@ from __future__ import annotations
 from ods_pipeline.models import PatternType, Stage
 from ods_pipeline.patterns.base import IngestionPattern, register
 
-
 # Stages emitted by the api_pull control-plane (poller + dag_api_pull).
 # Downstream stages (raw_read, schema_validate, ...) are emitted by the
 # triggered dag_ingest run and are not duplicated here.

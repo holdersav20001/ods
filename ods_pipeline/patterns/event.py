@@ -9,7 +9,6 @@ from __future__ import annotations
 from ods_pipeline.models import PatternType, Stage
 from ods_pipeline.patterns.base import IngestionPattern, register
 
-
 EVENT_DEMO = register(IngestionPattern(
     name="insurance.event_demo",
     pattern_type=PatternType.EVENT,

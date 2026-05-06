@@ -1,6 +1,5 @@
 # glue/jobs/utils.py
 import hashlib
-import json
 import os
 import re
 import sys
@@ -141,6 +140,7 @@ def upsert_run_header(
     parents=None,
 ) -> None:
     import psycopg2
+
     from ods_pipeline import runs
 
     with psycopg2.connect(pg_dsn) as conn:
@@ -161,6 +161,7 @@ def upsert_run_header(
 
 def update_run_fields(pg_dsn, run_id, **fields) -> None:
     import psycopg2
+
     from ods_pipeline import runs
 
     with psycopg2.connect(pg_dsn) as conn:
@@ -186,6 +187,7 @@ def write_stage_row(
     spark_app_id=None,
 ) -> None:
     import psycopg2
+
     from ods_pipeline import stages
 
     kwargs = {

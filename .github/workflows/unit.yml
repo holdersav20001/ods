@@ -6,6 +6,28 @@ on:
     branches: [main]
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      # ruff config in pyproject.toml — explicit minimal rule set so the
+      # baseline is green on day one. Promotion is one rule family per PR.
+      # `ruff format --check` is intentionally NOT in CI yet: existing
+      # files are formatted by black via pre-commit; once everything is
+      # converted to ruff format the check can be added.
+      - name: ruff check
+        run: ruff check .
+
   unit:
     runs-on: ubuntu-latest
     steps:
@@ -20,8 +42,50 @@ jobs:
       - name: Install dependencies
         run: python -m pip install -r requirements-dev.txt
 
-      - name: Run unit tests
-        run: python -m pytest tests/unit -q
+      # Coverage tracked via pytest-cov; threshold is per-package and
+      # tightened gradually. --cov-fail-under is set conservatively for
+      # the ods_pipeline core; loosen with care.
+      - name: Run unit tests with coverage
+        run: |
+          python -m pytest tests/unit -q \
+            --cov=ods_pipeline \
+            --cov-report=term-missing \
+            --cov-report=xml \
+            --cov-fail-under=70
+
+      - name: Upload coverage XML
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: coverage.xml
 
       - name: Validate Avro schemas
         run: python scripts/validate_avro_schemas.py
+
+      - name: Validate dataset configs
+        run: |
+          python -c "
+          import glob, sys, yaml
+          from ods_pipeline.config import validate_dataset_config, DatasetConfigError
+          fails = []
+          paths = glob.glob('patterns/**/*.yaml', recursive=True) + glob.glob('datasets/**/*.yaml', recursive=True)
+          for path in paths:
+              with open(path) as f:
+                  cfg = yaml.safe_load(f)
+              if not isinstance(cfg, dict):
+                  continue
+              if 'source_type' not in cfg and 'target_topic' not in cfg and 'delivery' not in cfg:
+                  continue
+              if 'domain' not in cfg or 'dataset' not in cfg:
+                  continue
+              try:
+                  validate_dataset_config(cfg)
+              except DatasetConfigError as e:
+                  fails.append((path, str(e)))
+          for p, m in fails:
+              print(f'FAIL {p}: {m}')
+          if fails:
+              sys.exit(1)
+          print(f'all {len(paths)} yamls checked, no validator failures')
+          "

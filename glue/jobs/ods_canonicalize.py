@@ -14,7 +14,6 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 import boto3
-import ods_pipeline
 from canonicalize import apply_transform, load_mapping, matches_context
 from confluent_kafka import Consumer, Producer, TopicPartition
 from confluent_kafka.schema_registry import SchemaRegistryClient
@@ -22,8 +21,9 @@ from confluent_kafka.schema_registry.avro import AvroDeserializer, AvroSerialize
 from confluent_kafka.serialization import MessageField, SerializationContext, StringSerializer
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
-
 from utils import generate_message_key, load_dataset_config
+
+import ods_pipeline
 
 Stage = ods_pipeline.Stage
 StageEvent = ods_pipeline.StageEvent

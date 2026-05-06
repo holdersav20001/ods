@@ -9,7 +9,6 @@ import requests
 
 from ods_pipeline.offsets import normalise_offset_map, partitions_consumed
 
-
 CONNECT_URL = os.environ.get("CONNECT_URL", "http://kafka-connect:8083")
 
 

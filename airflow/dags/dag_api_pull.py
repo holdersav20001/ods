@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 import boto3
 import pendulum
 import psycopg2
+
 from airflow import DAG
 from airflow.decorators import task
 from airflow.operators.trigger_dagrun import TriggerDagRunOperator
@@ -46,7 +47,6 @@ from ods_pipeline.ingest.api_pull import (
 )
 from ods_pipeline.ingest.api_pull_kafka import run_once as run_once_direct_kafka
 from ods_pipeline.models import Stage, StageEvent
-
 
 PG_DSN = os.environ.get(
     "PIPELINE_PG_DSN",

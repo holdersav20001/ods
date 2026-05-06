@@ -19,12 +19,9 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-import uuid
 
 import psycopg2
-
-from utils import upsert_run_header, update_run_fields, write_stage_row
-
+from utils import update_run_fields, upsert_run_header, write_stage_row
 
 # Slot definitions: which staging table owns which columns.
 # Derived from dataset_config at runtime; also encoded here as fallback.

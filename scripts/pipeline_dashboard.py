@@ -11,10 +11,10 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime, date
+import uuid as _uuid
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
-import uuid as _uuid
 
 import psycopg2
 import psycopg2.extras
@@ -67,8 +67,8 @@ def _json(data: Any) -> JSONResponse:
 
 def _kafka_topics() -> list[dict]:
     try:
+        from confluent_kafka import Consumer, TopicPartition
         from confluent_kafka.admin import AdminClient
-        from confluent_kafka import TopicPartition, Consumer
 
         admin = AdminClient({"bootstrap.servers": BOOTSTRAP})
         meta = admin.list_topics(timeout=5)
@@ -125,8 +125,8 @@ def _kafka_topics() -> list[dict]:
 
 def _consumer_lag() -> list[dict]:
     try:
+        from confluent_kafka import Consumer, TopicPartition
         from confluent_kafka.admin import AdminClient
-        from confluent_kafka import TopicPartition, Consumer
 
         admin = AdminClient({"bootstrap.servers": BOOTSTRAP})
         groups_result = admin.list_consumer_groups(request_timeout=10).result()
@@ -318,7 +318,7 @@ async def api_run_events(
         from confluent_kafka import Consumer, TopicPartition
         from confluent_kafka.schema_registry import SchemaRegistryClient
         from confluent_kafka.schema_registry.avro import AvroDeserializer
-        from confluent_kafka.serialization import SerializationContext, MessageField
+        from confluent_kafka.serialization import MessageField, SerializationContext
 
         TOPIC = "ods.pipeline.run-events"
         sr = SchemaRegistryClient({"url": SR_URL})

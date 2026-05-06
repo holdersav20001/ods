@@ -16,3 +16,40 @@ markers = [
 filterwarnings = [
     "ignore::DeprecationWarning",
 ]
+
+[tool.coverage.run]
+source = ["ods_pipeline"]
+branch = true
+omit = [
+    "ods_pipeline/ops/__main__.py",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+precision = 1
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+extend-exclude = [
+    ".venv",
+    "build",
+    "dist",
+]
+
+[tool.ruff.lint]
+# Start small: syntax errors, undefined names, unused imports, sorted imports.
+# Tighten over time; promotion is one PR per rule family so the diff stays
+# reviewable.
+select = ["E9", "F63", "F7", "F82", "F401", "I001"]
+# Existing test files use ``from x import *`` patterns and shadow imports;
+# silence those for now via per-file ignores rather than blanket-disabling.
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["F401", "I001"]
+"airflow/dags/**" = ["F401"]

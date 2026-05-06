@@ -25,18 +25,18 @@ _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-import ods_pipeline
 from confluent_kafka import Consumer, Producer, TopicPartition
 from confluent_kafka.schema_registry import SchemaRegistryClient
 from confluent_kafka.schema_registry.avro import AvroSerializer
 from confluent_kafka.serialization import MessageField, SerializationContext, StringSerializer
+from dq import evaluate_dq_rules
 from pyspark.sql import SparkSession
-
 from utils import (
     generate_message_key,
     load_dataset_config,
 )
-from dq import evaluate_dq_rules
+
+import ods_pipeline
 
 Stage = ods_pipeline.Stage
 StageEvent = ods_pipeline.StageEvent

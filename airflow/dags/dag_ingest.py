@@ -13,6 +13,7 @@ import uuid
 
 import pendulum
 import psycopg2
+
 from airflow import DAG
 from airflow.decorators import task
 from airflow.operators.empty import EmptyOperator
@@ -30,10 +31,9 @@ for _root in (
     if _root not in sys.path:
         sys.path.insert(0, _root)
 
-import ods_pipeline
-
 from common.connect_admin import wait_until_offset_consumed
 
+import ods_pipeline
 
 PG_DSN = os.environ.get(
     "PIPELINE_PG_DSN",

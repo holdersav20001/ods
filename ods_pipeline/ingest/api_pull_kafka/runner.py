@@ -15,8 +15,6 @@ runner unit-testable without psycopg2.
 """
 from __future__ import annotations
 
-import io
-import json
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -29,7 +27,6 @@ from urllib3.util.retry import Retry
 from ods_pipeline import metadata as _metadata
 from ods_pipeline.ingest.api_pull.auth import AuthProvider, build_auth
 from ods_pipeline.ingest.api_pull.cursors import Cursor, CursorRequest, build_cursor
-
 
 # ---------------------------------------------------------------------------
 # Result type

@@ -22,17 +22,17 @@ _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-import ods_pipeline
 import requests
+from dq import evaluate_dq_rules
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import StructType
-
 from utils import (
     extract_business_date,
     load_dataset_config,
 )
-from dq import evaluate_dq_rules
+
+import ods_pipeline
 
 Stage = ods_pipeline.Stage
 StageEvent = ods_pipeline.StageEvent
@@ -236,7 +236,9 @@ def _run_impl(conn, run_id: str, domain: str, dataset: str, s3_input_path: str,
     # ------------------------------------------------------------------
     # Step 3b — Register file in file_catalogue (upsert on MD5)
     # ------------------------------------------------------------------
-    import boto3 as _boto3, hashlib as _hashlib
+    import hashlib as _hashlib
+
+    import boto3 as _boto3
     _s3_client = _boto3.client(
         "s3",
         endpoint_url=os.environ.get("LOCALSTACK_ENDPOINT") or os.environ.get("S3_ENDPOINT"),

@@ -13,7 +13,6 @@ from __future__ import annotations
 from ods_pipeline.models import PatternType, Stage
 from ods_pipeline.patterns.base import IngestionPattern, register
 
-
 _FILE_STAGES = (
     Stage.RAW_READ,
     Stage.SCHEMA_VALIDATE,

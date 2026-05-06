@@ -1,7 +1,7 @@
 """IngestionPattern dataclass + registry."""
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from ods_pipeline.models import PATTERN_CORRELATION_FIELD, PatternType, Stage
 

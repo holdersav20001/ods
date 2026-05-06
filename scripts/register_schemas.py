@@ -2,7 +2,7 @@
 """Register all Avro schemas from schemas/ into Confluent Schema Registry."""
 import json
 import os
-import sys
+
 import requests
 
 SCHEMA_REGISTRY = os.getenv("SCHEMA_REGISTRY_URL", "http://localhost:8081")

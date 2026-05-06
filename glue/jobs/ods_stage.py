@@ -22,18 +22,16 @@ import sys
 
 import psycopg2
 import requests
+from dq import evaluate_dq_rules
 from pyspark.sql import SparkSession
-from pyspark.sql import functions as F
-
 from utils import (
     extract_business_date,
     get_file_state,
     set_file_state,
-    upsert_run_header,
     update_run_fields,
+    upsert_run_header,
     write_stage_row,
 )
-from dq import evaluate_dq_rules
 
 
 def _get_pg_conn():

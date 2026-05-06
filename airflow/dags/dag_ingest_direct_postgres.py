@@ -20,6 +20,7 @@ import uuid
 
 import pendulum
 import psycopg2
+
 from airflow import DAG
 from airflow.decorators import task
 from airflow.operators.python import get_current_context
@@ -36,7 +37,6 @@ for _root in (
         sys.path.insert(0, _root)
 
 import ods_pipeline
-
 
 PG_DSN = os.environ.get(
     "PIPELINE_PG_DSN",
