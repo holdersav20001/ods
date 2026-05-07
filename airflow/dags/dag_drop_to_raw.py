@@ -1,6 +1,11 @@
 """dag_drop_to_raw — scan SFTP, hash files, register new ones in pipeline.file_catalogue,
-upload to S3 raw, and trigger dag_ingest per new file. Idempotent via (domain, dataset, file_md5)
-unique constraint.
+upload to S3 raw, and trigger the appropriate downstream DAG per file based on the
+``delivery`` column in pipeline.dataset_config.
+
+Routing is SQL-driven: two scan tasks each query dataset_config with a delivery filter
+(``file_pipeline`` -> dag_ingest, ``direct_postgres`` -> dag_ingest_direct_postgres) and
+emit only files for that route. Idempotent via the (domain, dataset, s3_raw_path)
+uniqueness check on pipeline.file_catalogue.
 """
 from __future__ import annotations
 
@@ -46,15 +51,22 @@ def _s3():
     )
 
 
-def _datasets(conn):
+def _datasets_for_delivery(conn, delivery: str):
+    """Return active s3_batch datasets whose ``delivery`` column matches.
+
+    The COALESCE keeps backward-compat for rows where delivery is NULL — those
+    default to ``file_pipeline``.
+    """
     with conn.cursor() as cur:
         cur.execute(
             """
-            SELECT domain, dataset, filename_pattern,
-                   COALESCE(delivery, 'file_pipeline')
+            SELECT domain, dataset, filename_pattern
               FROM pipeline.dataset_config
-             WHERE active = TRUE AND source_type = 's3_batch'
-            """
+             WHERE active = TRUE
+               AND source_type = 's3_batch'
+               AND COALESCE(delivery, 'file_pipeline') = %s
+            """,
+            (delivery,),
         )
         return cur.fetchall()
 
@@ -68,8 +80,15 @@ def _extract_business_date(match: re.Match) -> str:
     return f"{bd[:4]}-{bd[4:6]}-{bd[6:8]}"
 
 
-@task
-def scan_and_register():
+def _scan_and_register(delivery: str) -> list[dict]:
+    """Per-route scanner: list SFTP /upload, match against datasets filtered by
+    ``delivery``, hash + upload to S3, register new rows in file_catalogue, and
+    return the list of new file conf dicts to feed into TriggerDagRunOperator.
+
+    Idempotency: a SELECT on (domain, dataset, s3_raw_path) gates the INSERT, so
+    re-running this task over the same SFTP file list does not produce duplicate
+    file_catalogue rows.
+    """
     conn = psycopg2.connect(PG_DSN)
     sftp, transport = _sftp()
     s3 = _s3()
@@ -81,9 +100,9 @@ def scan_and_register():
         except IOError:
             files = []
 
-        datasets = _datasets(conn)
+        datasets = _datasets_for_delivery(conn, delivery)
         for filename in files:
-            for domain, dataset, pattern, delivery in datasets:
+            for domain, dataset, pattern in datasets:
                 m = re.match(pattern, filename)
                 if not m:
                     continue
@@ -132,7 +151,6 @@ def scan_and_register():
                         "domain": domain,
                         "dataset": dataset,
                         "business_date": bd_iso,
-                        "delivery": delivery,
                     }
                 )
                 break
@@ -146,24 +164,15 @@ def scan_and_register():
 
 
 @task
-def split_by_delivery(files: list[dict]) -> dict:
-    """Partition new files by ``delivery`` so each TriggerDagRunOperator
-    routes to the right downstream DAG."""
-    by_delivery = {"file_pipeline": [], "direct_postgres": []}
-    for f in files or []:
-        d = f.get("delivery", "file_pipeline")
-        by_delivery.setdefault(d, []).append(f)
-    return by_delivery
+def scan_and_register_for_dag_ingest() -> list[dict]:
+    """Scan SFTP for files matching datasets with delivery='file_pipeline'."""
+    return _scan_and_register("file_pipeline")
 
 
 @task
-def for_kafka(routes: dict) -> list[dict]:
-    return routes.get("file_pipeline", [])
-
-
-@task
-def for_direct_pg(routes: dict) -> list[dict]:
-    return routes.get("direct_postgres", [])
+def scan_and_register_for_direct_postgres() -> list[dict]:
+    """Scan SFTP for files matching datasets with delivery='direct_postgres'."""
+    return _scan_and_register("direct_postgres")
 
 
 with DAG(
@@ -174,13 +183,15 @@ with DAG(
     max_active_runs=1,
     tags=["ods"],
 ):
-    files = scan_and_register()
-    routes = split_by_delivery(files)
+    kafka_files = scan_and_register_for_dag_ingest()
+    direct_pg_files = scan_and_register_for_direct_postgres()
+
     TriggerDagRunOperator.partial(
         task_id="trigger_ingest",
         trigger_dag_id="dag_ingest",
-    ).expand(conf=for_kafka(routes))
+    ).expand(conf=kafka_files)
+
     TriggerDagRunOperator.partial(
         task_id="trigger_ingest_direct_postgres",
         trigger_dag_id="dag_ingest_direct_postgres",
-    ).expand(conf=for_direct_pg(routes))
+    ).expand(conf=direct_pg_files)
