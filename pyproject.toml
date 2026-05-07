@@ -18,7 +18,17 @@ filterwarnings = [
 ]
 
 [tool.coverage.run]
-source = ["ods_pipeline"]
+# Coverage gate spans the four "real code" packages. Top-level
+# airflow/dags/*.py DAG files are excluded — they're orchestration glue
+# (DAG factory wiring, default_args, schedule cron strings) where unit
+# tests have low signal. The reusable helpers under airflow/dags/common
+# ARE measured because they're imported and called like normal modules.
+source = [
+    "ods_pipeline",
+    "glue/jobs",
+    "services",
+    "airflow/dags/common",
+]
 branch = true
 omit = [
     "ods_pipeline/ops/__main__.py",

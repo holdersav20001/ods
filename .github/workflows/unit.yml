@@ -42,16 +42,27 @@ jobs:
       - name: Install dependencies
         run: python -m pip install -r requirements-dev.txt
 
-      # Coverage tracked via pytest-cov; threshold is per-package and
-      # tightened gradually. --cov-fail-under is set conservatively for
-      # the ods_pipeline core; loosen with care.
+      # Coverage gate spans ods_pipeline + glue/jobs + services +
+      # airflow/dags/common (the reusable orchestration helpers, not the
+      # top-level DAG factory files). Threshold is the COMBINED total
+      # measured at gate-introduction time minus a small slack so CI is
+      # green day one. Tighten with care: this number protects against
+      # silent dead-branches in glue/jobs and services where coverage
+      # was previously zero.
       - name: Run unit tests with coverage
         run: |
           python -m pytest tests/unit -q \
             --cov=ods_pipeline \
+            --cov=glue/jobs \
+            --cov=services \
+            --cov=airflow/dags/common \
             --cov-report=term-missing \
             --cov-report=xml \
-            --cov-fail-under=70
+            --cov-fail-under=40
+
+      - name: Per-package coverage summary
+        if: always()
+        run: python scripts/coverage_per_package_summary.py coverage.xml
 
       - name: Upload coverage XML
         if: always()
