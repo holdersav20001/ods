@@ -1,7 +1,31 @@
-"""pipeline.run_stage_log operations."""
+"""pipeline.run_stage_log operations.
+
+Stateless control-plane contract
+--------------------------------
+
+Every helper here defaults to ``commit=True`` — each stage row is its own
+durable checkpoint. Long pipelines therefore expose live progress on the
+operator dashboard and survive worker death without leaving an open
+transaction holding row locks.
+
+The trade-off is that the application code must explicitly write a
+``stage_failed`` row in its exception handler. The :func:`stage_scope`
+context manager below packages that discipline so callers can't forget:
+
+    >>> with stage_scope(conn, run_id=run_id, stage=Stage.MESSAGE_RECEIVE,
+    ...                  record_count_in=1):
+    ...     do_work()                    # success → stage_completed
+    ...                                  # raise   → stage_failed
+
+If even the failure write fails (DB flapping, connection dead) the
+context manager swallows the secondary error so the original work
+exception still propagates; a heartbeat-staleness janitor closes any
+``status='running'`` rows it leaves behind.
+"""
 from __future__ import annotations
 
 import json
+from contextlib import contextmanager
 
 from ods_pipeline.models import StageEvent
 
@@ -85,16 +109,54 @@ def write(
         raise
 
 
-def start(conn, *, run_id: str, stage: str, **kwargs) -> None:
-    """Open a stage attempt with ``status='running'`` and ``ended_at=NULL``."""
+def next_attempt_number(conn, *, run_id: str, stage: str) -> int:
+    """Return the next free ``attempt_number`` for ``(run_id, stage)``.
+
+    Stateless control-plane retries leave durable stage rows from the
+    failed attempts; the unique index on ``(run_id, stage, event_type,
+    attempt_number)`` requires the new attempt to use ``MAX+1`` rather
+    than always 1.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT COALESCE(MAX(attempt_number), 0) + 1
+              FROM pipeline.run_stage_log
+             WHERE run_id=%s AND stage=%s
+            """,
+            (run_id, stage),
+        )
+        row = cur.fetchone()
+        return int(row[0]) if row and row[0] is not None else 1
+
+
+def start(
+    conn,
+    *,
+    run_id: str,
+    stage: str,
+    attempt_number: int | None = None,
+    **kwargs,
+) -> int:
+    """Open a stage attempt with ``status='running'`` and ``ended_at=NULL``.
+
+    When ``attempt_number`` is omitted, :func:`next_attempt_number` is
+    consulted so retries land on a fresh row instead of colliding on the
+    unique index. Returns the attempt number used so the caller can pass
+    it to a later :func:`finish` for the same attempt.
+    """
+    if attempt_number is None:
+        attempt_number = next_attempt_number(conn, run_id=run_id, stage=stage)
     write(
         conn,
         run_id=run_id,
         stage=stage,
         status="running",
         event_type=StageEvent.STARTED,
+        attempt_number=attempt_number,
         **kwargs,
     )
+    return attempt_number
 
 
 def finish(
@@ -205,3 +267,101 @@ def finish(
         if commit:
             conn.rollback()
         raise
+
+
+@contextmanager
+def stage_scope(
+    conn,
+    *,
+    run_id: str,
+    stage: str,
+    record_count_in: int | None = None,
+    input_ref: str | None = None,
+    metrics: dict | None = None,
+    truncate_error: int = 500,
+):
+    """Context manager that opens a stage on entry and closes it on exit.
+
+    Stateless-control-plane contract:
+
+    * On entry: writes ``stage_started`` (with auto-incremented
+      ``attempt_number``) and commits. Live on the dashboard immediately.
+    * On clean exit: writes ``stage_completed``. The caller may yield a
+      result dict via ``ctx.set_result(...)`` — its keys merge into the
+      finish call so ``output_ref``, ``record_count_out``, etc. land on
+      the same row.
+    * On exception: writes ``stage_failed`` with the exception message
+      (truncated to ``truncate_error`` chars) and re-raises the original.
+      If the failure write itself fails, swallow that secondary error —
+      the heartbeat janitor will close the row.
+
+    Usage:
+
+        with stage_scope(conn, run_id=rid, stage=Stage.MESSAGE_RECEIVE) as s:
+            count = do_work()
+            s.set_result(record_count_out=count, output_ref="s3://...")
+    """
+    attempt = start(
+        conn,
+        run_id=run_id,
+        stage=stage,
+        record_count_in=record_count_in,
+        input_ref=input_ref,
+        metrics=metrics,
+    )
+    box: dict = {
+        "record_count_out": None,
+        "output_ref": None,
+        "metrics": None,
+    }
+
+    class _Scope:
+        attempt_number = attempt
+
+        def set_result(self, **fields) -> None:
+            for key, value in fields.items():
+                if key not in box:
+                    raise KeyError(
+                        f"stage_scope only accepts {sorted(box)}; got {key!r}"
+                    )
+                box[key] = value
+
+    try:
+        yield _Scope()
+    except BaseException as exc:
+        # BaseException catches SystemExit / KeyboardInterrupt — those
+        # also leave the stage row stuck if we don't close it.
+        try:
+            finish(
+                conn,
+                run_id=run_id,
+                stage=stage,
+                status="failed",
+                event_type=StageEvent.FAILED,
+                attempt_number=attempt,
+                record_count_in=record_count_in,
+                record_count_out=box["record_count_out"],
+                output_ref=box["output_ref"],
+                metrics=box["metrics"],
+                error=str(exc)[:truncate_error] if str(exc) else type(exc).__name__,
+            )
+        except Exception:
+            # Last-ditch — heartbeat janitor catches any orphaned row.
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        raise
+    else:
+        finish(
+            conn,
+            run_id=run_id,
+            stage=stage,
+            status="succeeded",
+            event_type=StageEvent.COMPLETED,
+            attempt_number=attempt,
+            record_count_in=record_count_in,
+            record_count_out=box["record_count_out"],
+            output_ref=box["output_ref"],
+            metrics=box["metrics"],
+        )

@@ -1,18 +1,21 @@
-"""Atomicity contract for ``ods_pipeline.messages.record_result`` (B4).
+"""Stateless write-order contract for ``ods_pipeline.messages.record_result``.
 
-Acceptance per plan §Task 3:
+Updated 2026-05-07. The original contract (B4) was atomic-bundle: every
+helper call used ``commit=False`` and the caller wrapped the flow in a
+single transaction. We've moved to a stateless model where each helper
+commits independently and the strict write order (stages → archive →
+reconciliation → run.status) is what guarantees the dashboard never sees
+``status='succeeded'`` without a matching recon row.
 
-* ``record_result`` accepts an externally-managed connection and **does not
-  commit** internally.
-* Caller wraps the entire flow in a single transaction and commits once at
-  the end.
-* On a simulated mid-flow exception (raise after ``stages.write`` but before
-  ``reconciliation.write_check``), the database holds **neither** stage rows
-  for that run **nor** any reconciliation_log row — i.e. the whole flow
-  rolls back as one unit.
-* Stage idempotency: re-invoking ``stages.start`` for the same
-  ``(run_id, stage, attempt_number)`` is a no-op (constraint from migration
-  19, partial unique index on ``event_type='stage_started'``).
+This file now verifies the stateless invariants:
+
+* Stage rows committed before a mid-flow failure remain durable — that's
+  the live-progress signal the dashboard relies on.
+* Reconciliation row is NOT written when the recon helper raises.
+* ``run_log.status`` is NOT flipped to ``succeeded`` when reconciliation
+  failed — the run remains ``running`` until the heartbeat janitor reaps
+  it (or the caller's ``except`` block writes ``status='failed'``).
+* Stage idempotency under migration 19 (unchanged).
 """
 from __future__ import annotations
 
@@ -55,19 +58,23 @@ def _recon_count(conn, rid):
         return cur.fetchone()[0]
 
 
-def test_record_result_rolls_back_when_recon_raises(pg_conn, isolated_run, monkeypatch):
-    """Mid-flow exception leaves no partial rows.
+def test_record_result_failure_keeps_stages_but_not_recon_or_succeeded(
+    pg_conn, isolated_run, monkeypatch,
+):
+    """Stateless contract — mid-flow failure leaves staged progress.
 
-    Sequence: caller opens tx, calls messages.start_run (writes run_log +
-    message_receive started row), calls record_result which proceeds through
-    finish + several writes, then write_check raises before recon row is
-    written.  The caller's `with conn:` block rolls back; the entire flow
-    must be invisible.
+    Sequence: ``start_run`` opens the run; ``record_result`` proceeds
+    through stage writes; the recon helper raises. After the failure:
+
+    * Stage rows that committed BEFORE recon remain visible (live
+      dashboard progress — that's the point of going stateless).
+    * NO ``reconciliation_log`` row exists for the run.
+    * ``run_log.status`` has NOT been flipped to ``succeeded`` — the
+      run-status update happens AFTER reconciliation by design, so the
+      "succeeded ⇒ recon present" invariant always holds.
     """
     rid = isolated_run
 
-    # Start the run + open the receive stage in its own committed tx, so we
-    # have a baseline for "rows written by record_result only".
     messages.start_run(
         pg_conn,
         run_id=rid,
@@ -77,37 +84,42 @@ def test_record_result_rolls_back_when_recon_raises(pg_conn, isolated_run, monke
         correlation={"source_batch_id": "batch-1"},
         expected_count=10,
     )
-    pg_conn.commit()
     baseline_stages = _stage_count(pg_conn, rid)
     assert baseline_stages == 1, "start_run should have written one stage_started row"
     assert _recon_count(pg_conn, rid) == 0
 
-    boom = RuntimeError("simulated reconciliation failure mid-flow")
-
     def explode(*args, **kwargs):
-        raise boom
+        raise RuntimeError("simulated reconciliation failure mid-flow")
 
     monkeypatch.setattr(reconciliation, "write_check", explode)
 
     with pytest.raises(RuntimeError, match="simulated reconciliation failure"):
-        with pg_conn:  # commits on success, rollbacks on exception
-            messages.record_result(
-                pg_conn,
-                run_id=rid,
-                domain="insurance",
-                dataset="claims_event",
-                source_count=10,
-                published_count=10,
-            )
+        messages.record_result(
+            pg_conn,
+            run_id=rid,
+            domain="insurance",
+            dataset="claims_event",
+            source_count=10,
+            published_count=10,
+        )
 
-    # The connection's tx is rolled back. record_result wrote stage rows
-    # before write_check raised; those writes must NOT be visible.
-    pg_conn.rollback()  # release any leftover idle-in-tx state
-    assert _stage_count(pg_conn, rid) == baseline_stages, (
-        "stage rows written inside record_result before the recon failure "
-        "must not be visible after rollback"
+    # Stages that committed before recon are durable — operators can see
+    # exactly how far the run got.
+    assert _stage_count(pg_conn, rid) > baseline_stages, (
+        "stateless contract: stage rows committed before the recon failure "
+        "MUST remain visible so the dashboard reflects progress"
     )
+    # The recon row never landed → recon panel still empty.
     assert _recon_count(pg_conn, rid) == 0
+    # Critically: run_log.status was NOT flipped to succeeded — runs.update
+    # runs AFTER reconciliation in the stateless ordering.
+    with pg_conn.cursor() as cur:
+        cur.execute("SELECT status FROM pipeline.run_log WHERE run_id=%s", (rid,))
+        (status,) = cur.fetchone()
+    assert status == "running", (
+        "run must remain 'running' when reconciliation fails — "
+        "succeeded would imply the recon proof landed, which it didn't"
+    )
 
 
 def test_record_result_commits_atomically_on_success(pg_conn, isolated_run):

@@ -1,0 +1,256 @@
+<mxfile host="Claude">
+  <diagram id="cp-seq" name="Control Plane — Event Pattern Sequence">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1500" pageHeight="1450" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <!-- Title -->
+        <mxCell id="title" value="Event-Pattern Ingestion — control-plane writes per request" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=15;fontStyle=1;fontColor=#1F5C8B;" vertex="1" parent="1">
+          <mxGeometry x="0" y="20" width="1500" height="36" as="geometry"/>
+        </mxCell>
+        <mxCell id="subtitle" value="POST /events  →  one transaction wraps every Postgres write" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=11;fontStyle=2;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="0" y="56" width="1500" height="24" as="geometry"/>
+        </mxCell>
+
+        <!-- Lifelines (5 actors) -->
+        <mxCell id="L1head" value="HTTP&#10;Client" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE0B2;strokeColor=#E65100;fontSize=10;fontStyle=1;arcSize=15;" vertex="1" parent="1">
+          <mxGeometry x="80" y="100" width="140" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="L1line" style="endArrow=none;dashed=1;strokeColor=#E65100;strokeWidth=1;opacity=35;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="150" y="150" as="sourcePoint"/>
+            <mxPoint x="150" y="1380" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="L2head" value="event_api.ingest_event&#10;(FastAPI handler)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#C8E6C9;strokeColor=#2E7D32;fontSize=10;fontStyle=1;arcSize=15;" vertex="1" parent="1">
+          <mxGeometry x="320" y="100" width="220" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="L2line" style="endArrow=none;dashed=1;strokeColor=#2E7D32;strokeWidth=1;opacity=35;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="430" y="150" as="sourcePoint"/>
+            <mxPoint x="430" y="1380" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="L3head" value="S3&#10;(archive bucket)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF9C4;strokeColor=#F9A825;fontSize=10;fontStyle=1;arcSize=15;" vertex="1" parent="1">
+          <mxGeometry x="640" y="100" width="160" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="L3line" style="endArrow=none;dashed=1;strokeColor=#F9A825;strokeWidth=1;opacity=35;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="720" y="150" as="sourcePoint"/>
+            <mxPoint x="720" y="1380" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="L4head" value="Postgres&#10;pipeline.* (control plane)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DCEEFB;strokeColor=#1565C0;fontSize=10;fontStyle=1;arcSize=15;" vertex="1" parent="1">
+          <mxGeometry x="900" y="100" width="240" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="L4line" style="endArrow=none;dashed=1;strokeColor=#1565C0;strokeWidth=1;opacity=35;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1020" y="150" as="sourcePoint"/>
+            <mxPoint x="1020" y="1380" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="L5head" value="Kafka&#10;ods.&lt;domain&gt;.&lt;dataset&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EDE0F5;strokeColor=#6A1B9A;fontSize=10;fontStyle=1;arcSize=15;" vertex="1" parent="1">
+          <mxGeometry x="1240" y="100" width="200" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="L5line" style="endArrow=none;dashed=1;strokeColor=#6A1B9A;strokeWidth=1;opacity=35;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1340" y="150" as="sourcePoint"/>
+            <mxPoint x="1340" y="1380" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Step 1: HTTP POST -->
+        <mxCell id="s1n" value="1" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1">
+          <mxGeometry x="40" y="195" width="24" height="24" as="geometry"/>
+        </mxCell>
+        <mxCell id="s1arrow" style="endArrow=block;endFill=1;strokeColor=#E65100;strokeWidth=2;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="150" y="207" as="sourcePoint"/>
+            <mxPoint x="430" y="207" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s1lbl" value="&lt;b&gt;POST /events&lt;/b&gt; — payload + (optional) event_id" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=9;fontColor=#E65100;" vertex="1" parent="1">
+          <mxGeometry x="155" y="183" width="270" height="22" as="geometry"/>
+        </mxCell>
+        <mxCell id="s1note" value="handler mints fresh run_id (UUID)" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;fontSize=8;fontColor=#666666;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="155" y="213" width="270" height="18" as="geometry"/>
+        </mxCell>
+
+        <!-- Step 2: S3 put_object -->
+        <mxCell id="s2n" value="2" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1">
+          <mxGeometry x="40" y="265" width="24" height="24" as="geometry"/>
+        </mxCell>
+        <mxCell id="s2arrow" style="endArrow=block;endFill=1;strokeColor=#F9A825;strokeWidth=2;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="430" y="277" as="sourcePoint"/>
+            <mxPoint x="720" y="277" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s2lbl" value="&lt;b&gt;put_object&lt;/b&gt; — raw/event/&lt;dom&gt;/&lt;ds&gt;/&lt;bd&gt;/&lt;event_id&gt;.jsonl" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=9;fontColor=#F9A825;" vertex="1" parent="1">
+          <mxGeometry x="435" y="253" width="280" height="22" as="geometry"/>
+        </mxCell>
+        <mxCell id="s2note" value="archive BEFORE any DB row — orphan-safe if process dies" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;fontSize=8;fontColor=#666666;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="435" y="283" width="280" height="18" as="geometry"/>
+        </mxCell>
+
+        <!-- Step 3: messages.start_run (3 rows in one call) -->
+        <mxCell id="s3n" value="3" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1">
+          <mxGeometry x="40" y="350" width="24" height="24" as="geometry"/>
+        </mxCell>
+        <mxCell id="s3arrow" style="endArrow=block;endFill=1;strokeColor=#1565C0;strokeWidth=2;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="430" y="362" as="sourcePoint"/>
+            <mxPoint x="1020" y="362" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s3lbl" value="&lt;b&gt;messages.start_run(...)&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=9;fontColor=#1565C0;" vertex="1" parent="1">
+          <mxGeometry x="435" y="338" width="580" height="22" as="geometry"/>
+        </mxCell>
+        <mxCell id="s3note" value="three INSERTs — same transaction" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;fontSize=8;fontColor=#666666;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="435" y="368" width="580" height="18" as="geometry"/>
+        </mxCell>
+
+        <!-- Step 3 detail boxes -->
+        <mxCell id="s3a" value="• run_log row&#10;  status=running, pipeline_type=message_api" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EAF4FB;strokeColor=#1565C0;fontSize=8;align=left;arcSize=8;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="900" y="395" width="240" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="s3b" value="• lineage_edge row&#10;  edge_type=message_correlation, _ods_source_event_id=&lt;event_id&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EAF4FB;strokeColor=#1565C0;fontSize=8;align=left;arcSize=8;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="900" y="440" width="240" height="44" as="geometry"/>
+        </mxCell>
+        <mxCell id="s3c" value="• run_stage_log row&#10;  stage=message_receive, event_type=stage_started" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EAF4FB;strokeColor=#1565C0;fontSize=8;align=left;arcSize=8;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="900" y="489" width="240" height="40" as="geometry"/>
+        </mxCell>
+
+        <!-- Step 4: Kafka publish -->
+        <mxCell id="s4n" value="4" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1">
+          <mxGeometry x="40" y="560" width="24" height="24" as="geometry"/>
+        </mxCell>
+        <mxCell id="s4arrow" style="endArrow=block;endFill=1;strokeColor=#6A1B9A;strokeWidth=2;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="430" y="572" as="sourcePoint"/>
+            <mxPoint x="1340" y="572" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s4lbl" value="&lt;b&gt;producer.produce + flush&lt;/b&gt; — value carries _ods_run_id, _ods_source_event_id" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=9;fontColor=#6A1B9A;" vertex="1" parent="1">
+          <mxGeometry x="435" y="548" width="900" height="22" as="geometry"/>
+        </mxCell>
+        <mxCell id="s4note" value="non-zero flush() return = some message undelivered → goto failure path" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;fontSize=8;fontColor=#666666;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="435" y="578" width="900" height="18" as="geometry"/>
+        </mxCell>
+        <mxCell id="s4ack" style="endArrow=block;endFill=1;dashed=1;strokeColor=#AAAAAA;strokeWidth=1.5;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1340" y="618" as="sourcePoint"/>
+            <mxPoint x="430" y="618" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s4ackl" value="&lt;b&gt;ack&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=9;fontColor=#AAAAAA;" vertex="1" parent="1">
+          <mxGeometry x="435" y="596" width="900" height="22" as="geometry"/>
+        </mxCell>
+
+        <!-- Step 5: messages.record_result (6 writes) -->
+        <mxCell id="s5n" value="5" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1">
+          <mxGeometry x="40" y="685" width="24" height="24" as="geometry"/>
+        </mxCell>
+        <mxCell id="s5arrow" style="endArrow=block;endFill=1;strokeColor=#1565C0;strokeWidth=2;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="430" y="697" as="sourcePoint"/>
+            <mxPoint x="1020" y="697" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s5lbl" value="&lt;b&gt;messages.record_result(...)&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=9;fontColor=#1565C0;" vertex="1" parent="1">
+          <mxGeometry x="435" y="673" width="580" height="22" as="geometry"/>
+        </mxCell>
+        <mxCell id="s5note" value="six writes — all commit=False; the handler owns commit" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;fontSize=8;fontColor=#666666;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="435" y="703" width="580" height="18" as="geometry"/>
+        </mxCell>
+
+        <!-- Step 5 detail boxes -->
+        <mxCell id="s5a" value="• stages.finish(MESSAGE_RECEIVE)&#10;  event_type=stage_completed, in=out=1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EAF4FB;strokeColor=#1565C0;fontSize=8;align=left;arcSize=8;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="900" y="730" width="240" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="s5b" value="• stages.write(MESSAGE_VALIDATE)&#10;  succeeded if validation_fail_count==0 else warned" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EAF4FB;strokeColor=#1565C0;fontSize=8;align=left;arcSize=8;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="900" y="775" width="240" height="44" as="geometry"/>
+        </mxCell>
+        <mxCell id="s5c" value="• stages.write(MESSAGE_ARCHIVE)&#10;  output_ref=s3://… , in=source, out=archive" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EAF4FB;strokeColor=#1565C0;fontSize=8;align=left;arcSize=8;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="900" y="824" width="240" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="s5d" value="• reconciliation_log row&#10;  check_type=message_batch_count, status=ok|failed" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EAF4FB;strokeColor=#1565C0;fontSize=8;align=left;arcSize=8;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="900" y="869" width="240" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="s5e" value="• stages.write(RECON_MESSAGE)&#10;  succeeded|failed mirroring the recon row" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EAF4FB;strokeColor=#1565C0;fontSize=8;align=left;arcSize=8;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="900" y="914" width="240" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="s5f" value="• runs.update(run_log)&#10;  status=succeeded|failed, record_count_*" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EAF4FB;strokeColor=#1565C0;fontSize=8;align=left;arcSize=8;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="900" y="959" width="240" height="40" as="geometry"/>
+        </mxCell>
+
+        <!-- Step 6: COMMIT -->
+        <mxCell id="s6n" value="6" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1">
+          <mxGeometry x="40" y="1030" width="24" height="24" as="geometry"/>
+        </mxCell>
+        <mxCell id="s6arrow" style="endArrow=block;endFill=1;strokeColor=#2E7D32;strokeWidth=3;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="430" y="1042" as="sourcePoint"/>
+            <mxPoint x="1020" y="1042" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s6lbl" value="&lt;b&gt;conn.commit()&lt;/b&gt; — single commit for all 8+ rows above" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=10;fontColor=#2E7D32;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="435" y="1018" width="580" height="22" as="geometry"/>
+        </mxCell>
+        <mxCell id="s6note" value="atomicity boundary: any failure above → conn.rollback() and zero rows persist" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;fontSize=8;fontColor=#666666;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="435" y="1048" width="580" height="18" as="geometry"/>
+        </mxCell>
+
+        <!-- Step 7: response -->
+        <mxCell id="s7n" value="7" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;fontColor=#888888;" vertex="1" parent="1">
+          <mxGeometry x="40" y="1100" width="24" height="24" as="geometry"/>
+        </mxCell>
+        <mxCell id="s7arrow" style="endArrow=block;endFill=1;dashed=1;strokeColor=#E65100;strokeWidth=2;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="430" y="1112" as="sourcePoint"/>
+            <mxPoint x="150" y="1112" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s7lbl" value="&lt;b&gt;200 OK&lt;/b&gt; — { run_id, event_id, archive_uri, accepted: true }" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;fontSize=9;fontColor=#E65100;" vertex="1" parent="1">
+          <mxGeometry x="155" y="1088" width="270" height="22" as="geometry"/>
+        </mxCell>
+
+        <!-- Failure path band -->
+        <mxCell id="failband" value="failure path: if step 4 (Kafka) or step 5 (record_result) raises, the handler calls conn.rollback(), then re-runs record_result with published_count=0 and commits — leaving a closed, failed run row + recon row. Then raises HTTPException(502)." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FDECEA;strokeColor=#C62828;fontSize=8;fontStyle=2;arcSize=8;align=center;" vertex="1" parent="1">
+          <mxGeometry x="80" y="1170" width="1360" height="48" as="geometry"/>
+        </mxCell>
+
+        <!-- Legend -->
+        <mxCell id="legendtitle" value="Legend" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=10;fontStyle=1;fontColor=#1F5C8B;" vertex="1" parent="1">
+          <mxGeometry x="80" y="1240" width="200" height="20" as="geometry"/>
+        </mxCell>
+        <mxCell id="legend1" value="Postgres (control-plane writes)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DCEEFB;strokeColor=#1565C0;fontSize=9;arcSize=12;" vertex="1" parent="1">
+          <mxGeometry x="80" y="1265" width="220" height="28" as="geometry"/>
+        </mxCell>
+        <mxCell id="legend2" value="S3 archive (durable raw)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF9C4;strokeColor=#F9A825;fontSize=9;arcSize=12;" vertex="1" parent="1">
+          <mxGeometry x="320" y="1265" width="180" height="28" as="geometry"/>
+        </mxCell>
+        <mxCell id="legend3" value="Kafka publish" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EDE0F5;strokeColor=#6A1B9A;fontSize=9;arcSize=12;" vertex="1" parent="1">
+          <mxGeometry x="520" y="1265" width="140" height="28" as="geometry"/>
+        </mxCell>
+        <mxCell id="legend4" value="HTTP edge (untrusted)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE0B2;strokeColor=#E65100;fontSize=9;arcSize=12;" vertex="1" parent="1">
+          <mxGeometry x="680" y="1265" width="180" height="28" as="geometry"/>
+        </mxCell>
+        <mxCell id="legend5" value="Atomic commit (single transaction boundary)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;fontSize=9;arcSize=12;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="880" y="1265" width="280" height="28" as="geometry"/>
+        </mxCell>
+
+        <!-- Tables touched summary -->
+        <mxCell id="tablesum" value="Tables written per successful request: 1 row in run_log · 5–6 rows in run_stage_log · 1+ row in lineage_edge · 1 row in reconciliation_log" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F1F8E9;strokeColor=#558B2F;fontSize=10;fontStyle=1;arcSize=8;align=center;" vertex="1" parent="1">
+          <mxGeometry x="80" y="1310" width="1360" height="36" as="geometry"/>
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

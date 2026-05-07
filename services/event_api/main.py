@@ -101,6 +101,12 @@ def build_app(
             raise HTTPException(status_code=500,
                                  detail=f"run start failed: {exc}")
 
+        # Stateless write order: produce → flush → record_result. Each
+        # control-plane helper commits per write, so success and failure
+        # paths just call record_result with a different published_count.
+        # No conn.commit / conn.rollback dance — runs.update inside
+        # record_result is the LAST commit, after stages and recon, so
+        # 'succeeded' implies the proof rows already landed.
         try:
             producer = producer_factory()
             producer.produce(
@@ -129,9 +135,7 @@ def build_app(
                 kafka_topic=pattern.topics[0],
                 archive_ref=f"s3://{archive_bucket}/{archive_key}",
             )
-            conn.commit()
         except Exception as exc:
-            conn.rollback()
             try:
                 messages.record_result(
                     conn,
@@ -146,9 +150,10 @@ def build_app(
                     archive_ref=f"s3://{archive_bucket}/{archive_key}",
                     extra_detail={"error": str(exc)},
                 )
-                conn.commit()
             except Exception:
-                conn.rollback()
+                # Heartbeat janitor catches the orphan run if the
+                # failure-write itself fails (DB momentarily unreachable).
+                pass
             raise HTTPException(status_code=502, detail=f"Kafka publish failed: {exc}")
 
         return IngestResponse(
