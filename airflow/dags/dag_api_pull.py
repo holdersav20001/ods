@@ -216,7 +216,7 @@ def _poll_one_direct_kafka(cfg: dict) -> dict | None:
             kafka_topic=cfg.get("target_topic"),
             config_version_id=cfg.get("config_version_id"),
         )
-        ods_pipeline.stages.start(
+        with ods_pipeline.stages.stage_scope(
             conn,
             run_id=run_id,
             stage=Stage.RAW_POLL,
@@ -226,51 +226,48 @@ def _poll_one_direct_kafka(cfg: dict) -> dict | None:
                 "delivery": "direct_kafka",
                 "committed_cursor_value": watermark.committed_cursor_value,
             },
-        )
-
-        sv = cfg.get("schema_version")
-        if sv is None:
-            log.warning(
-                "schema_version missing for %s.%s; falling back to 'latest'. "
-                "Backfill dataset_config.schema_version to pin the wire shape.",
-                domain, dataset,
+        ) as raw_poll:
+            sv = cfg.get("schema_version")
+            if sv is None:
+                log.warning(
+                    "schema_version missing for %s.%s; falling back to 'latest'. "
+                    "Backfill dataset_config.schema_version to pin the wire shape.",
+                    domain, dataset,
+                )
+                sv = "latest"
+            schema_str = _fetch_schema_str(cfg["schema_id"], sv)
+            published = run_once_direct_kafka(
+                dataset_config={
+                    "domain": domain,
+                    "dataset": dataset,
+                    "schema_id": cfg["schema_id"],
+                    "schema_version": cfg.get("schema_version", 1),
+                    "target_topic": cfg["target_topic"],
+                    "source": source,
+                },
+                kafka_bootstrap=KAFKA_BOOTSTRAP,
+                schema_registry_url=SCHEMA_REGISTRY_URL,
+                schema_str=schema_str,
+                committed_cursor_value=watermark.committed_cursor_value,
+                run_id=run_id,
+                business_date=business_date,
             )
-            sv = "latest"
-        schema_str = _fetch_schema_str(cfg["schema_id"], sv)
-        published = run_once_direct_kafka(
-            dataset_config={
-                "domain": domain,
-                "dataset": dataset,
-                "schema_id": cfg["schema_id"],
-                "schema_version": cfg.get("schema_version", 1),
-                "target_topic": cfg["target_topic"],
-                "source": source,
-            },
-            kafka_bootstrap=KAFKA_BOOTSTRAP,
-            schema_registry_url=SCHEMA_REGISTRY_URL,
-            schema_str=schema_str,
-            committed_cursor_value=watermark.committed_cursor_value,
-            run_id=run_id,
-            business_date=business_date,
-        )
 
-        ods_pipeline.stages.finish(
-            conn,
-            run_id=run_id,
-            stage=Stage.RAW_POLL,
-            status="succeeded" if not published.no_changes else "skipped",
-            event_type=StageEvent.COMPLETED if not published.no_changes else StageEvent.SKIPPED,
-            output_ref=f"kafka://{published.target_topic}",
-            record_count_out=published.record_count,
-            metrics={
-                "page_count": published.page_count,
-                "old_cursor_value": published.old_cursor_value,
-                "new_cursor_value": published.new_cursor_value,
-                "source_request_id": published.source_request_id,
-                "offset_start_by_partition": published.offset_start_by_partition,
-                "offset_end_by_partition": published.offset_end_by_partition,
-            },
-        )
+            if published.no_changes:
+                raw_poll.skip("no_changes")
+            else:
+                raw_poll.set_result(
+                    output_ref=f"kafka://{published.target_topic}",
+                    record_count_out=published.record_count,
+                    metrics={
+                        "page_count": published.page_count,
+                        "old_cursor_value": published.old_cursor_value,
+                        "new_cursor_value": published.new_cursor_value,
+                        "source_request_id": published.source_request_id,
+                        "offset_start_by_partition": published.offset_start_by_partition,
+                        "offset_end_by_partition": published.offset_end_by_partition,
+                    },
+                )
 
         if published.no_changes:
             ods_pipeline.runs.update(
@@ -475,7 +472,7 @@ def poll_one(cfg: dict) -> dict | None:
             kafka_topic=cfg.get("target_topic"),
             config_version_id=cfg.get("config_version_id"),
         )
-        ods_pipeline.stages.start(
+        with ods_pipeline.stages.stage_scope(
             conn,
             run_id=run_id,
             stage=Stage.RAW_POLL,
@@ -484,38 +481,35 @@ def poll_one(cfg: dict) -> dict | None:
                 "cursor_style": cursor_style,
                 "committed_cursor_value": watermark.committed_cursor_value,
             },
-        )
+        ) as raw_poll:
+            archive = poll_and_archive(
+                dataset_config={
+                    "domain": domain,
+                    "dataset": dataset,
+                    "schema_id": cfg.get("schema_id"),
+                    "schema_version": cfg.get("schema_version", 1),
+                    "source": source,
+                },
+                s3_client=_s3(),
+                archive_bucket=S3_RAW_BUCKET,
+                committed_cursor_value=watermark.committed_cursor_value,
+                run_id=run_id,
+                business_date=business_date,
+            )
 
-        archive = poll_and_archive(
-            dataset_config={
-                "domain": domain,
-                "dataset": dataset,
-                "schema_id": cfg.get("schema_id"),
-                "schema_version": cfg.get("schema_version", 1),
-                "source": source,
-            },
-            s3_client=_s3(),
-            archive_bucket=S3_RAW_BUCKET,
-            committed_cursor_value=watermark.committed_cursor_value,
-            run_id=run_id,
-            business_date=business_date,
-        )
-
-        ods_pipeline.stages.finish(
-            conn,
-            run_id=run_id,
-            stage=Stage.RAW_POLL,
-            status="succeeded" if not archive.no_changes else "skipped",
-            event_type=StageEvent.COMPLETED if not archive.no_changes else StageEvent.SKIPPED,
-            output_ref=archive.s3_uri,
-            record_count_out=archive.record_count,
-            metrics={
-                "page_count": archive.page_count,
-                "old_cursor_value": archive.old_cursor_value,
-                "new_cursor_value": archive.new_cursor_value,
-                "source_request_id": archive.source_request_id,
-            },
-        )
+            if archive.no_changes:
+                raw_poll.skip("no_changes")
+            else:
+                raw_poll.set_result(
+                    output_ref=archive.s3_uri,
+                    record_count_out=archive.record_count,
+                    metrics={
+                        "page_count": archive.page_count,
+                        "old_cursor_value": archive.old_cursor_value,
+                        "new_cursor_value": archive.new_cursor_value,
+                        "source_request_id": archive.source_request_id,
+                    },
+                )
 
         if archive.no_changes:
             ods_pipeline.runs.update(

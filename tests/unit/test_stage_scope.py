@@ -172,6 +172,88 @@ def test_stage_scope_swallows_secondary_failure_writing_failed_row() -> None:
         stages.finish = original_finish     # type: ignore[assignment]
 
 
+def test_stage_scope_skip_writes_started_then_skipped() -> None:
+    """``s.skip(reason)`` produces a stage_skipped terminal row."""
+    conn = _FakeConn()
+    with stages.stage_scope(conn, run_id="rid", stage="raw_poll") as s:
+        s.skip("no_changes")
+    statuses = _stages_inserted(conn)
+    assert statuses == ["running", "skipped"]
+    # event_type must be stage_skipped, not stage_completed.
+    skip_stmt = next(
+        s for s in conn.statements
+        if "INSERT INTO pipeline.run_stage_log" in s[0]
+        and s[1] is not None
+        and s[1][_INSERT_STATUS_IDX] == "skipped"
+    )
+    # event_type is index 3 in the INSERT param tuple.
+    assert skip_stmt[1][3] == "stage_skipped"
+
+
+def test_stage_scope_skip_reason_lands_in_metrics() -> None:
+    """``skip_reason`` should be folded into metrics so the dashboard can show it."""
+    import json
+    conn = _FakeConn()
+    with stages.stage_scope(conn, run_id="rid", stage="raw_poll") as s:
+        s.skip("upstream_etag_unchanged")
+    skip_stmt = next(
+        s for s in conn.statements
+        if "INSERT INTO pipeline.run_stage_log" in s[0]
+        and s[1] is not None
+        and s[1][_INSERT_STATUS_IDX] == "skipped"
+    )
+    metrics_json = skip_stmt[1][9]      # metrics is param index 9 in stages.write
+    assert metrics_json is not None
+    payload = json.loads(metrics_json)
+    assert payload["skip_reason"] == "upstream_etag_unchanged"
+
+
+def test_stage_scope_skip_then_exception_writes_failed_not_skipped() -> None:
+    """Exception always wins — skip is for clean exits only."""
+    conn = _FakeConn()
+    with pytest.raises(RuntimeError):
+        with stages.stage_scope(conn, run_id="rid", stage="raw_poll") as s:
+            s.skip("about_to_be_overridden")
+            raise RuntimeError("boom")
+    statuses = _stages_inserted(conn)
+    assert statuses == ["running", "failed"]
+
+
+def test_stage_scope_skip_without_reason_omits_metrics() -> None:
+    conn = _FakeConn()
+    with stages.stage_scope(conn, run_id="rid", stage="raw_poll") as s:
+        s.skip()
+    skip_stmt = next(
+        s for s in conn.statements
+        if "INSERT INTO pipeline.run_stage_log" in s[0]
+        and s[1] is not None
+        and s[1][_INSERT_STATUS_IDX] == "skipped"
+    )
+    # When no reason and no other metrics provided, metrics column stays NULL.
+    assert skip_stmt[1][9] is None
+
+
+def test_stage_scope_skip_preserves_caller_metrics() -> None:
+    """If caller set metrics via set_result-like path or scope kw, skip must merge."""
+    import json
+    conn = _FakeConn()
+    with stages.stage_scope(
+        conn, run_id="rid", stage="raw_poll",
+        metrics={"committed_cursor": 12345},
+    ) as s:
+        s.skip("no_changes")
+    # The starting metrics land on the stage_started row; skip-reason-merged
+    # metrics land on the stage_skipped row.
+    skip_stmt = next(
+        s for s in conn.statements
+        if "INSERT INTO pipeline.run_stage_log" in s[0]
+        and s[1] is not None
+        and s[1][_INSERT_STATUS_IDX] == "skipped"
+    )
+    payload = json.loads(skip_stmt[1][9])
+    assert payload == {"skip_reason": "no_changes"}
+
+
 def test_stage_scope_uses_next_attempt_number_for_retries() -> None:
     """A retry after a previous attempt must land on attempt_number=N+1."""
     conn = _FakeConn()

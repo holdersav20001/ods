@@ -290,6 +290,11 @@ def stage_scope(
       result dict via ``ctx.set_result(...)`` — its keys merge into the
       finish call so ``output_ref``, ``record_count_out``, etc. land on
       the same row.
+    * On ``s.skip(reason)``: clean exit, but writes ``stage_skipped``
+      instead of ``stage_completed``. Use when a stage legitimately ran
+      but had nothing to do (api_pull saw no changes, file_pipeline saw
+      an empty file). ``reason`` is folded into the row's ``metrics`` so
+      the dashboard can surface why.
     * On exception: writes ``stage_failed`` with the exception message
       (truncated to ``truncate_error`` chars) and re-raises the original.
       If the failure write itself fails, swallow that secondary error —
@@ -299,7 +304,10 @@ def stage_scope(
 
         with stage_scope(conn, run_id=rid, stage=Stage.MESSAGE_RECEIVE) as s:
             count = do_work()
-            s.set_result(record_count_out=count, output_ref="s3://...")
+            if count == 0:
+                s.skip("no_changes")
+            else:
+                s.set_result(record_count_out=count, output_ref="s3://...")
     """
     attempt = start(
         conn,
@@ -314,6 +322,10 @@ def stage_scope(
         "output_ref": None,
         "metrics": None,
     }
+    state: dict = {
+        "skipped": False,
+        "skip_reason": None,
+    }
 
     class _Scope:
         attempt_number = attempt
@@ -325,6 +337,16 @@ def stage_scope(
                         f"stage_scope only accepts {sorted(box)}; got {key!r}"
                     )
                 box[key] = value
+
+        def skip(self, reason: str | None = None) -> None:
+            """Mark the stage as skipped on clean exit.
+
+            Idempotent: a second ``skip()`` overwrites the reason. A
+            subsequent exception still wins (skip is for clean exits
+            only).
+            """
+            state["skipped"] = True
+            state["skip_reason"] = reason
 
     try:
         yield _Scope()
@@ -353,15 +375,21 @@ def stage_scope(
                 pass
         raise
     else:
+        # Merge skip_reason into metrics so the dashboard can render WHY
+        # a skip happened without inventing a new column.
+        finish_metrics = box["metrics"]
+        if state["skipped"] and state["skip_reason"] is not None:
+            finish_metrics = dict(finish_metrics or {})
+            finish_metrics.setdefault("skip_reason", state["skip_reason"])
         finish(
             conn,
             run_id=run_id,
             stage=stage,
-            status="succeeded",
-            event_type=StageEvent.COMPLETED,
+            status="skipped" if state["skipped"] else "succeeded",
+            event_type=StageEvent.SKIPPED if state["skipped"] else StageEvent.COMPLETED,
             attempt_number=attempt,
             record_count_in=record_count_in,
             record_count_out=box["record_count_out"],
             output_ref=box["output_ref"],
-            metrics=box["metrics"],
+            metrics=finish_metrics,
         )
