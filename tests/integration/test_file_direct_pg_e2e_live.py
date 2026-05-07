@@ -214,6 +214,12 @@ def _run_ingestion(*, run_id, file_id, s3_input_path, parent_run_id,
         "ods-glue:local", "spark-submit",
         "--py-files",
         "/home/glue_user/workspace/jobs/utils.py,"
+        "/home/glue_user/workspace/jobs/utils_bootstrap.py,"
+        "/home/glue_user/workspace/jobs/utils_data.py,"
+        "/home/glue_user/workspace/jobs/utils_config.py,"
+        "/home/glue_user/workspace/jobs/utils_state.py,"
+        "/home/glue_user/workspace/jobs/utils_runs.py,"
+        "/home/glue_user/workspace/jobs/utils_jobs.py,"
         "/home/glue_user/workspace/jobs/dq.py",
         "/home/glue_user/workspace/jobs/ods_ingestion.py",
         "--run_id", run_id,
@@ -236,6 +242,12 @@ def _run_postgres_write(*, run_id, file_id, curated_path, parent_run_id,
         # $SPARK_HOME/jars (see glue/Dockerfile) — no --packages needed.
         "--py-files",
         "/home/glue_user/workspace/jobs/utils.py,"
+        "/home/glue_user/workspace/jobs/utils_bootstrap.py,"
+        "/home/glue_user/workspace/jobs/utils_data.py,"
+        "/home/glue_user/workspace/jobs/utils_config.py,"
+        "/home/glue_user/workspace/jobs/utils_state.py,"
+        "/home/glue_user/workspace/jobs/utils_runs.py,"
+        "/home/glue_user/workspace/jobs/utils_jobs.py,"
         "/home/glue_user/workspace/jobs/dq.py",
         "/home/glue_user/workspace/jobs/ods_postgres_write.py",
         "--run_id", run_id,

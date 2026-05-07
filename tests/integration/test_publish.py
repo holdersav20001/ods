@@ -56,7 +56,14 @@ def run_ingestion_job(run_id, s3_path, domain="insurance", dataset="policies"):
         "-v", f"{os.getcwd()}/ods_pipeline:/home/glue_user/ods_pipeline",
         "ods-glue:local", "spark-submit",
         "--py-files",
-        "/home/glue_user/workspace/jobs/utils.py,/home/glue_user/workspace/jobs/dq.py",
+        "/home/glue_user/workspace/jobs/utils.py,"
+        "/home/glue_user/workspace/jobs/utils_bootstrap.py,"
+        "/home/glue_user/workspace/jobs/utils_data.py,"
+        "/home/glue_user/workspace/jobs/utils_config.py,"
+        "/home/glue_user/workspace/jobs/utils_state.py,"
+        "/home/glue_user/workspace/jobs/utils_runs.py,"
+        "/home/glue_user/workspace/jobs/utils_jobs.py,"
+        "/home/glue_user/workspace/jobs/dq.py",
         "/home/glue_user/workspace/jobs/ods_ingestion.py",
         "--run_id", run_id,
         "--domain", domain,
@@ -84,7 +91,14 @@ def run_publish_job(run_id, s3_path, domain="insurance", dataset="policies"):
         "-v", f"{os.getcwd()}/ods_pipeline:/home/glue_user/ods_pipeline",
         "ods-glue:local", "spark-submit",
         "--py-files",
-        "/home/glue_user/workspace/jobs/utils.py,/home/glue_user/workspace/jobs/dq.py",
+        "/home/glue_user/workspace/jobs/utils.py,"
+        "/home/glue_user/workspace/jobs/utils_bootstrap.py,"
+        "/home/glue_user/workspace/jobs/utils_data.py,"
+        "/home/glue_user/workspace/jobs/utils_config.py,"
+        "/home/glue_user/workspace/jobs/utils_state.py,"
+        "/home/glue_user/workspace/jobs/utils_runs.py,"
+        "/home/glue_user/workspace/jobs/utils_jobs.py,"
+        "/home/glue_user/workspace/jobs/dq.py",
         "/home/glue_user/workspace/jobs/ods_s3_publish.py",
         "--run_id", run_id,
         "--domain", domain,
