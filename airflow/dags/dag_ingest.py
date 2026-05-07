@@ -13,6 +13,7 @@ import uuid
 
 import pendulum
 import psycopg2
+from common.long_running_docker import make_long_running_docker_operator  # R8
 
 from airflow import DAG
 from airflow.decorators import task
@@ -658,6 +659,12 @@ with DAG(
         command=(
             "spark-submit "
             "--py-files /home/glue_user/workspace/jobs/utils.py,"
+            "/home/glue_user/workspace/jobs/utils_bootstrap.py,"
+            "/home/glue_user/workspace/jobs/utils_data.py,"
+            "/home/glue_user/workspace/jobs/utils_config.py,"
+            "/home/glue_user/workspace/jobs/utils_state.py,"
+            "/home/glue_user/workspace/jobs/utils_runs.py,"
+            "/home/glue_user/workspace/jobs/utils_jobs.py,"
             "/home/glue_user/workspace/jobs/dq.py "
             "/home/glue_user/workspace/jobs/ods_ingestion.py "
             "--run_id {{ ti.xcom_pull(task_ids='init_run')['ingest_run_id'] }} "
@@ -682,6 +689,12 @@ with DAG(
         command=(
             "spark-submit "
             "--py-files /home/glue_user/workspace/jobs/utils.py,"
+            "/home/glue_user/workspace/jobs/utils_bootstrap.py,"
+            "/home/glue_user/workspace/jobs/utils_data.py,"
+            "/home/glue_user/workspace/jobs/utils_config.py,"
+            "/home/glue_user/workspace/jobs/utils_state.py,"
+            "/home/glue_user/workspace/jobs/utils_runs.py,"
+            "/home/glue_user/workspace/jobs/utils_jobs.py,"
             "/home/glue_user/workspace/jobs/dq.py "
             "/home/glue_user/workspace/jobs/ods_s3_publish.py "
             "--run_id {{ ti.xcom_pull(task_ids='init_run')['publish_run_id'] }} "
@@ -701,7 +714,11 @@ with DAG(
     branch = route_canonicalize(prepared)
     skip_canonicalize = EmptyOperator(task_id="skip_canonicalize")
 
-    canonicalize = DockerOperator(
+    # R8: canonicalize is the slowest job in the existing path (multi-hour
+    # over 30-day soak / large historic backfills). Use the long-running
+    # wrapper so we get heartbeat rows + force-stop instead of an opaque
+    # multi-hour blocking wait.
+    canonicalize = make_long_running_docker_operator(
         task_id="stage_canonicalize",
         image=GLUE_IMAGE,
         network_mode="ods-network",
@@ -710,6 +727,12 @@ with DAG(
         command=(
             "spark-submit "
             "--py-files /home/glue_user/workspace/jobs/utils.py,"
+            "/home/glue_user/workspace/jobs/utils_bootstrap.py,"
+            "/home/glue_user/workspace/jobs/utils_data.py,"
+            "/home/glue_user/workspace/jobs/utils_config.py,"
+            "/home/glue_user/workspace/jobs/utils_state.py,"
+            "/home/glue_user/workspace/jobs/utils_runs.py,"
+            "/home/glue_user/workspace/jobs/utils_jobs.py,"
             "/home/glue_user/workspace/jobs/dq.py,"
             "/home/glue_user/workspace/jobs/canonicalize.py "
             "/home/glue_user/workspace/jobs/ods_canonicalize.py "
@@ -726,6 +749,11 @@ with DAG(
         ),
         environment=GLUE_ENV,
         mounts=_canonicalize_mounts,
+        heartbeat_seconds=30,
+        soft_timeout_minutes=240,
+        poll_interval_seconds=10,
+        run_id_xcom_task="prepare_canonicalize",
+        run_id_xcom_key="canonicalize_run_id",
     )
 
     selected = select_sink_run(prepared)

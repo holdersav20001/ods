@@ -36,6 +36,12 @@ GLUE_KAFKA_ENV = GLUE_COMMON + ["-e", "KAFKA_BOOTSTRAP_SERVERS=broker:29092"]
 
 PY_FILES = (
     "/home/glue_user/workspace/jobs/utils.py,"
+    "/home/glue_user/workspace/jobs/utils_bootstrap.py,"
+    "/home/glue_user/workspace/jobs/utils_data.py,"
+    "/home/glue_user/workspace/jobs/utils_config.py,"
+    "/home/glue_user/workspace/jobs/utils_state.py,"
+    "/home/glue_user/workspace/jobs/utils_runs.py,"
+    "/home/glue_user/workspace/jobs/utils_jobs.py,"
     "/home/glue_user/workspace/jobs/dq.py"
 )
 

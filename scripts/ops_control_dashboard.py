@@ -766,6 +766,420 @@ async def api_pull_dashboard(
         raise HTTPException(status_code=503, detail=str(exc))
 
 
+def _direct_postgres_sink_lag_disabled() -> dict:
+    return {"available": False, "reason": "kafka_unavailable"}
+
+
+def _kafka_sink_lag(topic: str, dataset: str, end_offsets: dict) -> dict:
+    """Reuse the AdminClient query inline if confluent_kafka is importable.
+
+    Mirrors ``airflow.dags.dag_api_pull._direct_kafka_sink_status`` so the
+    dashboard does not depend on Airflow imports.
+    """
+    if not topic or not end_offsets:
+        return {"available": False, "reason": "no_published_offsets"}
+    try:
+        from confluent_kafka import Consumer, TopicPartition
+    except Exception:
+        return _direct_postgres_sink_lag_disabled()
+
+    sink_name = f"jdbc-sink-{dataset}".replace("_", "-")
+    group_id = f"connect-{sink_name}"
+    consumer = Consumer({
+        "bootstrap.servers": BOOTSTRAP,
+        "group.id": group_id,
+        "enable.auto.commit": False,
+        "session.timeout.ms": 6000,
+    })
+    try:
+        tps = [TopicPartition(topic, int(p)) for p in end_offsets.keys()]
+        committed = consumer.committed(tps, timeout=10)
+    except Exception as exc:
+        try:
+            consumer.close()
+        except Exception:
+            pass
+        return {"available": False, "reason": f"kafka_error: {exc}"}
+    finally:
+        try:
+            consumer.close()
+        except Exception:
+            pass
+
+    consumed = {int(tp.partition): int(tp.offset) for tp in committed if tp.offset >= 0}
+    partitions = []
+    caught_up = True
+    total_lag = 0
+    for partition, target in end_offsets.items():
+        committed_offset = consumed.get(int(partition), -1)
+        target_int = int(target)
+        lag = max(0, target_int - committed_offset) if committed_offset >= 0 else None
+        if committed_offset < target_int:
+            caught_up = False
+        if lag is not None:
+            total_lag += lag
+        partitions.append({
+            "partition": int(partition),
+            "committed_offset": committed_offset,
+            "target_offset": target_int,
+            "lag": lag,
+        })
+    return {
+        "available": True,
+        "consumer_group": group_id,
+        "topic": topic,
+        "caught_up": caught_up,
+        "total_lag": total_lag,
+        "partitions": partitions,
+    }
+
+
+@app.get("/api/direct-postgres")
+async def direct_postgres_dashboard(
+    domain: str = "",
+    dataset: str = "",
+    business_date: str = "",
+    limit: int = Query(default=50, ge=1, le=500),
+):
+    """Operator view for ``dataset_config.delivery='direct_postgres'``.
+
+    Reuses the same durable tables as the file_pipeline dashboard.
+    """
+    try:
+        with closing(_conn()) as conn:
+            cfg_filters = ["dc.delivery = 'direct_postgres'"]
+            cfg_params: list[Any] = []
+            if domain:
+                cfg_filters.append("dc.domain = %s")
+                cfg_params.append(domain)
+            if dataset:
+                cfg_filters.append("dc.dataset = %s")
+                cfg_params.append(dataset)
+            cfg_where = "WHERE " + " AND ".join(cfg_filters)
+            datasets = _q(
+                conn,
+                f"""
+                SELECT dc.domain, dc.dataset, dc.delivery, dc.active,
+                       dc.target_topic, dc.postgres_target_table,
+                       dc.source_type, dc.raw_format
+                FROM pipeline.dataset_config dc
+                {cfg_where}
+                ORDER BY dc.domain, dc.dataset
+                """,
+                cfg_params,
+            )
+
+            run_filters = ["r.pipeline_type = 'direct_postgres'"]
+            run_params: list[Any] = []
+            if domain:
+                run_filters.append("r.domain = %s")
+                run_params.append(domain)
+            if dataset:
+                run_filters.append("r.dataset = %s")
+                run_params.append(dataset)
+            if business_date:
+                run_filters.append("r.business_date = %s")
+                run_params.append(business_date)
+            run_where = "WHERE " + " AND ".join(run_filters)
+            latest_runs = _q(
+                conn,
+                f"""
+                SELECT r.run_id, r.pipeline_type, r.domain, r.dataset,
+                       r.business_date, r.file_id, r.status, r.started_at,
+                       r.ended_at, r.record_count_source,
+                       r.record_count_published, r.error_summary
+                FROM pipeline.run_log r
+                {run_where}
+                ORDER BY r.started_at DESC
+                LIMIT %s
+                """,
+                run_params + [limit],
+            )
+
+            recon_filters = ["check_type = 'direct_postgres_count'"]
+            recon_params: list[Any] = []
+            if domain:
+                recon_filters.append("domain = %s")
+                recon_params.append(domain)
+            if dataset:
+                recon_filters.append("dataset = %s")
+                recon_params.append(dataset)
+            if business_date:
+                recon_filters.append("business_date = %s")
+                recon_params.append(business_date)
+            recon_where = "WHERE " + " AND ".join(recon_filters)
+            reconciliations = _q(
+                conn,
+                f"""
+                SELECT created_at, check_type, run_id, domain, dataset,
+                       business_date, status, source_count, postgres_count,
+                       discrepancy_count, discrepancy_pct, detail
+                FROM pipeline.reconciliation_log
+                {recon_where}
+                ORDER BY created_at DESC
+                LIMIT %s
+                """,
+                recon_params + [limit],
+            )
+
+            curated_files = _q(
+                conn,
+                f"""
+                SELECT DISTINCT ON (r.run_id)
+                       r.run_id, r.domain, r.dataset, r.business_date,
+                       r.status, r.started_at,
+                       fc.file_id, fc.s3_curated_path, fc.s3_staging_parquet_path,
+                       fc.state AS file_state, fc.source_row_count,
+                       fc.state_updated_at,
+                       rsl.output_ref AS curated_parquet_path
+                FROM pipeline.run_log r
+                LEFT JOIN pipeline.file_catalogue fc ON fc.file_id = r.file_id
+                LEFT JOIN pipeline.run_stage_log rsl
+                  ON rsl.run_id = r.run_id AND rsl.stage = 'curated_write'
+                {run_where}
+                ORDER BY r.run_id, r.started_at DESC
+                LIMIT %s
+                """,
+                run_params + [limit],
+            )
+
+            failed_recent = _q(
+                conn,
+                f"""
+                SELECT r.run_id, r.domain, r.dataset, r.business_date,
+                       r.status, r.started_at, r.ended_at, r.error_summary,
+                       r.file_id
+                FROM pipeline.run_log r
+                {run_where}
+                  AND r.status IN ('failed', 'partial')
+                  AND COALESCE(r.ended_at, r.started_at) >= now() - interval '24 hours'
+                ORDER BY COALESCE(r.ended_at, r.started_at) DESC
+                LIMIT %s
+                """,
+                run_params + [limit],
+            )
+
+            summary_rows = _q(
+                conn,
+                """
+                SELECT
+                    COUNT(*) FILTER (WHERE pipeline_type='direct_postgres') AS total_runs,
+                    COUNT(*) FILTER (WHERE pipeline_type='direct_postgres' AND status='succeeded') AS succeeded_runs,
+                    COUNT(*) FILTER (WHERE pipeline_type='direct_postgres' AND status IN ('failed','partial')) AS failed_runs,
+                    COUNT(*) FILTER (WHERE pipeline_type='direct_postgres' AND status='running') AS running_runs
+                FROM pipeline.run_log
+                WHERE started_at >= CURRENT_DATE
+                """,
+            )
+            summary = summary_rows[0] if summary_rows else {}
+
+            return _json({
+                "available": True,
+                "delivery": "direct_postgres",
+                "summary": summary,
+                "datasets": datasets,
+                "latest_runs": latest_runs,
+                "reconciliations": reconciliations,
+                "curated_files": curated_files,
+                "failed_recent": failed_recent,
+            })
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+
+@app.get("/api/direct-kafka")
+async def direct_kafka_dashboard(
+    domain: str = "",
+    dataset: str = "",
+    business_date: str = "",
+    include_sink_lag: bool = True,
+    limit: int = Query(default=50, ge=1, le=500),
+):
+    """Operator view for ``dataset_config.delivery='direct_kafka'``.
+
+    Joins ``run_log`` (pipeline_type='api_pull') against
+    ``dataset_config.delivery='direct_kafka'`` and surfaces the JDBC sink
+    consumer-group lag relative to the latest ``kafka_publish`` stage's
+    ``offset_end_by_partition`` metric.
+    """
+    try:
+        with closing(_conn()) as conn:
+            cfg_filters = ["dc.delivery = 'direct_kafka'"]
+            cfg_params: list[Any] = []
+            if domain:
+                cfg_filters.append("dc.domain = %s")
+                cfg_params.append(domain)
+            if dataset:
+                cfg_filters.append("dc.dataset = %s")
+                cfg_params.append(dataset)
+            cfg_where = "WHERE " + " AND ".join(cfg_filters)
+            datasets = _q(
+                conn,
+                f"""
+                SELECT dc.domain, dc.dataset, dc.delivery, dc.active,
+                       dc.target_topic, dc.source_type, dc.raw_format,
+                       dc.source_config->>'application' AS source_application
+                FROM pipeline.dataset_config dc
+                {cfg_where}
+                ORDER BY dc.domain, dc.dataset
+                """,
+                cfg_params,
+            )
+
+            run_filters = [
+                "r.pipeline_type = 'api_pull'",
+                "EXISTS (SELECT 1 FROM pipeline.dataset_config dc "
+                " WHERE dc.domain = r.domain AND dc.dataset = r.dataset "
+                "   AND dc.delivery = 'direct_kafka')",
+            ]
+            run_params: list[Any] = []
+            if domain:
+                run_filters.append("r.domain = %s")
+                run_params.append(domain)
+            if dataset:
+                run_filters.append("r.dataset = %s")
+                run_params.append(dataset)
+            if business_date:
+                run_filters.append("r.business_date = %s")
+                run_params.append(business_date)
+            run_where = "WHERE " + " AND ".join(run_filters)
+            latest_runs = _q(
+                conn,
+                f"""
+                SELECT r.run_id, r.domain, r.dataset, r.business_date,
+                       r.status, r.started_at, r.ended_at,
+                       r.record_count_source, r.record_count_published,
+                       r.kafka_topic, r.kafka_offset_start, r.kafka_offset_end,
+                       r.error_summary
+                FROM pipeline.run_log r
+                {run_where}
+                ORDER BY r.started_at DESC
+                LIMIT %s
+                """,
+                run_params + [limit],
+            )
+
+            wm_filters: list[str] = []
+            wm_params: list[Any] = []
+            wm_filters.append(
+                "EXISTS (SELECT 1 FROM pipeline.dataset_config dc "
+                " WHERE dc.domain = w.domain AND dc.dataset = w.dataset "
+                "   AND dc.delivery = 'direct_kafka')"
+            )
+            if domain:
+                wm_filters.append("w.domain = %s")
+                wm_params.append(domain)
+            if dataset:
+                wm_filters.append("w.dataset = %s")
+                wm_params.append(dataset)
+            wm_where = "WHERE " + " AND ".join(wm_filters)
+            watermarks = _q(
+                conn,
+                f"""
+                SELECT w.domain, w.dataset, w.source_application, w.cursor_type,
+                       w.committed_cursor_value, w.pending_cursor_value,
+                       w.pending_run_id, w.last_successful_run_id, w.locked_at,
+                       w.updated_at, now() - w.updated_at AS pull_lag
+                FROM pipeline.api_pull_watermark w
+                {wm_where}
+                ORDER BY w.updated_at DESC
+                LIMIT %s
+                """,
+                wm_params + [limit],
+            )
+
+            recon_filters = ["check_type = 'api_pull_publish_count'"]
+            recon_params: list[Any] = []
+            if domain:
+                recon_filters.append("domain = %s")
+                recon_params.append(domain)
+            if dataset:
+                recon_filters.append("dataset = %s")
+                recon_params.append(dataset)
+            if business_date:
+                recon_filters.append("business_date = %s")
+                recon_params.append(business_date)
+            recon_where = "WHERE " + " AND ".join(recon_filters)
+            reconciliations = _q(
+                conn,
+                f"""
+                SELECT created_at, check_type, run_id, domain, dataset,
+                       business_date, status, source_count, kafka_count,
+                       postgres_count, discrepancy_count, discrepancy_pct, detail
+                FROM pipeline.reconciliation_log
+                {recon_where}
+                ORDER BY created_at DESC
+                LIMIT %s
+                """,
+                recon_params + [limit],
+            )
+
+            sink_lag: list[dict] = []
+            if include_sink_lag:
+                publish_rows = _q(
+                    conn,
+                    f"""
+                    SELECT DISTINCT ON (r.domain, r.dataset)
+                           r.domain, r.dataset, r.kafka_topic,
+                           rsl.metrics
+                    FROM pipeline.run_log r
+                    JOIN pipeline.run_stage_log rsl
+                      ON rsl.run_id = r.run_id AND rsl.stage = 'kafka_publish'
+                    {run_where}
+                    ORDER BY r.domain, r.dataset, r.started_at DESC
+                    LIMIT %s
+                    """,
+                    run_params + [limit],
+                )
+                for row in publish_rows:
+                    metrics = row.get("metrics") or {}
+                    if isinstance(metrics, str):
+                        try:
+                            metrics = json.loads(metrics)
+                        except Exception:
+                            metrics = {}
+                    end_offsets = (metrics or {}).get("offset_end_by_partition") or {}
+                    topic = row.get("kafka_topic") or ""
+                    lag = _kafka_sink_lag(topic, row["dataset"], end_offsets)
+                    lag.update({
+                        "domain": row["domain"],
+                        "dataset": row["dataset"],
+                    })
+                    sink_lag.append(lag)
+
+            summary_rows = _q(
+                conn,
+                """
+                SELECT
+                    COUNT(*) FILTER (WHERE r.pipeline_type='api_pull') AS total_runs,
+                    COUNT(*) FILTER (WHERE r.pipeline_type='api_pull' AND r.status='succeeded') AS succeeded_runs,
+                    COUNT(*) FILTER (WHERE r.pipeline_type='api_pull' AND r.status IN ('failed','partial')) AS failed_runs,
+                    COUNT(*) FILTER (WHERE r.pipeline_type='api_pull' AND r.status='running') AS running_runs
+                FROM pipeline.run_log r
+                WHERE r.started_at >= CURRENT_DATE
+                  AND EXISTS (
+                      SELECT 1 FROM pipeline.dataset_config dc
+                       WHERE dc.domain = r.domain AND dc.dataset = r.dataset
+                         AND dc.delivery = 'direct_kafka'
+                  )
+                """,
+            )
+            summary = summary_rows[0] if summary_rows else {}
+
+            return _json({
+                "available": True,
+                "delivery": "direct_kafka",
+                "summary": summary,
+                "datasets": datasets,
+                "latest_runs": latest_runs,
+                "watermarks": watermarks,
+                "reconciliations": reconciliations,
+                "sink_lag": sink_lag,
+            })
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+
 @app.get("/api/event-diagnostics")
 async def event_diagnostics(limit: int = Query(default=100, ge=1, le=1000)):
     try:
@@ -1040,6 +1454,8 @@ HTML = r"""<!DOCTYPE html>
       <button class="tab active" onclick="showTab('overview')">Overview</button>
       <button class="tab" onclick="showTab('runs')">Runs</button>
       <button class="tab" onclick="showTab('api-pull')">API Pull</button>
+      <button class="tab" onclick="showTab('direct-postgres')">Direct Postgres</button>
+      <button class="tab" onclick="showTab('direct-kafka')">Direct Kafka</button>
       <button class="tab" onclick="showTab('run-detail')">Run Detail</button>
       <button class="tab" onclick="showTab('file-lineage')">File Lineage</button>
       <button class="tab" onclick="showTab('events')">Event Diagnostics</button>
@@ -1104,6 +1520,41 @@ HTML = r"""<!DOCTYPE html>
         </div>
       </div>
       <div id="api-pull-content" style="margin-top:14px"></div>
+    </section>
+
+    <section id="tab-direct-postgres" class="panel">
+      <div class="card">
+        <h2>Direct Postgres Delivery</h2>
+        <div class="muted" style="margin-bottom: 12px">Datasets with <code>dataset_config.delivery='direct_postgres'</code>. Reads from <code>run_log</code> (pipeline_type='direct_postgres'), <code>reconciliation_log</code> (check_type='direct_postgres_count'), <code>run_stage_log</code> + <code>file_catalogue</code>.</div>
+        <div class="toolbar">
+          <input id="dp-domain" placeholder="domain" />
+          <input id="dp-dataset" placeholder="dataset" />
+          <input id="dp-business-date" type="date" />
+          <input id="dp-limit" type="number" min="1" max="500" value="50" style="width: 90px" />
+          <button onclick="loadDirectPostgres()">Search</button>
+          <button onclick="clearDirectPostgresFilters()">Clear</button>
+        </div>
+      </div>
+      <div id="direct-postgres-content" style="margin-top:14px"></div>
+    </section>
+
+    <section id="tab-direct-kafka" class="panel">
+      <div class="card">
+        <h2>Direct Kafka Delivery</h2>
+        <div class="muted" style="margin-bottom: 12px">Datasets with <code>dataset_config.delivery='direct_kafka'</code>. Sink lag compares the JDBC sink consumer-group's committed offsets against the latest <code>kafka_publish</code> stage's <code>offset_end_by_partition</code>.</div>
+        <div class="toolbar">
+          <input id="dk-domain" placeholder="domain" />
+          <input id="dk-dataset" placeholder="dataset" />
+          <input id="dk-business-date" type="date" />
+          <label class="muted" style="display:flex; align-items:center; gap:6px;">
+            <input id="dk-include-sink-lag" type="checkbox" checked /> include sink lag
+          </label>
+          <input id="dk-limit" type="number" min="1" max="500" value="50" style="width: 90px" />
+          <button onclick="loadDirectKafka()">Search</button>
+          <button onclick="clearDirectKafkaFilters()">Clear</button>
+        </div>
+      </div>
+      <div id="direct-kafka-content" style="margin-top:14px"></div>
     </section>
 
     <section id="tab-run-detail" class="panel">
@@ -1207,6 +1658,8 @@ async function refreshActive() {
     if (activeTab === 'overview') await loadOverview();
     if (activeTab === 'runs') await loadRuns();
     if (activeTab === 'api-pull') await loadApiPull();
+    if (activeTab === 'direct-postgres') await loadDirectPostgres();
+    if (activeTab === 'direct-kafka') await loadDirectKafka();
     if (activeTab === 'events') await loadEventDiagnostics();
     if (activeTab === 'topic-events') await loadTopicMessages();
     refreshStamp();
@@ -1631,6 +2084,185 @@ function clearTopicFilters() {
   document.getElementById('topic-limit').value = '100';
   loadTopicMessages();
 }
+async function loadDirectPostgres() {
+  const params = new URLSearchParams();
+  for (const [id, key] of [
+    ['dp-domain','domain'],
+    ['dp-dataset','dataset'],
+    ['dp-business-date','business_date'],
+    ['dp-limit','limit'],
+  ]) {
+    const v = document.getElementById(id).value.trim();
+    if (v) params.set(key, v);
+  }
+  const data = await getJson('/api/direct-postgres?' + params.toString());
+  const s = data.summary || {};
+  const cards = `<div class="grid cards">
+    <div class="card"><div class="metric succeeded">${fmt(s.succeeded_runs || 0)}</div><div class="label">direct_postgres succeeded today</div></div>
+    <div class="card"><div class="metric failed">${fmt(s.failed_runs || 0)}</div><div class="label">direct_postgres failed/partial today</div></div>
+    <div class="card"><div class="metric running">${fmt(s.running_runs || 0)}</div><div class="label">direct_postgres running today</div></div>
+    <div class="card"><div class="metric">${fmt((data.datasets || []).length)}</div><div class="label">configured datasets</div></div>
+  </div>`;
+
+  const datasetTable = table(data.datasets || [], [
+    {label:'Domain / Dataset', value:r => `${r.domain} / ${r.dataset}`},
+    {label:'Active', key:'active'},
+    {label:'Source Type', key:'source_type'},
+    {label:'Format', key:'raw_format'},
+    {label:'Postgres Target', key:'postgres_target_table'},
+    {label:'Topic', key:'target_topic', truncate:true},
+  ], 'No direct_postgres datasets configured.');
+
+  const runsTable = table(data.latest_runs || [], [
+    {label:'Run', html:true, value:r => `<a class="link mono" href="#" onclick="openRun('${esc(r.run_id)}')">${shortId(r.run_id)}</a>`},
+    {label:'Domain / Dataset', value:r => `${r.domain} / ${r.dataset}`},
+    {label:'Date', html:true, value:r => dt(r.business_date)},
+    {label:'Status', html:true, value:r => badge(r.status)},
+    {label:'Source', key:'record_count_source', right:true},
+    {label:'Published', key:'record_count_published', right:true},
+    {label:'Started', html:true, value:r => dt(r.started_at)},
+    {label:'Ended', html:true, value:r => dt(r.ended_at)},
+    {label:'Error', key:'error_summary', truncate:true},
+  ], 'No direct_postgres runs found.');
+
+  const reconTable = table(data.reconciliations || [], [
+    {label:'When', html:true, value:r => dt(r.created_at)},
+    {label:'Run', html:true, value:r => r.run_id ? `<a class="link mono" href="#" onclick="openRun('${esc(r.run_id)}')">${shortId(r.run_id)}</a>` : '-'},
+    {label:'Domain / Dataset', value:r => `${r.domain} / ${r.dataset}`},
+    {label:'Status', html:true, value:r => badge(r.status)},
+    {label:'Source', key:'source_count', right:true},
+    {label:'Postgres', key:'postgres_count', right:true},
+    {label:'Diff', key:'discrepancy_count', right:true},
+    {label:'Detail', key:'detail', truncate:true},
+  ], 'No direct_postgres_count reconciliation rows.');
+
+  const curatedTable = table(data.curated_files || [], [
+    {label:'Run', html:true, value:r => `<a class="link mono" href="#" onclick="openRun('${esc(r.run_id)}')">${shortId(r.run_id)}</a>`},
+    {label:'Domain / Dataset', value:r => `${r.domain} / ${r.dataset}`},
+    {label:'File', html:true, value:r => r.file_id ? `<a class="link mono" href="#" onclick="openFile('${esc(r.file_id)}')">${shortId(r.file_id)}</a>` : '-'},
+    {label:'Curated Path', key:'curated_parquet_path', truncate:true},
+    {label:'Curated S3', key:'s3_curated_path', truncate:true},
+    {label:'File State', html:true, value:r => badge(r.file_state)},
+    {label:'Rows', key:'source_row_count', right:true},
+  ], 'No curated parquet rows.');
+
+  const failedTable = table(data.failed_recent || [], [
+    {label:'Run', html:true, value:r => `<a class="link mono" href="#" onclick="openRun('${esc(r.run_id)}')">${shortId(r.run_id)}</a>`},
+    {label:'Domain / Dataset', value:r => `${r.domain} / ${r.dataset}`},
+    {label:'Status', html:true, value:r => badge(r.status)},
+    {label:'Started', html:true, value:r => dt(r.started_at)},
+    {label:'Ended', html:true, value:r => dt(r.ended_at)},
+    {label:'Error', key:'error_summary', truncate:true},
+  ], 'No failed direct_postgres runs in the last 24h.');
+
+  document.getElementById('direct-postgres-content').innerHTML =
+    cards +
+    `<div class="card" style="margin-top:14px"><h2>Datasets</h2>${datasetTable}</div>` +
+    `<div class="card" style="margin-top:14px"><h2>Latest Runs</h2>${runsTable}</div>` +
+    `<div class="card" style="margin-top:14px"><h2>Source vs Postgres Reconciliation</h2>${reconTable}</div>` +
+    `<div class="card" style="margin-top:14px"><h2>Latest Curated Parquet</h2>${curatedTable}</div>` +
+    `<div class="card" style="margin-top:14px"><h2>Failed Runs (last 24h)</h2>${failedTable}</div>`;
+}
+function clearDirectPostgresFilters() {
+  for (const id of ['dp-domain','dp-dataset','dp-business-date']) {
+    document.getElementById(id).value = '';
+  }
+  document.getElementById('dp-limit').value = '50';
+  loadDirectPostgres();
+}
+
+async function loadDirectKafka() {
+  const params = new URLSearchParams();
+  for (const [id, key] of [
+    ['dk-domain','domain'],
+    ['dk-dataset','dataset'],
+    ['dk-business-date','business_date'],
+    ['dk-limit','limit'],
+  ]) {
+    const v = document.getElementById(id).value.trim();
+    if (v) params.set(key, v);
+  }
+  const includeLag = document.getElementById('dk-include-sink-lag').checked;
+  params.set('include_sink_lag', includeLag ? 'true' : 'false');
+  const data = await getJson('/api/direct-kafka?' + params.toString());
+  const s = data.summary || {};
+  const cards = `<div class="grid cards">
+    <div class="card"><div class="metric succeeded">${fmt(s.succeeded_runs || 0)}</div><div class="label">direct_kafka pulls succeeded today</div></div>
+    <div class="card"><div class="metric failed">${fmt(s.failed_runs || 0)}</div><div class="label">direct_kafka pulls failed/partial today</div></div>
+    <div class="card"><div class="metric running">${fmt(s.running_runs || 0)}</div><div class="label">direct_kafka pulls running today</div></div>
+    <div class="card"><div class="metric">${fmt((data.datasets || []).length)}</div><div class="label">configured datasets</div></div>
+  </div>`;
+
+  const datasetTable = table(data.datasets || [], [
+    {label:'Domain / Dataset', value:r => `${r.domain} / ${r.dataset}`},
+    {label:'Active', key:'active'},
+    {label:'Source App', key:'source_application'},
+    {label:'Source Type', key:'source_type'},
+    {label:'Topic', key:'target_topic', truncate:true},
+  ], 'No direct_kafka datasets configured.');
+
+  const runsTable = table(data.latest_runs || [], [
+    {label:'Run', html:true, value:r => `<a class="link mono" href="#" onclick="openRun('${esc(r.run_id)}')">${shortId(r.run_id)}</a>`},
+    {label:'Domain / Dataset', value:r => `${r.domain} / ${r.dataset}`},
+    {label:'Status', html:true, value:r => badge(r.status)},
+    {label:'Started', html:true, value:r => dt(r.started_at)},
+    {label:'Source', key:'record_count_source', right:true},
+    {label:'Published', key:'record_count_published', right:true},
+    {label:'Topic', key:'kafka_topic', truncate:true},
+    {label:'Offset End', key:'kafka_offset_end', right:true},
+    {label:'Error', key:'error_summary', truncate:true},
+  ], 'No direct_kafka pull runs found.');
+
+  const wmTable = table(data.watermarks || [], [
+    {label:'Domain / Dataset', value:r => `${r.domain} / ${r.dataset}`},
+    {label:'Source App', key:'source_application'},
+    {label:'Cursor Type', key:'cursor_type'},
+    {label:'Committed', key:'committed_cursor_value', truncate:true},
+    {label:'Pending', key:'pending_cursor_value', truncate:true},
+    {label:'Pending Run', html:true, value:r => r.pending_run_id ? `<a class="link mono" href="#" onclick="openRun('${esc(r.pending_run_id)}')">${shortId(r.pending_run_id)}</a>` : '-'},
+    {label:'Pull Lag', key:'pull_lag'},
+    {label:'Updated', html:true, value:r => dt(r.updated_at)},
+  ], 'No direct_kafka watermark rows.');
+
+  const lagRows = data.sink_lag || [];
+  const lagTable = table(lagRows, [
+    {label:'Domain / Dataset', value:r => `${r.domain} / ${r.dataset}`},
+    {label:'Available', key:'available'},
+    {label:'Topic', key:'topic', truncate:true},
+    {label:'Group', key:'consumer_group', truncate:true},
+    {label:'Caught Up', key:'caught_up'},
+    {label:'Total Lag', key:'total_lag', right:true},
+    {label:'Reason', key:'reason', truncate:true},
+  ], 'No sink lag rows (Kafka may be unavailable).');
+
+  const reconTable = table(data.reconciliations || [], [
+    {label:'When', html:true, value:r => dt(r.created_at)},
+    {label:'Run', html:true, value:r => r.run_id ? `<a class="link mono" href="#" onclick="openRun('${esc(r.run_id)}')">${shortId(r.run_id)}</a>` : '-'},
+    {label:'Domain / Dataset', value:r => `${r.domain} / ${r.dataset}`},
+    {label:'Status', html:true, value:r => badge(r.status)},
+    {label:'Source', key:'source_count', right:true},
+    {label:'Kafka', key:'kafka_count', right:true},
+    {label:'Diff', key:'discrepancy_count', right:true},
+    {label:'Detail', key:'detail', truncate:true},
+  ], 'No api_pull_publish_count reconciliation rows.');
+
+  document.getElementById('direct-kafka-content').innerHTML =
+    cards +
+    `<div class="card" style="margin-top:14px"><h2>Datasets</h2>${datasetTable}</div>` +
+    `<div class="card" style="margin-top:14px"><h2>Latest API Pull Runs</h2>${runsTable}</div>` +
+    `<div class="card" style="margin-top:14px"><h2>Watermarks &amp; Pull Lag</h2>${wmTable}</div>` +
+    `<div class="card" style="margin-top:14px"><h2>JDBC Sink Lag</h2>${lagTable}</div>` +
+    `<div class="card" style="margin-top:14px"><h2>Publish-Count Reconciliation</h2>${reconTable}</div>`;
+}
+function clearDirectKafkaFilters() {
+  for (const id of ['dk-domain','dk-dataset','dk-business-date']) {
+    document.getElementById(id).value = '';
+  }
+  document.getElementById('dk-include-sink-lag').checked = true;
+  document.getElementById('dk-limit').value = '50';
+  loadDirectKafka();
+}
+
 refreshActive();
 setInterval(refreshActive, 30000);
 </script>

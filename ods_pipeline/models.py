@@ -70,6 +70,7 @@ class StageEvent:
     FAILED    = "stage_failed"
     SKIPPED   = "stage_skipped"
     WARNED    = "stage_warned"   # completed with warnings (e.g. DQ soft blocks)
+    HEARTBEAT = "stage_heartbeat"  # long-running stage liveness ping (R8)
 
     TERMINAL: frozenset[str] = frozenset(
         {"stage_completed", "stage_failed", "stage_skipped", "stage_warned"}
