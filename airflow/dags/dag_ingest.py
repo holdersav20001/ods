@@ -13,6 +13,7 @@ import uuid
 
 import pendulum
 import psycopg2
+from common.long_running_docker import make_long_running_docker_operator  # R8
 
 from airflow import DAG
 from airflow.decorators import task
@@ -701,7 +702,11 @@ with DAG(
     branch = route_canonicalize(prepared)
     skip_canonicalize = EmptyOperator(task_id="skip_canonicalize")
 
-    canonicalize = DockerOperator(
+    # R8: canonicalize is the slowest job in the existing path (multi-hour
+    # over 30-day soak / large historic backfills). Use the long-running
+    # wrapper so we get heartbeat rows + force-stop instead of an opaque
+    # multi-hour blocking wait.
+    canonicalize = make_long_running_docker_operator(
         task_id="stage_canonicalize",
         image=GLUE_IMAGE,
         network_mode="ods-network",
@@ -726,6 +731,11 @@ with DAG(
         ),
         environment=GLUE_ENV,
         mounts=_canonicalize_mounts,
+        heartbeat_seconds=30,
+        soft_timeout_minutes=240,
+        poll_interval_seconds=10,
+        run_id_xcom_task="prepare_canonicalize",
+        run_id_xcom_key="canonicalize_run_id",
     )
 
     selected = select_sink_run(prepared)

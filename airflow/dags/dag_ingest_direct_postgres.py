@@ -20,6 +20,7 @@ import uuid
 
 import pendulum
 import psycopg2
+from common.long_running_docker import make_long_running_docker_operator  # R8
 
 from airflow import DAG
 from airflow.decorators import task
@@ -288,7 +289,9 @@ with DAG(
         mounts=_glue_mounts,
     )
 
-    pg_write = DockerOperator(
+    # R8: bulk Parquet -> Postgres writes for historic backfills run for
+    # hours; swap in the long-running wrapper for heartbeat + force-stop.
+    pg_write = make_long_running_docker_operator(
         task_id="stage_postgres_write",
         image=GLUE_IMAGE,
         network_mode="ods-network",
@@ -310,6 +313,11 @@ with DAG(
         ),
         environment=GLUE_ENV,
         mounts=_glue_mounts,
+        heartbeat_seconds=30,
+        soft_timeout_minutes=240,
+        poll_interval_seconds=10,
+        run_id_xcom_task="init_run",
+        run_id_xcom_key="pg_write_run_id",
     )
 
     fin = finalise(ctx)
