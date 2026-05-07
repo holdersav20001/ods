@@ -323,8 +323,8 @@ def stage_scope(
         "metrics": None,
     }
     state: dict = {
-        "skipped": False,
-        "skip_reason": None,
+        "outcome": "succeeded",   # succeeded | skipped | warned
+        "reason": None,           # narrative for skipped / warned
     }
 
     class _Scope:
@@ -345,8 +345,22 @@ def stage_scope(
             subsequent exception still wins (skip is for clean exits
             only).
             """
-            state["skipped"] = True
-            state["skip_reason"] = reason
+            state["outcome"] = "skipped"
+            state["reason"] = reason
+
+        def warn(self, reason: str | None = None) -> None:
+            """Mark the stage as warned on clean exit.
+
+            Use when work completed but produced soft-failure signals
+            (DQ rules fired, partial DLQ writes, schema drift below the
+            blocking threshold). Distinct from ``skip`` (which means
+            "ran but had nothing to do") and ``raise`` (which means
+            "failed hard"). ``reason`` lands on the stage row's
+            ``error`` column so the dashboard can surface it next to
+            other failure signals.
+            """
+            state["outcome"] = "warned"
+            state["reason"] = reason
 
     try:
         yield _Scope()
@@ -375,21 +389,37 @@ def stage_scope(
                 pass
         raise
     else:
-        # Merge skip_reason into metrics so the dashboard can render WHY
-        # a skip happened without inventing a new column.
+        # Map clean-exit outcomes to status / event_type. ``skip`` /
+        # ``warn`` reasons fold into the appropriate column (metrics
+        # for skip — non-failure signal; error for warn — failure
+        # signal that wasn't blocking).
         finish_metrics = box["metrics"]
-        if state["skipped"] and state["skip_reason"] is not None:
-            finish_metrics = dict(finish_metrics or {})
-            finish_metrics.setdefault("skip_reason", state["skip_reason"])
+        finish_error: str | None = None
+        outcome = state["outcome"]
+        if outcome == "skipped":
+            if state["reason"] is not None:
+                finish_metrics = dict(finish_metrics or {})
+                finish_metrics.setdefault("skip_reason", state["reason"])
+            finish_status = "skipped"
+            finish_event = StageEvent.SKIPPED
+        elif outcome == "warned":
+            finish_status = "warned"
+            finish_event = StageEvent.WARNED
+            if state["reason"] is not None:
+                finish_error = state["reason"]
+        else:
+            finish_status = "succeeded"
+            finish_event = StageEvent.COMPLETED
         finish(
             conn,
             run_id=run_id,
             stage=stage,
-            status="skipped" if state["skipped"] else "succeeded",
-            event_type=StageEvent.SKIPPED if state["skipped"] else StageEvent.COMPLETED,
+            status=finish_status,
+            event_type=finish_event,
             attempt_number=attempt,
             record_count_in=record_count_in,
             record_count_out=box["record_count_out"],
             output_ref=box["output_ref"],
             metrics=finish_metrics,
+            error=finish_error,
         )

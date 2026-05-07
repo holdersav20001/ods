@@ -254,6 +254,34 @@ def test_stage_scope_skip_preserves_caller_metrics() -> None:
     assert payload == {"skip_reason": "no_changes"}
 
 
+def test_stage_scope_warn_writes_warned_with_reason_in_error() -> None:
+    """``s.warn(reason)`` produces a stage_warned terminal row with reason on error."""
+    conn = _FakeConn()
+    with stages.stage_scope(conn, run_id="rid", stage="dq_check") as s:
+        s.warn("3 rules fired soft")
+    statuses = _stages_inserted(conn)
+    assert statuses == ["running", "warned"]
+    warn_stmt = next(
+        s for s in conn.statements
+        if "INSERT INTO pipeline.run_stage_log" in s[0]
+        and s[1] is not None
+        and s[1][_INSERT_STATUS_IDX] == "warned"
+    )
+    assert warn_stmt[1][3] == "stage_warned"   # event_type
+    assert warn_stmt[1][_INSERT_ERROR_IDX] == "3 rules fired soft"
+
+
+def test_stage_scope_warn_then_exception_writes_failed() -> None:
+    """Exception always wins over warn — same rule as for skip."""
+    conn = _FakeConn()
+    with pytest.raises(RuntimeError):
+        with stages.stage_scope(conn, run_id="rid", stage="dq_check") as s:
+            s.warn("about_to_be_overridden")
+            raise RuntimeError("boom")
+    statuses = _stages_inserted(conn)
+    assert statuses == ["running", "failed"]
+
+
 def test_stage_scope_uses_next_attempt_number_for_retries() -> None:
     """A retry after a previous attempt must land on attempt_number=N+1."""
     conn = _FakeConn()
