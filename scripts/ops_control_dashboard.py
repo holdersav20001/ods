@@ -30,7 +30,6 @@ import psycopg2.extras
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse, JSONResponse
 
-
 app = FastAPI(title="ODS Operations Control Dashboard")
 
 PG_HOST = os.environ.get("POSTGRES_HOST", "localhost")
