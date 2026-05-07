@@ -16,9 +16,22 @@ Two write modes, YAML-driven via ``dataset_config.write_mode``:
                  ``dataset_config.key_fields``. Stage table is
                  dropped on success.
 
-Inline canonicalize for ``is_canonical=false`` is **not** in this
-slice; non-canonical datasets are deferred (see
-docs/file-direct-postgres-design.md item §6 follow-up).
+Inline canonicalize for ``is_canonical=false`` datasets:
+  Curated parquet carries source-shape columns (e.g. RskID, AsOfDt)
+  plus the standard ODS metadata block. The transform mapping is
+  compiled to Spark SQL ``selectExpr`` expressions, and the ODS
+  metadata columns are appended as passthrough expressions in the
+  SAME ``selectExpr`` call. This keeps the canonicalize step a single
+  narrow projection on the source DataFrame — row identity is
+  preserved by construction (no shuffle, no row-aligned join, no
+  ``monotonically_increasing_id`` window).
+
+  An earlier slice attempted to re-attach metadata via a row-number
+  window join after ``apply_transform``; that pattern is fragile under
+  multi-partition Spark execution because two separate
+  ``Window.orderBy(monotonically_increasing_id())`` evaluations are
+  not guaranteed to produce identical row IDs. The single-projection
+  passthrough used here eliminates that risk entirely.
 """
 
 from __future__ import annotations
@@ -34,7 +47,7 @@ _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from canonicalize import apply_transform, load_mapping  # noqa: E402
+from canonicalize import compile_transform, load_mapping  # noqa: E402
 from pyspark.sql import SparkSession  # noqa: E402
 from pyspark.sql import functions as F  # noqa: E402
 from utils import load_dataset_config  # noqa: E402
@@ -275,44 +288,57 @@ def run(*, run_id: str, domain: str, dataset: str, s3_input_path: str,
         # Inline canonicalize for non-canonical datasets. Curated parquet
         # carries source-shape columns (e.g. RskID, AsOfDt); the target
         # table holds canonical-shape columns (risk_id, as_of_date).
-        # apply_transform produces ONLY the mapped business columns and
-        # drops ODS metadata, so we re-attach the metadata block after
-        # transforming. Required-field failures in this slice raise —
-        # non-canonical direct_postgres datasets are reference / lookup
-        # style, so a hard failure is correct here (not a DLQ flow).
+        #
+        # Row-alignment safety: we compile the transform to selectExpr
+        # expressions, then APPEND the ODS metadata columns as
+        # passthrough expressions in the SAME selectExpr call. This
+        # makes canonicalize a single narrow projection on ``df``, so
+        # each output row is a 1:1 in-place rewrite of its source row
+        # — no shuffle, no row-aligned join, no monotonically_increasing
+        # _id window. Required-field failures raise (no DLQ flow);
+        # non-canonical direct_postgres datasets are reference style.
         if not is_canonical:
             if not transform_yaml_path:
                 raise ValueError(
                     f"dataset {domain}/{dataset}: is_canonical=false "
                     f"requires transform_yaml_path"
                 )
-            ods_metadata_cols = [c for c in df.columns if c.startswith("_ods_")]
             mapping = load_mapping(transform_yaml_path)
-            transformed, fail_df, warnings = apply_transform(df, mapping)
-            fail_count = fail_df.count() if fail_df is not None else 0
-            if fail_count > 0:
-                raise RuntimeError(
-                    f"transform required-field failures: {fail_count} rows; "
-                    f"warnings={warnings}"
-                )
-            # Re-attach ODS metadata via row-aligned join on a synthetic
-            # row index. apply_transform preserves row order and count
-            # via selectExpr; the join just stitches the columns back.
-            from pyspark.sql.window import Window
-            row_window = Window.orderBy(F.monotonically_increasing_id())
-            df_with_idx = df.withColumn("_row_idx", F.row_number().over(row_window))
-            tx_with_idx = transformed.withColumn(
-                "_row_idx", F.row_number().over(row_window),
+            ods_metadata_cols = [c for c in df.columns if c.startswith("_ods_")]
+            available = set(df.columns)
+            select_exprs, required_targets, warnings = compile_transform(
+                {
+                    "fields": mapping.get("fields", []),
+                    "required": mapping.get("required", []),
+                },
+                available_columns=available,
             )
-            df = (
-                tx_with_idx
-                .join(
-                    df_with_idx.select("_row_idx", *ods_metadata_cols),
-                    on="_row_idx",
-                    how="inner",
+            # Append ODS metadata columns as passthrough expressions —
+            # backticked so column names with leading underscores are
+            # accepted as identifiers by Spark SQL.
+            passthrough_exprs = [f"`{c}` AS `{c}`" for c in ods_metadata_cols]
+            transformed = df.selectExpr(*select_exprs, *passthrough_exprs)
+            for derived in mapping.get("derived", []) or []:
+                transformed = transformed.withColumn(
+                    str(derived["target"]), F.expr(derived["expr"]),
                 )
-                .drop("_row_idx")
-            )
+
+            # Required-field check applied AFTER the projection — same
+            # semantics as canonicalize.apply_transform but without
+            # splitting the DataFrame.
+            if required_targets:
+                from functools import reduce
+                fail_condition = reduce(
+                    lambda left, right: left | right,
+                    [F.col(c).isNull() for c in required_targets],
+                )
+                fail_count = transformed.filter(fail_condition).count()
+                if fail_count > 0:
+                    raise RuntimeError(
+                        f"transform required-field failures: {fail_count} "
+                        f"rows; warnings={warnings}"
+                    )
+            df = transformed
 
         # Curated parquet was written by ods_ingestion with its own
         # _ods_run_id; rebrand each row with THIS write's run_id so
