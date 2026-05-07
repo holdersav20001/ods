@@ -55,9 +55,7 @@ PATTERNS_PATH = os.environ.get(
     "/c/Users/Holde/development/aviva ODS/patterns",
 )
 GLUE_IMAGE = os.environ.get("GLUE_IMAGE", "ods-glue:local")
-PG_JDBC_PACKAGE = os.environ.get(
-    "ODS_POSTGRES_JDBC_PACKAGE", "org.postgresql:postgresql:42.7.4",
-)
+# Postgres JDBC driver is baked into ods-glue:local (see glue/Dockerfile).
 GLUE_ENV = {
     "AWS_ACCESS_KEY_ID": "test",
     "AWS_SECRET_ACCESS_KEY": "test",
@@ -298,7 +296,6 @@ with DAG(
         mount_tmp_dir=False,
         command=(
             "spark-submit "
-            f"--packages {PG_JDBC_PACKAGE} "
             "--py-files /home/glue_user/workspace/jobs/utils.py,"
             "/home/glue_user/workspace/jobs/dq.py "
             "/home/glue_user/workspace/jobs/ods_postgres_write.py "
