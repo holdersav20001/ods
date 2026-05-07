@@ -11,11 +11,14 @@ the pending → committed cursor lifecycle in
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 import time
 import uuid
 from datetime import datetime, timezone
+
+log = logging.getLogger(__name__)
 
 import boto3
 import pendulum
@@ -119,17 +122,29 @@ def list_active_api_datasets() -> list[dict]:
     return out
 
 
-def _fetch_schema_str(subject: str) -> str:
-    """Pull the latest registered Avro schema from Schema Registry.
+def _fetch_schema_str(subject: str, version: int | str = "latest") -> str:
+    """Pull the registered Avro schema from Schema Registry.
 
     Used by the direct-Kafka dispatch path. Lives inline so a partial
     Schema Registry outage cannot break poll_one for file-pipeline
     datasets — the helper is only invoked when ``delivery=='direct_kafka'``.
+
+    ``version`` defaults to ``"latest"`` for backward compatibility, but
+    callers should pin to ``dataset_config.schema_version`` so two runs
+    of the same dataset cannot pick up a silently rebased wire shape.
+    Numeric strings are coerced to ints; anything else is sent verbatim.
     """
     import requests
 
+    if isinstance(version, int):
+        version_path: str = str(version)
+    elif isinstance(version, str) and version.isdigit():
+        version_path = version
+    else:
+        version_path = "latest"
+
     resp = requests.get(
-        f"{SCHEMA_REGISTRY_URL}/subjects/{subject}/versions/latest",
+        f"{SCHEMA_REGISTRY_URL}/subjects/{subject}/versions/{version_path}",
         timeout=10,
     )
     resp.raise_for_status()
@@ -194,7 +209,15 @@ def _poll_one_direct_kafka(cfg: dict) -> dict | None:
             },
         )
 
-        schema_str = _fetch_schema_str(cfg["schema_id"])
+        sv = cfg.get("schema_version")
+        if sv is None:
+            log.warning(
+                "schema_version missing for %s.%s; falling back to 'latest'. "
+                "Backfill dataset_config.schema_version to pin the wire shape.",
+                domain, dataset,
+            )
+            sv = "latest"
+        schema_str = _fetch_schema_str(cfg["schema_id"], sv)
         published = run_once_direct_kafka(
             dataset_config={
                 "domain": domain,
