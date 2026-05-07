@@ -253,7 +253,7 @@ def _upload_csv(s3_client, *, business_date_yyyymmdd: str, content: str):
         f"{business_date_yyyymmdd[:4]}-{business_date_yyyymmdd[4:6]}-"
         f"{business_date_yyyymmdd[6:8]}"
     )
-    filename = f"risk_{business_date_yyyymmdd}.csv"
+    filename = f"risk_directpg_{business_date_yyyymmdd}.csv"
     key = f"{DOMAIN}/{DATASET}/{iso}/{filename}"
     s3_path = f"s3://{RAW_BUCKET}/{key}"
     s3_client.put_object(Bucket=RAW_BUCKET, Key=key, Body=content.encode())

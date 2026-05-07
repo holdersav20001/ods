@@ -10,13 +10,21 @@ Catches impossible combinations BEFORE they reach
   - new combos can be added by extending one function with one rule
     + one unit test, no SQL changes.
 
-The validator is data-only and pure-Python — no psycopg2, no I/O —
-so unit tests run fast and downstream tooling (a future
-``odscli config validate`` command, IDE pre-commit) can reuse it.
+Two functions:
+
+  - ``validate_dataset_config(cfg)``  — pure-Python single-row checks.
+    No I/O. Reusable from a future ``odscli config validate``.
+  - ``check_no_filename_pattern_overlap(cfg, peers)`` — given a row
+    + the active peers (a list of dicts pulled from
+    ``pipeline.dataset_config``), reject regex collisions across
+    different ``(domain, dataset)`` tuples that would cause
+    ``dag_drop_to_raw`` to register the same physical file under two
+    delivery routes.
 """
 from __future__ import annotations
 
-from typing import Any, Mapping
+import re
+from typing import Any, Iterable, Mapping
 
 
 class DatasetConfigError(ValueError):
@@ -124,6 +132,10 @@ def validate_dataset_config(cfg: Mapping[str, Any]) -> None:
 
     # api_pull source block — runtime requirements that the runner / poller
     # would otherwise discover only when called.
+    # Probe-string overlap with self is allowed (one filename matches
+    # only the dataset that owns it); cross-dataset overlap is checked
+    # by ``check_no_filename_pattern_overlap`` when peers are known.
+
     if source_type == "api_pull":
         source = cfg.get("source") or {}
         if not isinstance(source, Mapping):
@@ -157,4 +169,125 @@ def validate_dataset_config(cfg: Mapping[str, Any]) -> None:
                 raise DatasetConfigError(
                     f"{name}: source.auth must not contain {forbidden!r} "
                     f"directly; use secret_ref instead"
+                )
+
+
+# ---------------------------------------------------------------------------
+# Cross-dataset overlap (called by yaml_loader before INSERT)
+# ---------------------------------------------------------------------------
+
+
+# A handful of probe filenames covering the formats this codebase ingests.
+# The overlap check matches each peer's ``filename_pattern`` against probes
+# generated from the candidate's pattern; if any probe matches BOTH, the
+# regexes share input and `dag_drop_to_raw` would register the same SFTP
+# file under two distinct ``(domain, dataset)`` rows.
+_PROBE_FILENAMES: tuple[str, ...] = (
+    # Common shapes produced by the patterns in patterns/insurance/.
+    "policies_20260501.csv",
+    "risk_20260501.csv",
+    "events_20260501.csv",
+    "country_codes_20260501.csv",
+    "claims_20260501.csv",
+)
+
+
+def _generate_probes(pattern: str) -> list[str]:
+    """Synthesise sample filenames a regex would accept.
+
+    Pure heuristic — substitutes named groups with sensible defaults
+    and returns the literal-stripped form. Used only for cross-dataset
+    overlap detection so a precise regex parser isn't required.
+    """
+    if not pattern:
+        return []
+    probes: list[str] = []
+    # Replace named-group YYYYMMDD captures with a known date.
+    candidate = re.sub(
+        r"\(\?P<bd>[^)]+\)",
+        "20260501",
+        pattern,
+    )
+    # Replace any other named group with a token.
+    candidate = re.sub(r"\(\?P<[^>]+>[^)]+\)", "x", candidate)
+    # Strip anchors + escapes.
+    candidate = candidate.replace("^", "").replace("$", "").replace("\\.", ".")
+    candidate = candidate.replace("\\d{8}", "20260501")
+    candidate = candidate.replace(r"\d{8}", "20260501")
+    probes.append(candidate)
+    probes.extend(_PROBE_FILENAMES)
+    return probes
+
+
+def check_no_filename_pattern_overlap(
+    cfg: Mapping[str, Any],
+    peers: Iterable[Mapping[str, Any]],
+) -> None:
+    """Reject the candidate if its ``filename_pattern`` matches a sample
+    that another active dataset's pattern ALSO matches (excluding
+    same ``(domain, dataset)``).
+
+    Why: ``dag_drop_to_raw`` walks the SFTP listing and, for each file,
+    iterates every active ``s3_batch`` dataset's regex. Two regexes
+    that accept the same filename → same physical byte stream
+    registered as two distinct ``file_catalogue`` rows under two
+    distinct deliveries. T2 recon then double-counts and the file
+    fans into both downstream DAGs. The protection is regex
+    disjointness across active s3_batch datasets.
+
+    Heuristic only: synthesises probe filenames from each pattern and
+    runs every other pattern against them. False positives possible
+    on heavily-anchored regexes, false negatives possible on patterns
+    that accept only filenames not in the probe set. For production-
+    grade isolation, use distinct SFTP folders per delivery.
+    """
+    if cfg.get("source_type", "s3_batch") != "s3_batch":
+        return
+    pattern = cfg.get("filename_pattern")
+    if not pattern:
+        return
+
+    name_self = (cfg.get("domain"), cfg.get("dataset"))
+    self_delivery = cfg.get("delivery", "file_pipeline")
+    self_probes = _generate_probes(pattern)
+    if not self_probes:
+        return
+    self_re = re.compile(pattern)
+
+    for peer in peers:
+        if peer.get("source_type", "s3_batch") != "s3_batch":
+            continue
+        peer_pattern = peer.get("filename_pattern")
+        if not peer_pattern:
+            continue
+        if (peer.get("domain"), peer.get("dataset")) == name_self:
+            continue
+        # Two datasets sharing the SAME delivery route are an accepted
+        # dual-write pattern: e.g. policies (current) + policies_history
+        # both read the same file and write to different downstream
+        # tables via different Kafka topics. The reviewer concern is
+        # about CROSS-route collisions (file_pipeline + direct_postgres)
+        # where the file would be ingested through two divergent
+        # pipelines. Skip same-delivery peers.
+        peer_delivery = peer.get("delivery", "file_pipeline")
+        if peer_delivery == self_delivery:
+            continue
+        try:
+            peer_re = re.compile(peer_pattern)
+        except re.error:
+            continue
+        # Generate probes from BOTH patterns so we don't miss collisions
+        # in either direction.
+        probes = list(set(self_probes + _generate_probes(peer_pattern)))
+        for probe in probes:
+            if self_re.match(probe) and peer_re.match(probe):
+                raise DatasetConfigError(
+                    f"{name_self[0]}/{name_self[1]}: filename_pattern "
+                    f"{pattern!r} overlaps with peer "
+                    f"{peer.get('domain')}/{peer.get('dataset')!r} "
+                    f"pattern {peer_pattern!r} (both accept {probe!r}). "
+                    f"dag_drop_to_raw would register the same SFTP file "
+                    f"under two distinct deliveries. Disambiguate the "
+                    f"regexes (anchors, separator chars) or split SFTP "
+                    f"folders per dataset."
                 )

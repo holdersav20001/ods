@@ -305,6 +305,39 @@ def run(*, run_id: str, domain: str, dataset: str, s3_input_path: str,
             mapping = load_mapping(transform_yaml_path)
             ods_metadata_cols = [c for c in df.columns if c.startswith("_ods_")]
             available = set(df.columns)
+            # Collision guard (R3 review fix): a transform mapping that
+            # names a target / derived field equal to an _ods_* column
+            # name would silently shadow the ODS metadata when the
+            # passthrough expressions are appended below. Refuse to
+            # run rather than corrupt lineage / recon. Same semantic
+            # cost as a misconfigured dataset_config — fail loud.
+            ods_set = set(ods_metadata_cols)
+            transform_targets = {
+                str(f.get("target")) for f in mapping.get("fields", [])
+                if f.get("target")
+            }
+            derived_targets = {
+                str(d.get("target")) for d in (mapping.get("derived") or [])
+                if d.get("target")
+            }
+            if transform_targets & ods_set:
+                raise ValueError(
+                    f"dataset {domain}/{dataset}: transform field targets "
+                    f"collide with ODS metadata columns: "
+                    f"{sorted(transform_targets & ods_set)}"
+                )
+            if derived_targets & ods_set:
+                raise ValueError(
+                    f"dataset {domain}/{dataset}: derived field targets "
+                    f"collide with ODS metadata columns: "
+                    f"{sorted(derived_targets & ods_set)}"
+                )
+            if transform_targets & derived_targets:
+                raise ValueError(
+                    f"dataset {domain}/{dataset}: derived targets shadow "
+                    f"transform field targets: "
+                    f"{sorted(transform_targets & derived_targets)}"
+                )
             select_exprs, required_targets, warnings = compile_transform(
                 {
                     "fields": mapping.get("fields", []),

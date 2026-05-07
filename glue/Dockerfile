@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         openjdk-17-jre-headless \
         procps \
         curl \
+        coreutils \
     && rm -rf /var/lib/apt/lists/*
 
 ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
@@ -27,13 +28,27 @@ RUN pip install --no-cache-dir \
 
 # Download S3A jars and the PostgreSQL JDBC driver into PySpark's jars
 # directory so SparkSession picks them up automatically (no --packages needed).
+#
+# Each download is followed by SHA1 verification using the canonical
+# ``.sha1`` checksum file Maven Central publishes alongside every
+# artifact (sha256 is not universally hosted; sha1 is). This catches
+# in-transit corruption, mirror tampering, and basic supply-chain
+# MITM. It does NOT defend against an upstream Maven Central
+# compromise — for that we'd need offline-pinned checksums, planned
+# as a follow-up once we have a build secrets store.
 RUN SPARK_JARS=$(python3 -c "import pyspark, os; print(os.path.join(os.path.dirname(pyspark.__file__), 'jars'))") && \
-    curl -fsSL "https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.3.4/hadoop-aws-3.3.4.jar" \
-         -o "${SPARK_JARS}/hadoop-aws-3.3.4.jar" && \
-    curl -fsSL "https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.12.367/aws-java-sdk-bundle-1.12.367.jar" \
-         -o "${SPARK_JARS}/aws-java-sdk-bundle-1.12.367.jar" && \
-    curl -fsSL "https://repo1.maven.org/maven2/org/postgresql/postgresql/${POSTGRES_JDBC_VERSION}/postgresql-${POSTGRES_JDBC_VERSION}.jar" \
-         -o "${SPARK_JARS}/postgresql-${POSTGRES_JDBC_VERSION}.jar"
+    cd "${SPARK_JARS}" && \
+    for spec in \
+        "hadoop-aws-3.3.4.jar https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.3.4/hadoop-aws-3.3.4.jar" \
+        "aws-java-sdk-bundle-1.12.367.jar https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.12.367/aws-java-sdk-bundle-1.12.367.jar" \
+        "postgresql-${POSTGRES_JDBC_VERSION}.jar https://repo1.maven.org/maven2/org/postgresql/postgresql/${POSTGRES_JDBC_VERSION}/postgresql-${POSTGRES_JDBC_VERSION}.jar" \
+    ; do \
+        jar=$(echo "$spec" | cut -d' ' -f1) && \
+        url=$(echo "$spec" | cut -d' ' -f2) && \
+        curl -fsSL "${url}" -o "${jar}" && \
+        expected=$(curl -fsSL "${url}.sha1") && \
+        echo "${expected}  ${jar}" | sha1sum -c - ; \
+    done
 
 RUN useradd -m -u 1001 -s /bin/bash glue_user
 

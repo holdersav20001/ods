@@ -13,7 +13,7 @@ domain: insurance
 dataset: file_direct_pg_risk_demo
 source_type: s3_batch
 delivery: direct_postgres
-filename_pattern: '^risk_(?P<bd>\d{8})\.csv$'
+filename_pattern: '^risk_directpg_(?P<bd>\d{8})\.csv$'
 raw_format: csv
 is_canonical: false
 write_mode: append

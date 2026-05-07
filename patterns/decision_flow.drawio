@@ -1,0 +1,63 @@
+<mxfile host="Claude">
+  <diagram id="decision" name="Pattern Selection — Decision Guide">
+    <mxGraphModel dx="1200" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="900" pageHeight="1400" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/><mxCell id="1" parent="0"/>
+
+        <!-- Title -->
+        <mxCell id="2" value="Pattern Selection — Decision Guide" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=16;fontStyle=1;fontColor=#1F5C8B;" vertex="1" parent="1"><mxGeometry x="50" y="20" width="800" height="40" as="geometry"/></mxCell>
+
+        <!-- Start -->
+        <mxCell id="10" value="&lt;b&gt;Start: design your CDC sink&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#1565C0;fontSize=12;" vertex="1" parent="1"><mxGeometry x="275" y="80" width="350" height="50" as="geometry"/></mxCell>
+
+        <!-- Q1 -->
+        <mxCell id="11" value="Do you need current state&lt;br/&gt;for APIs / queries?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1"><mxGeometry x="275" y="170" width="350" height="90" as="geometry"/></mxCell>
+        <mxCell id="a10-11" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#1565C0;strokeWidth=2;" edge="1" source="10" target="11" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- P1 base -->
+        <mxCell id="20" value="&lt;b&gt;Pattern 1 — Always the base&lt;/b&gt;&lt;br/&gt;Current-State Upsert&lt;br/&gt;&lt;font size='2' color='#555'&gt;Key partitioning + ON CONFLICT + LSN guard&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#1565C0;fontSize=11;" vertex="1" parent="1"><mxGeometry x="275" y="300" width="350" height="70" as="geometry"/></mxCell>
+        <mxCell id="a11-20" value="YES (almost always)" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#1565C0;strokeWidth=2;fontStyle=1;fontSize=9;" edge="1" source="11" target="20" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- Q2 -->
+        <mxCell id="12" value="Need full history / audit trail&lt;br/&gt;/ GDPR / event sourcing?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1"><mxGeometry x="275" y="410" width="350" height="90" as="geometry"/></mxCell>
+        <mxCell id="a20-12" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#555555;strokeWidth=1.5;" edge="1" source="20" target="12" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- P2 -->
+        <mxCell id="21" value="&lt;b&gt;+ Pattern 2&lt;/b&gt;&lt;br/&gt;Append-Only Log&lt;br/&gt;&lt;font size='2' color='#555'&gt;(pk, lsn) composite PK&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#880E4F;fontSize=11;" vertex="1" parent="1"><mxGeometry x="680" y="425" width="200" height="60" as="geometry"/></mxCell>
+        <mxCell id="a12-21" value="YES" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#880E4F;strokeWidth=2;fontStyle=1;fontSize=9;" edge="1" source="12" target="21" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- Q3 -->
+        <mxCell id="13" value="Cross-table consistency within&lt;br/&gt;an aggregate (order+lines+payment)?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1"><mxGeometry x="275" y="545" width="350" height="90" as="geometry"/></mxCell>
+        <mxCell id="a12-13" value="NO" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#555555;strokeWidth=1.5;fontStyle=1;fontSize=9;" edge="1" source="12" target="13" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- P4 -->
+        <mxCell id="22" value="&lt;b&gt;Use Pattern 4&lt;/b&gt;&lt;br/&gt;Aggregate-Root Partitioning&lt;br/&gt;&lt;font size='2' color='#555'&gt;Partition by root key, not row PK&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#2E7D32;fontSize=11;" vertex="1" parent="1"><mxGeometry x="680" y="560" width="200" height="60" as="geometry"/></mxCell>
+        <mxCell id="a13-22" value="YES" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#2E7D32;strokeWidth=2;fontStyle=1;fontSize=9;" edge="1" source="13" target="22" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- Q4 -->
+        <mxCell id="14" value="Regulated system or need replay&lt;br/&gt;without re-reading Kafka?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1"><mxGeometry x="275" y="680" width="350" height="90" as="geometry"/></mxCell>
+        <mxCell id="a13-14" value="NO" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#555555;strokeWidth=1.5;fontStyle=1;fontSize=9;" edge="1" source="13" target="14" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- P5 -->
+        <mxCell id="23" value="&lt;b&gt;+ Pattern 5&lt;/b&gt;&lt;br/&gt;Staging-Then-Merge&lt;br/&gt;&lt;font size='2' color='#555'&gt;raw_cdc_events before final tables&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#E65100;fontSize=11;" vertex="1" parent="1"><mxGeometry x="680" y="695" width="200" height="60" as="geometry"/></mxCell>
+        <mxCell id="a14-23" value="YES" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#E65100;strokeWidth=2;fontStyle=1;fontSize=9;" edge="1" source="14" target="23" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- Q5 -->
+        <mxCell id="15" value="Strict exactly-once cross-service&lt;br/&gt;delivery required?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1"><mxGeometry x="275" y="815" width="350" height="90" as="geometry"/></mxCell>
+        <mxCell id="a14-15" value="NO" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#555555;strokeWidth=1.5;fontStyle=1;fontSize=9;" edge="1" source="14" target="15" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- P3 -->
+        <mxCell id="24" value="&lt;b&gt;Use Pattern 3&lt;/b&gt;&lt;br/&gt;Transactional Outbox&lt;br/&gt;&lt;font size='2' color='#555'&gt;at the producer side&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1"><mxGeometry x="680" y="830" width="200" height="60" as="geometry"/></mxCell>
+        <mxCell id="a15-24" value="YES" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d6b656;strokeWidth=2;fontStyle=1;fontSize=9;" edge="1" source="15" target="24" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- Done -->
+        <mxCell id="30" value="&lt;b&gt;Done — run the selected patterns&lt;/b&gt;&lt;br/&gt;&lt;font size='2' color='#555'&gt;Each YES = one more independent consumer group&lt;br/&gt;All read from the same Kafka topic simultaneously&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#2E7D32;fontSize=11;" vertex="1" parent="1"><mxGeometry x="275" y="950" width="350" height="70" as="geometry"/></mxCell>
+        <mxCell id="a15-30" value="NO" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#2E7D32;strokeWidth=2;fontStyle=1;fontSize=9;" edge="1" source="15" target="30" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- Additive note -->
+        <mxCell id="40" value="&lt;b&gt;Patterns are additive, not mutually exclusive.&lt;/b&gt;&lt;br/&gt;Each YES adds a pattern on top of the base.&lt;br/&gt;Most systems answer YES to 2–3 questions." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff9e6;strokeColor=#F9A825;fontSize=10;" vertex="1" parent="1"><mxGeometry x="50" y="600" width="200" height="80" as="geometry"/></mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

@@ -42,14 +42,26 @@ jobs:
       - name: Install dependencies
         run: python -m pip install -r requirements-dev.txt
 
-      # Coverage gate spans ods_pipeline + glue/jobs + services +
-      # airflow/dags/common (the reusable orchestration helpers, not the
-      # top-level DAG factory files). Threshold is the COMBINED total
-      # measured at gate-introduction time minus a small slack so CI is
-      # green day one. Tighten with care: this number protects against
-      # silent dead-branches in glue/jobs and services where coverage
-      # was previously zero.
-      - name: Run unit tests with coverage
+      # Two coverage gates, both run on every PR.
+      #
+      # 1) ods_pipeline FLOOR — pinned at 70%. This is the original
+      #    high-bar gate; a regression in the core control-plane
+      #    package fails CI immediately, regardless of what happens to
+      #    auxiliary packages. Without this floor, the broader combined
+      #    gate (below) would silently absorb an ods_pipeline drop.
+      - name: ods_pipeline coverage floor (>=70%)
+        run: |
+          python -m pytest tests/unit -q \
+            --cov=ods_pipeline \
+            --cov-report=term \
+            --cov-fail-under=70
+
+      # 2) Combined coverage gate — broader scope (glue/jobs, services,
+      #    airflow/dags/common). Threshold is the combined baseline
+      #    measured at gate-introduction minus slack so CI is green day
+      #    one. Catches silent dead-branches in packages that previously
+      #    had zero coverage measurement at all.
+      - name: Run unit tests with combined coverage
         run: |
           python -m pytest tests/unit -q \
             --cov=ods_pipeline \

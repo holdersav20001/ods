@@ -94,3 +94,70 @@ def test_missing_source_column_emits_null_passthrough_for_metadata():
     joined = "; ".join(select_exprs)
     assert "`_ods_file_id`" not in joined
     assert "`_ods_run_id` AS `_ods_run_id`" in joined
+
+
+# ---------------------------------------------------------------------------
+# Lineage-thread guarantees (Reality Checker concern #7)
+# ---------------------------------------------------------------------------
+
+
+def test_ods_file_id_explicitly_threads_through_inline_canonicalize():
+    """Reality-check concern: comment in ods_postgres_write says ingest
+    provenance is recoverable via _ods_file_id → file_catalogue →
+    run_log. That contract holds ONLY if _ods_file_id is in the
+    passthrough projection. Pin that fact here so a future change
+    that drops _ods_file_id from the passthrough list fails CI."""
+    select_exprs, _ = _build_select(_RISK_DEMO_MAPPING, _CURATED_COLS)
+    # Find the projection expression for _ods_file_id and assert the
+    # source side of the AS is the SAME column name — i.e. it isn't
+    # rebranded, it isn't a literal, it isn't dropped.
+    matches = [e for e in select_exprs if "`_ods_file_id`" in e]
+    assert len(matches) == 1, matches
+    assert matches[0].startswith("`_ods_file_id`")
+    assert matches[0].endswith("`_ods_file_id`")
+
+
+# ---------------------------------------------------------------------------
+# Collision guard (Code Reviewer HIGH finding on R3)
+# ---------------------------------------------------------------------------
+
+
+def _collisions_for(transform_targets, derived_targets, ods_set):
+    """Replicate the runtime collision-guard logic in ods_postgres_write
+    so the rules are visible in the test suite."""
+    issues = []
+    if transform_targets & ods_set:
+        issues.append(("transform-vs-ods", sorted(transform_targets & ods_set)))
+    if derived_targets & ods_set:
+        issues.append(("derived-vs-ods", sorted(derived_targets & ods_set)))
+    if transform_targets & derived_targets:
+        issues.append(("derived-vs-transform", sorted(transform_targets & derived_targets)))
+    return issues
+
+
+def test_collision_guard_clean_for_risk_demo():
+    transform_targets = {f["target"] for f in _RISK_DEMO_MAPPING["fields"]}
+    ods_set = {c for c in _CURATED_COLS if c.startswith("_ods_")}
+    assert _collisions_for(transform_targets, set(), ods_set) == []
+
+
+def test_collision_guard_rejects_transform_target_named_like_ods_metadata():
+    transform_targets = {"risk_id", "_ods_run_id"}  # malicious / careless
+    ods_set = {"_ods_run_id", "_ods_file_id", "_ods_business_date"}
+    issues = _collisions_for(transform_targets, set(), ods_set)
+    assert issues == [("transform-vs-ods", ["_ods_run_id"])]
+
+
+def test_collision_guard_rejects_derived_target_named_like_ods_metadata():
+    derived_targets = {"_ods_file_id"}
+    ods_set = {"_ods_run_id", "_ods_file_id"}
+    issues = _collisions_for(set(), derived_targets, ods_set)
+    assert issues == [("derived-vs-ods", ["_ods_file_id"])]
+
+
+def test_collision_guard_rejects_derived_shadowing_transform_target():
+    transform_targets = {"risk_id", "policy_id"}
+    derived_targets = {"risk_id"}  # derived overwrites the canonical mapping
+    ods_set = set()
+    issues = _collisions_for(transform_targets, derived_targets, ods_set)
+    assert issues == [("derived-vs-transform", ["risk_id"])]

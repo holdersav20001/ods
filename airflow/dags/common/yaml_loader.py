@@ -15,7 +15,10 @@ for _root in (
     if _root not in sys.path:
         sys.path.insert(0, _root)
 
-from ods_pipeline.config import validate_dataset_config  # noqa: E402
+from ods_pipeline.config import (  # noqa: E402
+    check_no_filename_pattern_overlap,
+    validate_dataset_config,
+)
 
 # Source-config keys we never persist to dataset_config.source_config.
 # secret_ref names are kept; resolved secret values are looked up at
@@ -48,6 +51,24 @@ def _scrub_secrets(value):
     return value
 
 
+def _active_peers(pg_conn) -> list[dict]:
+    """Pull the active s3_batch peers so the overlap check has data."""
+    with pg_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT domain, dataset, source_type, filename_pattern,
+                   COALESCE(delivery, 'file_pipeline')
+              FROM pipeline.dataset_config
+             WHERE active = TRUE
+            """
+        )
+        return [
+            {"domain": d, "dataset": ds, "source_type": st,
+             "filename_pattern": fp, "delivery": dlv}
+            for d, ds, st, fp, dlv in cur.fetchall()
+        ]
+
+
 def sync_to_db(path: str, pg_conn) -> None:
     try:
         cfg = load_dataset_yaml(path)
@@ -55,6 +76,10 @@ def sync_to_db(path: str, pg_conn) -> None:
         # at sync time with a single operator-readable message rather
         # than discovered six hours later in a failing run.
         validate_dataset_config(cfg)
+        # Cross-dataset overlap: two datasets with regex-overlapping
+        # filename_patterns would cause dag_drop_to_raw to register
+        # the same physical SFTP file twice. Catch at sync time.
+        check_no_filename_pattern_overlap(cfg, _active_peers(pg_conn))
         h = compute_hash(cfg)
         source_type = cfg.get('source_type', 's3_batch')
         delivery = cfg.get('delivery', 'file_pipeline')

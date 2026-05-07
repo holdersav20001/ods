@@ -9,7 +9,12 @@ nonsense at run time.
 """
 from ods_pipeline.config.validator import (
     DatasetConfigError,
+    check_no_filename_pattern_overlap,
     validate_dataset_config,
 )
 
-__all__ = ["DatasetConfigError", "validate_dataset_config"]
+__all__ = [
+    "DatasetConfigError",
+    "check_no_filename_pattern_overlap",
+    "validate_dataset_config",
+]

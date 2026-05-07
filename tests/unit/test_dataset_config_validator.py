@@ -10,7 +10,11 @@ from __future__ import annotations
 
 import pytest
 
-from ods_pipeline.config import DatasetConfigError, validate_dataset_config
+from ods_pipeline.config import (
+    DatasetConfigError,
+    check_no_filename_pattern_overlap,
+    validate_dataset_config,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -272,3 +276,111 @@ def test_api_pull_inlined_secret_value_raises(forbidden: str):
     cfg["source"]["auth"][forbidden] = "literal-secret-NEVER-DO-THIS"
     with pytest.raises(DatasetConfigError, match="must not contain"):
         validate_dataset_config(cfg)
+
+
+# ---------------------------------------------------------------------------
+# Cross-dataset filename_pattern overlap (catches dag_drop_to_raw fan-out)
+# ---------------------------------------------------------------------------
+
+
+def test_overlap_check_passes_when_no_peers():
+    cfg = _file_pipeline_min()
+    check_no_filename_pattern_overlap(cfg, peers=[])
+
+
+def test_overlap_check_passes_for_disjoint_patterns():
+    cfg = {
+        **_file_pipeline_min(),
+        "dataset": "country_codes",
+        "filename_pattern": r"^country_codes_(?P<bd>\d{8})\.csv$",
+    }
+    peers = [
+        {
+            "domain": "insurance", "dataset": "policies",
+            "source_type": "s3_batch",
+            "filename_pattern": r"^policies_(?P<bd>\d{8})\.csv$",
+        },
+    ]
+    check_no_filename_pattern_overlap(cfg, peers=peers)
+
+
+def test_overlap_check_rejects_two_datasets_matching_same_filename():
+    """The exact failure mode the Reality Checker found: a `direct_postgres`
+    risk_demo dataset and the legacy `file_pipeline` risk dataset both
+    matching `risk_20260501.csv`."""
+    cfg = {
+        **_file_pipeline_min(),
+        "dataset": "file_direct_pg_risk_demo",
+        "delivery": "direct_postgres",
+        "filename_pattern": r"^risk_(?P<bd>\d{8})\.csv$",
+    }
+    peers = [
+        {
+            "domain": "insurance", "dataset": "risk",
+            "source_type": "s3_batch",
+            "filename_pattern": r"risk_(?P<bd>\d{8})\.csv",
+        },
+    ]
+    with pytest.raises(DatasetConfigError, match="overlaps with peer"):
+        check_no_filename_pattern_overlap(cfg, peers=peers)
+
+
+def test_overlap_check_ignores_non_s3_batch_peers():
+    """api_pull peers don't go through dag_drop_to_raw; their absence of
+    filename_pattern must not trip the check."""
+    cfg = _file_pipeline_min()
+    peers = [
+        {
+            "domain": "insurance", "dataset": "api_pull_demo",
+            "source_type": "api_pull",
+            "filename_pattern": None,
+        },
+    ]
+    check_no_filename_pattern_overlap(cfg, peers=peers)
+
+
+def test_overlap_check_excludes_self():
+    """A dataset never overlaps with itself — re-syncing the same YAML
+    must not trip the rule."""
+    cfg = _file_pipeline_min()
+    peers = [
+        {
+            "domain": cfg["domain"], "dataset": cfg["dataset"],
+            "source_type": cfg["source_type"],
+            "filename_pattern": cfg["filename_pattern"],
+        },
+    ]
+    check_no_filename_pattern_overlap(cfg, peers=peers)
+
+
+def test_validator_round_trip_through_real_yamls_no_overlap():
+    """Every shipped YAML in patterns/ + datasets/ must validate AND not
+    overlap with any of its peers. Run as a regression guard so a future
+    PR adding a colliding YAML fails CI immediately."""
+    import glob
+    import os
+
+    import yaml as _yaml
+
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    paths = (
+        glob.glob(os.path.join(repo_root, "patterns", "**", "*.yaml"), recursive=True)
+        + glob.glob(os.path.join(repo_root, "datasets", "**", "*.yaml"), recursive=True)
+    )
+    configs = []
+    for p in paths:
+        with open(p) as f:
+            cfg = _yaml.safe_load(f)
+        if (
+            isinstance(cfg, dict)
+            and "domain" in cfg
+            and "dataset" in cfg
+            and (
+                "source_type" in cfg or "target_topic" in cfg or "delivery" in cfg
+            )
+        ):
+            configs.append(cfg)
+    for cfg in configs:
+        validate_dataset_config(cfg)
+        peers = [c for c in configs if c is not cfg]
+        check_no_filename_pattern_overlap(cfg, peers=peers)
