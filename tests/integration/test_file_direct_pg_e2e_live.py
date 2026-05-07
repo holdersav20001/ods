@@ -232,9 +232,8 @@ def _run_postgres_write(*, run_id, file_id, curated_path, parent_run_id,
         "docker", "run", "--rm", "--network", NETWORK,
         *_glue_env_args(),
         "ods-glue:local", "spark-submit",
-        # Postgres JDBC driver isn't bundled in the Glue image; pull
-        # via Maven on submit so spark.read.jdbc / write.jdbc work.
-        "--packages", "org.postgresql:postgresql:42.7.4",
+        # Postgres JDBC driver is baked into ods-glue:local under
+        # $SPARK_HOME/jars (see glue/Dockerfile) — no --packages needed.
         "--py-files",
         "/home/glue_user/workspace/jobs/utils.py,"
         "/home/glue_user/workspace/jobs/dq.py",

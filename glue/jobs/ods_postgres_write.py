@@ -51,11 +51,10 @@ StageEvent = ods_pipeline.StageEvent
 
 
 def _build_spark(dataset: str) -> SparkSession:
-    # The PostgreSQL JDBC driver is supplied via --packages on
-    # spark-submit (test fixture and DAG operator both pass it); the
-    # Glue image does not bundle it. Setting spark.jars.packages here
-    # via builder.config is too late — the package resolver only runs
-    # at submit time.
+    # The PostgreSQL JDBC driver is baked into the ods-glue:local image
+    # under $SPARK_HOME/jars (see glue/Dockerfile, POSTGRES_JDBC_VERSION
+    # ARG). No --packages flag is required at spark-submit time, which
+    # avoids the 5-10s Maven resolution cost on every direct_postgres run.
     return (
         SparkSession.builder
         .appName(f"ods_postgres_write_{dataset}")
