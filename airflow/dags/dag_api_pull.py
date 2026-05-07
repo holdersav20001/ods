@@ -136,10 +136,29 @@ def _fetch_schema_str(subject: str, version: int | str = "latest") -> str:
     """
     import requests
 
-    if isinstance(version, int):
-        version_path: str = str(version)
-    elif isinstance(version, str) and version.isdigit():
-        version_path = version
+    # Strict whitelist (Reality Checker F8). Schema Registry treats any
+    # non-positive integer as "latest" — including ``-1`` — so a slip-up
+    # in the dataset_config NUMERIC column would silently un-pin the
+    # wire shape. Accept only:
+    #   * ``int`` >= 1
+    #   * ``str`` matching ``^\d+$`` after ``strip()``, value >= 1
+    # Everything else (None, "3.0", "v2", "  ", "-1", "0") falls back
+    # to "latest" with a WARN — the same posture as a missing column,
+    # so operators see the same signal in run_log.
+    version_path: str
+    if isinstance(version, int) and version >= 1:
+        version_path = str(version)
+    elif isinstance(version, str):
+        stripped = version.strip()
+        if stripped.isdigit() and int(stripped) >= 1:
+            version_path = str(int(stripped))  # strips leading zeros
+        else:
+            log.warning(
+                "schema version %r is not a positive integer; "
+                "falling back to 'latest' for subject %s",
+                version, subject,
+            )
+            version_path = "latest"
     else:
         version_path = "latest"
 

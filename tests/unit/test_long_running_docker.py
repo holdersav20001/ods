@@ -70,7 +70,10 @@ class FakePsycopg2:
         self.calls = []
         self.connections = []
 
-    def connect(self, dsn):
+    def connect(self, dsn, **kwargs):
+        # Accept connect_timeout (and any future kwargs) — production
+        # ``_write_heartbeat_row`` passes connect_timeout=5 to bound the
+        # heartbeat thread on a hung Postgres.
         conn = FakeConn(self.calls)
         self.connections.append(conn)
         return conn

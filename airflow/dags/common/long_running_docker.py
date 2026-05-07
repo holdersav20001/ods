@@ -22,6 +22,7 @@ Public API: :func:`make_long_running_docker_operator`.
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import threading
@@ -55,16 +56,34 @@ def _write_heartbeat_row(
     task_id: str,
     container_id: Optional[str],
     psycopg2_module: Any = None,
-) -> None:
+    conn: Any = None,
+) -> Any:
     """Insert a single ``stage_heartbeat`` row.
 
-    Kept as a free function (and parameterised on the psycopg2 module) so
-    tests can pass in a mock connector without monkey-patching the import.
+    If ``conn`` is supplied the caller owns it (Reality Checker F5: the
+    loop persists one connection across all beats so a long-running
+    Glue task does not connect/close once per heartbeat — this saturates
+    ``pg_stat_activity`` under PgBouncer). Otherwise a fresh connection
+    is opened and closed for the one-shot initial heartbeat path.
+
+    Returns the connection used so callers can persist it.
     """
     if psycopg2_module is None:  # pragma: no cover - real-runtime path
         import psycopg2 as psycopg2_module  # type: ignore[import-not-found]
 
-    conn = psycopg2_module.connect(dsn)
+    owns_conn = conn is None
+    if owns_conn:
+        # Bound the connect attempt: a hung Postgres must not stall the
+        # heartbeat thread past `thread.join(timeout=5)` (CR R8 🟡).
+        conn = psycopg2_module.connect(dsn, connect_timeout=5)
+    # Code Reviewer R8 🔴: jsonb metrics built via ``%`` interpolation
+    # produced invalid JSON when ``task_id`` / ``container_id`` contained
+    # quotes or backslashes — the INSERT then failed under jsonb parsing.
+    # Build via ``json.dumps`` and bind separately.
+    metrics_json = json.dumps({
+        "task_id": task_id,
+        "container_id": container_id or "unknown",
+    })
     try:
         with conn:
             with conn.cursor() as cur:
@@ -82,12 +101,20 @@ def _write_heartbeat_row(
                         "running",
                         "stage_heartbeat",
                         1,
-                        '{"task_id": "%s", "container_id": "%s"}'
-                        % (task_id, container_id or "unknown"),
+                        metrics_json,
                     ),
                 )
-    finally:
+    except Exception:
+        if owns_conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+        raise
+    if owns_conn:
         conn.close()
+        return None
+    return conn
 
 
 class _HeartbeatState:
@@ -198,26 +225,47 @@ def make_long_running_docker_operator(
             container_id_box: dict,
             state: _HeartbeatState,
         ) -> None:
-            """Background thread: write a row every ``heartbeat_seconds``."""
-            while not state.stop.wait(self._heartbeat_seconds):
-                try:
-                    _write_heartbeat_row(
-                        dsn=self._pg_dsn,
-                        run_id=run_id,
-                        stage=self._heartbeat_stage,
-                        task_id=self.task_id,
-                        container_id=container_id_box.get("id"),
-                        psycopg2_module=self._psycopg2,
-                    )
-                    state.last_beat_at = time.time()
-                except Exception as exc:  # noqa: BLE001
-                    state.errors.append(str(exc))
-                    self._logger.warning(
-                        "[long_running pid=%s cid=%s] heartbeat write failed: %s",
-                        os.getpid(),
-                        container_id_box.get("id"),
-                        exc,
-                    )
+            """Background thread: write a row every ``heartbeat_seconds``.
+
+            Holds one persistent psycopg2 connection across all beats
+            (Reality Checker F5). If a write fails the connection is
+            dropped and reopened on the next iteration so a flapping DB
+            cannot wedge the loop on a half-dead socket.
+            """
+            persistent_conn: Any = None
+            try:
+                while not state.stop.wait(self._heartbeat_seconds):
+                    try:
+                        persistent_conn = _write_heartbeat_row(
+                            dsn=self._pg_dsn,
+                            run_id=run_id,
+                            stage=self._heartbeat_stage,
+                            task_id=self.task_id,
+                            container_id=container_id_box.get("id"),
+                            psycopg2_module=self._psycopg2,
+                            conn=persistent_conn,
+                        )
+                        state.last_beat_at = time.time()
+                    except Exception as exc:  # noqa: BLE001
+                        state.errors.append(str(exc))
+                        self._logger.warning(
+                            "[long_running pid=%s cid=%s] heartbeat write failed: %s",
+                            os.getpid(),
+                            container_id_box.get("id"),
+                            exc,
+                        )
+                        if persistent_conn is not None:
+                            try:
+                                persistent_conn.close()
+                            except Exception:
+                                pass
+                        persistent_conn = None
+            finally:
+                if persistent_conn is not None:
+                    try:
+                        persistent_conn.close()
+                    except Exception:
+                        pass
 
         def _poll_until_done(
             self,

@@ -25,8 +25,21 @@ def _stub_airflow() -> None:
     """Stub the airflow surface dag_api_pull touches at import time so
     this unit test runs outside the scheduler container. We only need
     enough scaffolding to let the module load — no DAG execution.
+
+    Other test modules (e.g. test_recon_t2) install thinner stubs that
+    don't accept keyword args. Evict them so our richer shim wins.
     """
     import types
+
+    for _mod in (
+        "airflow",
+        "airflow.decorators",
+        "airflow.operators",
+        "airflow.operators.trigger_dagrun",
+        "airflow.utils",
+        "airflow.utils.trigger_rule",
+    ):
+        sys.modules.pop(_mod, None)
 
     if "airflow" not in sys.modules:
         airflow_mod = types.ModuleType("airflow")
@@ -183,3 +196,29 @@ def test_fetch_schema_str_non_numeric_string_is_treated_as_latest(dag_module):
         dag_module._fetch_schema_str("ods.policies-value", "v2-rebased")
 
     assert "/versions/latest" in captured["url"]
+
+
+@pytest.mark.parametrize("bad_version,expected_path", [
+    ("3.0", "latest"),         # semver-style — not pinned
+    ("-1", "latest"),           # SR sentinel for "latest" — fall back explicitly
+    ("0", "latest"),            # SR rejects 0 anyway
+    (-5, "latest"),             # negative int
+    (0, "latest"),              # zero int
+    ("  ", "latest"),           # whitespace
+    ("", "latest"),             # empty
+    (" 3 ", "3"),               # whitespace stripped, valid int kept
+    ("03", "3"),                # leading zeros stripped (SR strict deploys reject /versions/03)
+    (None, "latest"),           # explicit None
+])
+def test_fetch_schema_str_edge_cases(dag_module, bad_version, expected_path):
+    """Reality Checker F8 — pin parser must not silently degrade or break SR."""
+    captured: dict[str, str] = {}
+
+    def fake_get(url: str, timeout: int = 10) -> _FakeResponse:
+        captured["url"] = url
+        return _FakeResponse({"schema": "{}"})
+
+    with mock.patch("requests.get", side_effect=fake_get):
+        dag_module._fetch_schema_str("ods.policies-value", bad_version)
+
+    assert f"/versions/{expected_path}" in captured["url"]

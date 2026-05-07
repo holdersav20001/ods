@@ -24,6 +24,7 @@ See ``docs/api-pull-direct-kafka-design.md`` § Components →
 from __future__ import annotations
 
 import json
+import logging
 import os
 import signal
 import sys
@@ -33,6 +34,8 @@ from datetime import datetime, timezone
 import psycopg2
 
 from airflow import DAG
+
+log = logging.getLogger(__name__)
 from airflow.operators.python import PythonOperator
 
 # Match dag_api_pull's path bootstrapping so ods_pipeline imports work
@@ -165,11 +168,27 @@ def _run_dataset_loop(cfg: dict) -> None:
     try:
         signal.signal(signal.SIGTERM, _handle_signal)
         signal.signal(signal.SIGINT, _handle_signal)
-    except (ValueError, OSError):
-        # Not on the main thread — Airflow's executor variant may run
-        # operators in a thread pool. The operator's own kill path
-        # still raises so the loop will exit.
-        pass
+    except (ValueError, OSError) as exc:
+        # Reality Checker F1: ``signal.signal`` raises ``ValueError`` on
+        # non-main threads (CeleryExecutor prefork worker, KubeExecutor
+        # subprocess pool). Without a fallback the loop runs until SIGKILL
+        # and the producer.flush in run_loop's finally never fires —
+        # half-flushed Kafka batches lost.
+        #
+        # The structural fix is to package this as a custom Operator
+        # subclass so Airflow's ``task.kill()`` path can call
+        # ``on_kill -> stop_event.set()``. Until that lands, log loudly so
+        # operators see when the SIGTERM contract is silently disabled
+        # and can deploy with LocalExecutor / SequentialExecutor where
+        # signal install succeeds.
+        log.warning(
+            "api_pull_kafka.continuous: SIGTERM handler install failed "
+            "(%s); loop will run until SIGKILL — pending Kafka batches "
+            "may be dropped on operator restart. Run under an executor "
+            "where the task is the main thread, or wrap as an Operator "
+            "subclass with on_kill -> stop_event.",
+            exc,
+        )
 
     schema_str = _fetch_schema_str(cfg["schema_id"])
     dataset_config = {

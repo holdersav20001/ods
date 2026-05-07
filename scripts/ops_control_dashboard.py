@@ -771,42 +771,54 @@ def _direct_postgres_sink_lag_disabled() -> dict:
 
 
 def _kafka_sink_lag(topic: str, dataset: str, end_offsets: dict) -> dict:
-    """Reuse the AdminClient query inline if confluent_kafka is importable.
+    """Read JDBC-sink committed offsets without joining the live consumer
+    group.
 
-    Mirrors ``airflow.dags.dag_api_pull._direct_kafka_sink_status`` so the
-    dashboard does not depend on Airflow imports.
+    SAFETY (Reality Checker F4): the previous implementation built a
+    ``Consumer`` with ``group.id=connect-jdbc-sink-<dataset>`` and called
+    ``committed()`` — joining that group rebalances Connect's running sink
+    and steals partitions for ``session.timeout.ms``. ``AdminClient.
+    list_consumer_group_offsets`` reads the same offsets via the broker
+    coordinator without joining; it is non-invasive.
+
+    Wrapped in a 3s wall-clock budget so a Kafka outage cannot hang a
+    dashboard tab.
     """
     if not topic or not end_offsets:
         return {"available": False, "reason": "no_published_offsets"}
     try:
-        from confluent_kafka import Consumer, TopicPartition
+        from concurrent.futures import ThreadPoolExecutor
+        from concurrent.futures import TimeoutError as FutTimeout
+
+        from confluent_kafka import ConsumerGroupTopicPartitions, TopicPartition
+        from confluent_kafka.admin import AdminClient
     except Exception:
         return _direct_postgres_sink_lag_disabled()
 
     sink_name = f"jdbc-sink-{dataset}".replace("_", "-")
     group_id = f"connect-{sink_name}"
-    consumer = Consumer({
-        "bootstrap.servers": BOOTSTRAP,
-        "group.id": group_id,
-        "enable.auto.commit": False,
-        "session.timeout.ms": 6000,
-    })
-    try:
-        tps = [TopicPartition(topic, int(p)) for p in end_offsets.keys()]
-        committed = consumer.committed(tps, timeout=10)
-    except Exception as exc:
-        try:
-            consumer.close()
-        except Exception:
-            pass
-        return {"available": False, "reason": f"kafka_error: {exc}"}
-    finally:
-        try:
-            consumer.close()
-        except Exception:
-            pass
+    admin = AdminClient({"bootstrap.servers": BOOTSTRAP})
+    tps = [TopicPartition(topic, int(p)) for p in end_offsets.keys()]
 
-    consumed = {int(tp.partition): int(tp.offset) for tp in committed if tp.offset >= 0}
+    def _query() -> dict[int, int]:
+        req = ConsumerGroupTopicPartitions(group_id, tps)
+        fut_map = admin.list_consumer_group_offsets([req])
+        # The admin client returns a futures dict keyed by group_id.
+        result = fut_map[group_id].result(timeout=2)
+        return {
+            int(tp.partition): int(tp.offset)
+            for tp in result.topic_partitions
+            if tp.offset >= 0
+        }
+
+    try:
+        with ThreadPoolExecutor(max_workers=1) as ex:
+            consumed = ex.submit(_query).result(timeout=3)
+    except FutTimeout:
+        return {"available": False, "reason": "kafka_timeout"}
+    except Exception as exc:
+        return {"available": False, "reason": f"kafka_error: {exc}"}
+
     partitions = []
     caught_up = True
     total_lag = 0
