@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>ODS Ingestion - Simple Developer Flow</title>
+<style>
+  :root {
+    --bg:#f6f7fb; --paper:#ffffff; --line:#dde2eb; --ink:#10243f;
+    --ink-soft:#475569; --muted:#7d8aa0; --rule:#eef1f6;
+    --brand:#ffd400; --brand-dark:#0f1f3d; --accent:#1a56c5;
+    --ok:#0f8a4f; --ok-bg:#e6f7ee;
+    --warn:#9a6300; --warn-bg:#fff6da;
+    --info:#1a56c5; --info-bg:#e3edff;
+    --kafka:#7b3fa6; --kafka-bg:#f3eaff;
+    --s3:#0c7c57; --s3-bg:#e6f7ee;
+    --pg:#0e527a; --pg-bg:#e0f0f9;
+    --api:#a04a00; --api-bg:#fff1df;
+  }
+
+  body {
+    background:var(--bg); color:var(--ink);
+    font:14px/1.5 ui-sans-serif, system-ui, Segoe UI, Roboto, sans-serif;
+    margin:0; padding:32px;
+  }
+  .wrap { max-width:1180px; margin:0 auto; }
+  .topbar { display:flex; align-items:center; gap:14px; margin-bottom:8px; }
+  .stripe { width:6px; height:30px; background:var(--brand); border-radius:3px; }
+  h1 { margin:0; font-size:22px; }
+  h2 { font-size:15px; color:var(--ink-soft); font-weight:500; margin:0 0 24px; }
+  h3 { margin:0 0 10px; font-size:15px; }
+
+  .flow {
+    display:grid;
+    grid-template-columns:repeat(4, minmax(0, 1fr));
+    gap:34px;
+    align-items:stretch;
+  }
+  .stage {
+    background:var(--paper); border:1px solid var(--line); border-radius:14px;
+    padding:15px 14px 13px; position:relative;
+    box-shadow:0 1px 2px rgba(15,31,61,.04);
+    display:flex; flex-direction:column; gap:7px; min-height:150px;
+  }
+  .stage:not(.end)::after {
+    content:""; position:absolute; right:-31px; top:50%; transform:translateY(-50%);
+    width:28px; height:2px; background:var(--brand-dark); border-radius:1px;
+  }
+  .stage:not(.end)::before {
+    content:""; position:absolute; right:-31px; top:50%; transform:translateY(-50%) rotate(45deg);
+    width:10px; height:10px; border-top:2px solid var(--brand-dark); border-right:2px solid var(--brand-dark);
+    margin-top:-1px; margin-right:-9px;
+  }
+
+  .badge {
+    align-self:flex-start; display:inline-block; font-size:10.5px;
+    padding:1px 7px; border-radius:5px; font-weight:700;
+    letter-spacing:.04em; text-transform:uppercase;
+  }
+  .b-dev    { background:var(--warn-bg);   color:var(--warn); }
+  .b-s3     { background:var(--s3-bg);     color:var(--s3); }
+  .b-kafka  { background:var(--kafka-bg);  color:var(--kafka); }
+  .b-pg     { background:var(--pg-bg);     color:var(--pg); }
+  .b-info   { background:var(--info-bg);   color:var(--info); }
+
+  .title { font-weight:800; font-size:15px; line-height:1.25; }
+  .sub { font-size:12.5px; color:var(--ink-soft); }
+  .owned {
+    margin-top:auto; padding-top:9px; border-top:1px dashed var(--rule);
+    font-size:11px; color:var(--muted);
+  }
+  code {
+    font-family:ui-monospace, Consolas, monospace; font-size:11.5px;
+    color:var(--brand-dark); background:var(--rule); padding:1px 5px;
+    border-radius:4px;
+  }
+
+  .band {
+    margin-top:24px; display:grid; grid-template-columns:1fr 1fr; gap:18px;
+  }
+  .panel {
+    background:var(--paper); border:1px solid var(--line);
+    border-radius:14px; padding:18px 20px;
+  }
+  .panel ul { margin:0; padding-left:18px; color:var(--ink-soft); }
+  .panel li { margin:4px 0; }
+  .panel strong { color:var(--ink); }
+
+  .control-plane {
+    margin-top:18px; background:var(--ok-bg); color:var(--ok);
+    border:1px dashed #b6dec6; border-radius:14px; padding:14px 18px;
+    display:grid; grid-template-columns:190px 1fr; gap:12px; align-items:center;
+  }
+  .control-plane b { font-size:13px; letter-spacing:.04em; text-transform:uppercase; }
+  .chips { display:flex; flex-wrap:wrap; gap:8px; }
+  .chip {
+    background:#fff; border:1px solid #cce8d7; border-radius:8px;
+    padding:5px 8px; color:var(--ink-soft); font-size:12px;
+  }
+
+  .note { margin-top:16px; color:var(--muted); font-size:12px; }
+
+  .concept-grid {
+    margin-top:24px;
+    display:grid;
+    grid-template-columns:repeat(3, minmax(0, 1fr));
+    gap:18px;
+  }
+  .concept {
+    background:var(--paper); border:1px solid var(--line);
+    border-radius:14px; padding:16px 18px;
+    box-shadow:0 1px 2px rgba(15,31,61,.04);
+  }
+  .concept .badge { margin-bottom:8px; }
+  .concept p { margin:6px 0 0; color:var(--ink-soft); font-size:12.5px; }
+  .example {
+    margin-top:10px; background:var(--rule); border-radius:8px;
+    padding:8px 10px; color:var(--ink-soft); font-size:11.5px;
+  }
+  .sequence {
+    margin-top:24px; background:var(--paper); border:1px solid var(--line);
+    border-radius:14px; padding:18px 20px;
+  }
+  .steps {
+    display:grid; grid-template-columns:repeat(6, minmax(0, 1fr));
+    gap:18px; margin-top:12px;
+  }
+  .step {
+    position:relative; border:1px solid var(--line); border-radius:12px;
+    padding:11px 10px; min-height:76px; background:#fff;
+  }
+  .step:not(:last-child)::after {
+    content:""; position:absolute; right:-16px; top:50%; transform:translateY(-50%);
+    width:14px; height:2px; background:var(--brand-dark);
+  }
+  .step:not(:last-child)::before {
+    content:""; position:absolute; right:-16px; top:50%; transform:translateY(-50%) rotate(45deg);
+    width:7px; height:7px; border-top:2px solid var(--brand-dark); border-right:2px solid var(--brand-dark);
+    margin-right:-5px;
+  }
+  .num {
+    display:inline-flex; align-items:center; justify-content:center;
+    width:20px; height:20px; border-radius:50%; background:var(--brand);
+    color:var(--brand-dark); font-weight:800; font-size:11px; margin-bottom:7px;
+  }
+  .step b { display:block; font-size:12.5px; }
+  .step span { display:block; color:var(--muted); font-size:11.5px; margin-top:3px; }
+
+  @media (max-width: 980px) {
+    body { padding:20px; }
+    .flow { grid-template-columns:1fr; gap:18px; }
+    .stage:not(.end)::after, .stage:not(.end)::before { display:none; }
+    .band { grid-template-columns:1fr; }
+    .control-plane { grid-template-columns:1fr; }
+    .concept-grid { grid-template-columns:1fr; }
+    .steps { grid-template-columns:1fr; }
+    .step:not(:last-child)::after, .step:not(:last-child)::before { display:none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div class="stripe"></div>
+    <h1>ODS Ingestion - simple developer flow</h1>
+  </div>
+  <h2>The developer configures the dataset. The ODS platform handles orchestration, logging, lineage, reconciliation and retry safety.</h2>
+
+  <div class="flow">
+    <div class="stage">
+      <span class="badge b-dev">DEVELOPER</span>
+      <div class="title">Dataset config</div>
+      <div class="sub">Add or update YAML under <code>patterns/&lt;domain&gt;/&lt;dataset&gt;.yaml</code>.</div>
+      <div class="sub">Define keys, schema, topic, target table and source type.</div>
+      <div class="owned">developer owns: YAML, schema, target table</div>
+    </div>
+
+    <div class="stage">
+      <span class="badge b-s3">LANDING</span>
+      <div class="title">Raw input arrives</div>
+      <div class="sub">File lands in S3, or API pull archives a JSONL batch to S3.</div>
+      <div class="sub">The platform registers the file and starts the pipeline.</div>
+      <div class="owned">platform writes: <code>file_catalogue</code>, <code>run_log</code></div>
+    </div>
+
+    <div class="stage">
+      <span class="badge b-kafka">PIPELINE</span>
+      <div class="title">Validate and publish</div>
+      <div class="sub">Glue reads raw data, validates schema and DQ, writes curated data, then publishes to Kafka.</div>
+      <div class="sub">Non-canonical data is transformed before the sink.</div>
+      <div class="owned">platform writes: stages, offsets, lineage, recon</div>
+    </div>
+
+    <div class="stage end">
+      <span class="badge b-pg">OUTPUT</span>
+      <div class="title">Postgres and dashboard</div>
+      <div class="sub">Kafka Connect writes to Postgres. The dashboard shows status, counts, lineage and failures.</div>
+      <div class="sub">Successful runs are only closed after proof rows exist.</div>
+      <div class="owned">operator checks: dashboard and reconciliation</div>
+    </div>
+  </div>
+
+  <div class="control-plane">
+    <b>Written automatically</b>
+    <div class="chips">
+      <span class="chip">pipeline.file_catalogue</span>
+      <span class="chip">pipeline.run_log</span>
+      <span class="chip">pipeline.run_stage_log</span>
+      <span class="chip">pipeline.lineage_edge</span>
+      <span class="chip">pipeline.reconciliation_log</span>
+      <span class="chip">pipeline.run_kafka_offsets</span>
+      <span class="chip">pipeline.run_events</span>
+    </div>
+  </div>
+
+  <div class="sequence">
+    <h3>Platform contract for every ingestion</h3>
+    <div class="steps">
+      <div class="step">
+        <span class="num">1</span>
+        <b>Create the run</b>
+        <span>Open a traceable execution in <code>run_log</code>.</span>
+      </div>
+      <div class="step">
+        <span class="num">2</span>
+        <b>Write stages</b>
+        <span>Record progress and failure points in <code>run_stage_log</code>.</span>
+      </div>
+      <div class="step">
+        <span class="num">3</span>
+        <b>Carry identity</b>
+        <span>Propagate <code>file_id</code>, <code>run_id</code> and source metadata.</span>
+      </div>
+      <div class="step">
+        <span class="num">4</span>
+        <b>Capture offsets</b>
+        <span>Store per-partition Kafka start/end ranges.</span>
+      </div>
+      <div class="step">
+        <span class="num">5</span>
+        <b>Write proof</b>
+        <span>Add lineage edges and reconciliation checks.</span>
+      </div>
+      <div class="step">
+        <span class="num">6</span>
+        <b>Finalise last</b>
+        <span>Only mark the run succeeded after proof rows exist.</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="concept-grid">
+    <div class="concept">
+      <span class="badge b-info">RUN</span>
+      <div class="title">One execution boundary</div>
+      <p>A run is the unit operators search for when they ask, "Did this load succeed?" Parent and child runs keep the end-to-end path queryable.</p>
+      <div class="example"><b>Example:</b> parent <code>s3_batch</code> run with child <code>ingestion</code>, <code>publish</code> and optional <code>canonicalize</code> runs.</div>
+    </div>
+
+    <div class="concept">
+      <span class="badge b-info">STAGE</span>
+      <div class="title">A step inside a run</div>
+      <p>Stages show where work is currently running or where it failed. Each stage should start, then complete, fail, warn or skip.</p>
+      <div class="example"><b>Example:</b> <code>raw_read</code> started, <code>dq_check</code> completed, <code>kafka_publish</code> failed.</div>
+    </div>
+
+    <div class="concept">
+      <span class="badge b-s3">FILE IDENTITY</span>
+      <div class="title">The file is the anchor</div>
+      <p>The platform registers each landed batch in <code>file_catalogue</code>. Downstream jobs must carry the same <code>file_id</code>.</p>
+      <div class="example"><b>Example:</b> <code>file_id=dcebd...</code> links raw S3, curated S3, Kafka messages and Postgres rows.</div>
+    </div>
+
+    <div class="concept">
+      <span class="badge b-kafka">OFFSET</span>
+      <div class="title">The Kafka message range</div>
+      <p>Offsets are not the business identity. They are the technical range that proves what Kafka messages were produced or consumed.</p>
+      <div class="example"><b>Example:</b> partition 0 <code>[120, 150)</code>, partition 1 <code>[88, 103)</code>; total published = 45.</div>
+    </div>
+
+    <div class="concept">
+      <span class="badge b-info">LINEAGE EDGE</span>
+      <div class="title">A parent-to-child relationship</div>
+      <p>A lineage edge records that one thing created or contributed to another thing. This is how the viewer follows the chain.</p>
+      <div class="example"><b>Example:</b> <code>parent_file_id</code> -> ingestion run, edge <code>raw_to_curated</code>, source S3 raw, target S3 curated.</div>
+    </div>
+
+    <div class="concept">
+      <span class="badge b-dev">RECONCILIATION</span>
+      <div class="title">A count-based proof point</div>
+      <p>Reconciliation checks that records did not disappear or multiply across a boundary. Failures should stop final success.</p>
+      <div class="example"><b>Example:</b> T0 checks curated rows == Kafka messages; T2 checks Kafka messages == Postgres rows.</div>
+    </div>
+  </div>
+
+  <div class="band">
+    <div class="panel">
+      <h3>What a dataset developer does</h3>
+      <ul>
+        <li><strong>Create YAML</strong> with domain, dataset, source type, keys, schema and sink details.</li>
+        <li><strong>Register schema</strong> if the topic uses schema-registry validation.</li>
+        <li><strong>Create target table</strong> with required ODS metadata columns.</li>
+        <li><strong>Provide a test input</strong> and check the dashboard after the run.</li>
+      </ul>
+    </div>
+
+    <div class="panel">
+      <h3>What the developer should not do</h3>
+      <ul>
+        <li>Do not manually insert rows into <code>run_log</code> or <code>run_stage_log</code>.</li>
+        <li>Do not invent lineage edges outside the approved pipeline flow.</li>
+        <li>Do not mark runs as succeeded from application code.</li>
+        <li>Do not rediscover files by date when <code>file_id</code> is available.</li>
+      </ul>
+    </div>
+  </div>
+
+  <p class="note">
+    Use the detailed API Pull diagram when explaining watermark promotion, exact downstream linkage, partition offsets and non-canonical canonicalization.
+    Use this simple diagram for onboarding and day-one dataset documentation.
+  </p>
+</div>
+</body>
+</html>

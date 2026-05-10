@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>ODS Ingestion - File ID Run Example</title>
+<style>
+  :root {
+    --bg:#f6f7fb; --paper:#ffffff; --line:#dde2eb; --ink:#10243f;
+    --ink-soft:#475569; --muted:#7d8aa0; --rule:#eef1f6;
+    --brand:#ffd400; --brand-dark:#0f1f3d; --accent:#1a56c5;
+    --ok:#0f8a4f; --ok-bg:#e6f7ee;
+    --warn:#9a6300; --warn-bg:#fff6da;
+    --bad:#b3261e; --bad-bg:#fde9e7;
+    --info:#1a56c5; --info-bg:#e3edff;
+    --kafka:#7b3fa6; --kafka-bg:#f3eaff;
+    --s3:#0c7c57; --s3-bg:#e6f7ee;
+    --pg:#0e527a; --pg-bg:#e0f0f9;
+    --api:#a04a00; --api-bg:#fff1df;
+  }
+
+  body {
+    background:var(--bg); color:var(--ink);
+    font:14px/1.5 ui-sans-serif, system-ui, Segoe UI, Roboto, sans-serif;
+    margin:0; padding:32px;
+  }
+  .wrap { max-width:1180px; margin:0 auto; }
+  .topbar { display:flex; align-items:center; gap:14px; margin-bottom:8px; }
+  .stripe { width:6px; height:30px; background:var(--brand); border-radius:3px; }
+  h1 { margin:0; font-size:22px; }
+  h2 { font-size:15px; color:var(--ink-soft); font-weight:500; margin:0 0 24px; }
+  h3 { margin:0 0 10px; font-size:15px; }
+  code {
+    font-family:ui-monospace, Consolas, monospace; font-size:11.5px;
+    color:var(--brand-dark); background:var(--rule); padding:1px 5px;
+    border-radius:4px;
+  }
+
+  .rule {
+    margin:0 0 22px; background:var(--ok-bg); color:var(--ok);
+    border:1px dashed #b6dec6; border-radius:14px; padding:14px 18px;
+    display:grid; grid-template-columns:150px 1fr; gap:12px; align-items:center;
+  }
+  .rule b { font-size:13px; letter-spacing:.04em; text-transform:uppercase; }
+  .rule span { color:var(--ink-soft); }
+
+  .flow {
+    display:grid; grid-template-columns:repeat(5, minmax(0, 1fr));
+    gap:32px; align-items:stretch;
+  }
+  .stage {
+    background:var(--paper); border:1px solid var(--line); border-radius:14px;
+    padding:15px 14px 13px; position:relative;
+    box-shadow:0 1px 2px rgba(15,31,61,.04);
+    display:flex; flex-direction:column; gap:7px; min-height:162px;
+  }
+  .stage:not(.end)::after {
+    content:""; position:absolute; right:-30px; top:50%; transform:translateY(-50%);
+    width:26px; height:2px; background:var(--brand-dark); border-radius:1px;
+  }
+  .stage:not(.end)::before {
+    content:""; position:absolute; right:-30px; top:50%; transform:translateY(-50%) rotate(45deg);
+    width:10px; height:10px; border-top:2px solid var(--brand-dark); border-right:2px solid var(--brand-dark);
+    margin-top:-1px; margin-right:-9px;
+  }
+  .badge {
+    align-self:flex-start; display:inline-block; font-size:10.5px;
+    padding:1px 7px; border-radius:5px; font-weight:700;
+    letter-spacing:.04em; text-transform:uppercase;
+  }
+  .b-dag { background:var(--info-bg); color:var(--info); }
+  .b-s3 { background:var(--s3-bg); color:var(--s3); }
+  .b-kafka { background:var(--kafka-bg); color:var(--kafka); }
+  .b-pg { background:var(--pg-bg); color:var(--pg); }
+  .b-warn { background:var(--warn-bg); color:var(--warn); }
+  .title { font-weight:800; font-size:15px; line-height:1.25; }
+  .sub { font-size:12.5px; color:var(--ink-soft); }
+  .owned {
+    margin-top:auto; padding-top:9px; border-top:1px dashed var(--rule);
+    font-size:11px; color:var(--muted);
+  }
+
+  .tables {
+    margin-top:26px; display:grid; grid-template-columns:1fr; gap:18px;
+  }
+  .panel {
+    background:var(--paper); border:1px solid var(--line); border-radius:14px;
+    padding:18px 20px; box-shadow:0 1px 2px rgba(15,31,61,.04);
+  }
+  table { width:100%; border-collapse:collapse; font-size:12px; }
+  th {
+    text-align:left; color:var(--ink-soft); font-weight:800;
+    border-bottom:1px solid var(--line); padding:7px 8px;
+  }
+  td { border-bottom:1px solid var(--rule); padding:8px; color:var(--ink-soft); vertical-align:top; }
+  td strong { color:var(--ink); }
+  .id { color:var(--brand-dark); font-family:ui-monospace, Consolas, monospace; font-size:11.5px; }
+  .same { background:#fffbe8; color:var(--brand-dark); border-radius:5px; padding:1px 5px; font-weight:800; }
+  .cols { display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-top:18px; }
+  .callout {
+    background:var(--bad-bg); color:var(--bad); border:1px dashed #efb8b3;
+    border-radius:14px; padding:14px 18px; margin-top:18px;
+  }
+  .callout b { color:var(--bad); }
+  .legend {
+    margin-top:18px; background:var(--paper); border:1px solid var(--line);
+    border-radius:14px; padding:18px 20px; box-shadow:0 1px 2px rgba(15,31,61,.04);
+  }
+  .legend-grid {
+    display:grid; grid-template-columns:repeat(5, minmax(0, 1fr));
+    gap:10px; margin-top:10px;
+  }
+  .legend-item {
+    background:var(--rule); border-radius:10px; padding:10px;
+    color:var(--ink-soft); font-size:12px; min-height:88px;
+  }
+  .legend-item b {
+    display:block; color:var(--ink); font-size:12.5px; margin-bottom:4px;
+  }
+  .legend-item span { display:block; }
+  .note { margin-top:16px; color:var(--muted); font-size:12px; }
+
+  @media (max-width: 980px) {
+    body { padding:20px; }
+    .rule { grid-template-columns:1fr; }
+    .flow { grid-template-columns:1fr; gap:18px; }
+    .stage:not(.end)::after, .stage:not(.end)::before { display:none; }
+    .cols { grid-template-columns:1fr; }
+    .legend-grid { grid-template-columns:1fr; }
+    table { display:block; overflow-x:auto; white-space:nowrap; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div class="stripe"></div>
+    <h1>ODS Ingestion - carrying file_id through a true run</h1>
+  </div>
+  <h2>A concrete example of one file, the run rows it creates, and the identity each job must carry.</h2>
+
+  <div class="rule">
+    <b>Main rule</b>
+    <span>
+      The <code>file_id</code> created when the file is registered is the identity of the batch.
+      Every job receives that exact value as a parameter and writes it into its run, lineage, Kafka messages and sink rows.
+    </span>
+  </div>
+
+  <div class="flow">
+    <div class="stage">
+      <span class="badge b-s3">1. REGISTER</span>
+      <div class="title">File lands in S3</div>
+      <div class="sub"><code>policies_20260507.csv</code></div>
+      <div class="sub">The platform registers the file once and assigns <code>file_id</code>.</div>
+      <div class="owned">creates: <code>file_id=F-001</code></div>
+    </div>
+
+    <div class="stage">
+      <span class="badge b-dag">2. INIT RUN</span>
+      <div class="title">Airflow creates the run set</div>
+      <div class="sub">One parent run plus child runs for ingestion and publish.</div>
+      <div class="sub">All rows use the same <code>file_id</code>.</div>
+      <div class="owned">creates: <code>R-PARENT</code>, <code>R-INGEST</code>, <code>R-PUBLISH</code></div>
+    </div>
+
+    <div class="stage">
+      <span class="badge b-s3">3. INGEST</span>
+      <div class="title">Raw to curated</div>
+      <div class="sub">Glue receives <code>--file_id F-001</code> and reads the raw file.</div>
+      <div class="sub">It writes curated Parquet and a lineage edge.</div>
+      <div class="owned">writes: <code>raw_to_curated</code></div>
+    </div>
+
+    <div class="stage">
+      <span class="badge b-kafka">4. PUBLISH</span>
+      <div class="title">Curated to Kafka</div>
+      <div class="sub">Glue receives the same <code>--file_id F-001</code>.</div>
+      <div class="sub">Kafka messages carry <code>_ods_file_id=F-001</code>.</div>
+      <div class="owned">writes: offsets + <code>curated_to_kafka</code></div>
+    </div>
+
+    <div class="stage end">
+      <span class="badge b-pg">5. SINK</span>
+      <div class="title">Kafka to Postgres</div>
+      <div class="sub">Sink rows retain <code>_ods_file_id</code> and <code>_ods_run_id</code>.</div>
+      <div class="sub">Operators can join back to every run and stage.</div>
+      <div class="owned">queries by: <code>_ods_file_id=F-001</code></div>
+    </div>
+  </div>
+
+  <div class="tables">
+    <div class="panel">
+      <h3>Example table rows for this file</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Table</th>
+            <th>Important row</th>
+            <th>What must match</th>
+            <th>Why it matters</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>file_catalogue</strong></td>
+            <td><span class="id">file_id=F-001</span>, domain=insurance, dataset=policies, business_date=2026-05-07, state=sunk</td>
+            <td><span class="same">F-001</span></td>
+            <td>This is the root identity for the landed batch.</td>
+          </tr>
+          <tr>
+            <td><strong>run_log</strong></td>
+            <td><span class="id">R-PARENT</span>, pipeline_type=s3_batch, file_id=<span class="id">F-001</span>, status=succeeded</td>
+            <td><span class="same">F-001</span></td>
+            <td>Parent row gives the end-to-end operator status.</td>
+          </tr>
+          <tr>
+            <td><strong>run_log</strong></td>
+            <td><span class="id">R-INGEST</span>, pipeline_type=ingestion, file_id=<span class="id">F-001</span>, parents=[R-PARENT orchestrates]</td>
+            <td><span class="same">F-001</span></td>
+            <td>Ingestion child proves the raw file became curated data.</td>
+          </tr>
+          <tr>
+            <td><strong>run_log</strong></td>
+            <td><span class="id">R-PUBLISH</span>, pipeline_type=publish, file_id=<span class="id">F-001</span>, parents=[R-PARENT orchestrates]</td>
+            <td><span class="same">F-001</span></td>
+            <td>Publish child proves curated data became Kafka messages.</td>
+          </tr>
+          <tr>
+            <td><strong>lineage_edge</strong></td>
+            <td>child_run_id=<span class="id">R-INGEST</span>, parent_file_id=<span class="id">F-001</span>, edge_type=raw_to_curated</td>
+            <td><span class="same">F-001</span></td>
+            <td>Viewer can start from the file and find the curated output.</td>
+          </tr>
+          <tr>
+            <td><strong>lineage_edge</strong></td>
+            <td>child_run_id=<span class="id">R-PUBLISH</span>, parent_file_id=<span class="id">F-001</span>, edge_type=curated_to_kafka</td>
+            <td><span class="same">F-001</span></td>
+            <td>Viewer can continue from curated data to Kafka.</td>
+          </tr>
+          <tr>
+            <td><strong>run_kafka_offsets</strong></td>
+            <td>run_id=<span class="id">R-PUBLISH</span>, topic=ods.insurance.policies, partition=0, start=120, end=150</td>
+            <td><span class="id">R-PUBLISH</span></td>
+            <td>Proves the exact Kafka range written by the publish run.</td>
+          </tr>
+          <tr>
+            <td><strong>Postgres target</strong></td>
+            <td>policy_id=P1001, _ods_file_id=<span class="id">F-001</span>, _ods_run_id=<span class="id">R-PUBLISH</span></td>
+            <td><span class="same">F-001</span></td>
+            <td>Consumers can trace a sink row back to the file and run.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="cols">
+      <div class="panel">
+        <h3>What the job must receive</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Job</th>
+              <th>Required identity parameters</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>ods_ingestion.py</strong></td>
+              <td><code>--run_id R-INGEST</code>, <code>--parent_run_id R-PARENT</code>, <code>--file_id F-001</code></td>
+            </tr>
+            <tr>
+              <td><strong>ods_s3_publish.py</strong></td>
+              <td><code>--run_id R-PUBLISH</code>, <code>--parent_run_id R-PARENT</code>, <code>--file_id F-001</code></td>
+            </tr>
+            <tr>
+              <td><strong>ods_canonicalize.py</strong></td>
+              <td><code>--run_id R-CANON</code>, <code>--parent_run_id R-PUBLISH</code>, <code>--file_id F-001</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="panel">
+        <h3>What the records must carry</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Where</th>
+              <th>Metadata fields</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Kafka message</strong></td>
+              <td><code>_ods_file_id=F-001</code>, <code>_ods_run_id=R-PUBLISH</code>, <code>_ods_domain=insurance</code>, <code>_ods_dataset=policies</code></td>
+            </tr>
+            <tr>
+              <td><strong>Canonical message</strong></td>
+              <td>Keep <code>_ods_file_id</code>; change only shape/business payload.</td>
+            </tr>
+            <tr>
+              <td><strong>Postgres row</strong></td>
+              <td><code>_ods_file_id</code>, <code>_ods_run_id</code>, <code>_ods_business_date</code>, <code>_ods_ingested_at</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout">
+    <b>Bad smell:</b>
+    if a downstream job has to rediscover the file using only <code>domain</code>, <code>dataset</code> and <code>business_date</code>, the chain is already weaker.
+    Pass the explicit <code>file_id</code> instead. Date-level lookups can attach the run to the wrong file when two files share the same business date or a replay happens.
+  </div>
+
+  <div class="legend">
+    <h3>Legend - example labels used in this diagram</h3>
+    <div class="legend-grid">
+      <div class="legend-item">
+        <b><code>F-001</code></b>
+        <span>Example <code>pipeline.file_catalogue.file_id</code>.</span>
+        <span>In production this is a UUID such as <code>dcebd612-...</code>.</span>
+      </div>
+      <div class="legend-item">
+        <b><code>R-PARENT</code></b>
+        <span>Example parent <code>run_log.run_id</code> for the end-to-end <code>s3_batch</code> run.</span>
+      </div>
+      <div class="legend-item">
+        <b><code>R-INGEST</code></b>
+        <span>Example child <code>run_log.run_id</code> for the <code>ingestion</code> job.</span>
+      </div>
+      <div class="legend-item">
+        <b><code>R-PUBLISH</code></b>
+        <span>Example child <code>run_log.run_id</code> for the <code>publish</code> job.</span>
+      </div>
+      <div class="legend-item">
+        <b><code>R-CANON</code></b>
+        <span>Example child <code>run_log.run_id</code> for <code>canonicalize</code>; only present when <code>is_canonical=false</code>.</span>
+      </div>
+    </div>
+  </div>
+
+  <p class="note">
+    For non-canonical datasets, add a canonicalize child run after publish. It still carries the same <code>file_id</code>, but its parent is the publish run because it consumes the raw Kafka range produced by publish.
+  </p>
+</div>
+</body>
+</html>

@@ -49,6 +49,58 @@ flowchart LR
 init_run → stage_ingest (DockerOperator) → stage_publish (DockerOperator) → wait_sinks → finalise
 ```
 
+## Control Plane (stateless)
+
+Every ingestion writes a durable trail to `pipeline.run_log`,
+`pipeline.run_stage_log`, `pipeline.lineage_edge`, and
+`pipeline.reconciliation_log`. Each helper commits per-write —
+operators see live progress on the dashboard, no long-held
+transactions, and process death is bounded by a heartbeat janitor
+rather than by transactional rollback.
+
+Key primitives:
+
+- **`ods_pipeline.stages.stage_scope(...)`** — context manager that
+  pairs `stage_started` + (`stage_completed` | `stage_skipped` |
+  `stage_warned` | `stage_failed`) on the same row. Auto-increments
+  `attempt_number` so retries don't collide on the unique index.
+  Methods: `s.set_result(...)`, `s.skip(reason)`, `s.warn(reason)`.
+- **Strict write order** — stages → archive_ref → reconciliation_log
+  → `run_log.status='succeeded'`. The status flip is always last so
+  the dashboard rule "succeeded ⇒ recon row present" holds.
+- **`airflow/dags/dag_run_janitor.py`** — every-minute reaper that
+  flips runs stuck `status='running'` to `failed` when no
+  `run_stage_log` activity has appeared within
+  `RUN_JANITOR_GRACE_MINUTES` (default 5). Heartbeat-staleness, NOT
+  wall-clock duration — long Glue jobs emit `stage_heartbeat` rows
+  every 30s via `airflow/dags/common/long_running_docker.py` and
+  stay safe.
+
+Developer guides — open these before adding a new pattern:
+[`docs/dev-guides/`](docs/dev-guides/).
+
+## Glue ingestion package
+
+The `glue/jobs/ods_ingestion.py` entrypoint is now a thin shim. Real
+implementation lives in [`glue/jobs/ingestion/`](glue/jobs/ingestion/),
+split into focused modules (each ~100 lines, one responsibility):
+
+| Module | Purpose |
+|---|---|
+| `pipeline.py` | Orchestrator. Wraps each step in `stage_scope`. |
+| `spark.py` | SparkSession builder. |
+| `registration.py` | `head_object` MD5 + `file_catalogue` upsert. |
+| `reading.py` | Business-date resolution + Spark reader (csv \| jsonl). |
+| `validation.py` | Schema Registry GET + missing-column check. |
+| `quality.py` | DQ rules + DLQ write. |
+| `curating.py` | Enrich with `_ods_*` metadata + Parquet write + count verify. |
+| `finalising.py` | Lineage edge + `file_catalogue` state + `run_log.status` + event. |
+
+CLI surface (`spark-submit ods_ingestion.py …`) and `--py-files`
+lists in DAGs are unchanged. Replacing the engine (Glue Streaming /
+Lambda / pandas) is a per-module swap inside the package, not a
+rewrite of the orchestrator.
+
 ## Ingestion Patterns
 
 ODS supports five delivery shapes. Pick the right one per dataset via
@@ -331,9 +383,11 @@ direct-postgres flow.
 | `pipeline` | `dataset_config` | Dataset YAML config synced to DB |
 | `pipeline` | `file_catalogue` | File registry with state tracking |
 | `pipeline` | `file_state` | Per-S3-path processing state |
-| `pipeline` | `run_log` | Per-run header (status, Kafka offset bounds) |
-| `pipeline` | `run_stage_log` | Per-stage audit rows (ingest / publish / sink_pg / sink_s3) |
-| `pipeline` | `recon_log` | T0 publish-count reconciliation results |
+| `pipeline` | `run_log` | Per-run header (status, Kafka offset bounds, `parents` jsonb for correlation IDs) |
+| `pipeline` | `run_stage_log` | Per-stage audit rows; carries `event_type` ∈ {stage_started, stage_completed, stage_failed, stage_skipped, stage_warned, stage_heartbeat} |
+| `pipeline` | `lineage_edge` | Multi-hop run/file ancestry (`raw_to_curated`, `curated_to_kafka`, `triggered_by_api_pull`, …) |
+| `pipeline` | `reconciliation_log` | All recon checks (T0 publish, T1 canonical, T2 sink, message_batch_count, api_pull_*) |
+| `pipeline` | `api_pull_watermark` | Per-dataset committed/pending cursors for api_pull idempotency |
 
 ## Quick Start
 
