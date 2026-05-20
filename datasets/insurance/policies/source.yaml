@@ -1,0 +1,8 @@
+source:
+  delivery_mechanism: drop_to_raw
+  landing:
+    bucket: ods-raw
+    prefix: insurance/policies/
+  business_date:
+    source: filename_pattern
+    group: bd

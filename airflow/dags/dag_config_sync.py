@@ -1,4 +1,3 @@
-import glob
 import os
 import sys
 
@@ -10,7 +9,7 @@ from airflow.operators.python import PythonOperator
 
 sys.path.insert(0, os.path.dirname(__file__))
 from common.connector_provisioner import provision_all_from_db
-from common.yaml_loader import sync_to_db
+from common.yaml_loader import discover_dataset_yaml_paths, sync_to_db
 
 DATASETS_DIR = os.environ.get('DATASETS_DIR', '/opt/airflow/datasets')
 PG_DSN = os.environ.get('PIPELINE_PG_DSN', 'host=postgres port=5432 dbname=ods_dev user=ods password=ods')
@@ -19,7 +18,7 @@ PG_DSN = os.environ.get('PIPELINE_PG_DSN', 'host=postgres port=5432 dbname=ods_d
 def run_sync():
     conn = psycopg2.connect(PG_DSN)
     failed = []
-    paths = sorted(glob.glob(f'{DATASETS_DIR}/**/*.yaml', recursive=True))
+    paths = discover_dataset_yaml_paths(DATASETS_DIR)
     try:
         for path in paths:
             try:

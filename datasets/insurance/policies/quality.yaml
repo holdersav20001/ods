@@ -1,0 +1,5 @@
+hard_blocks:
+  - {rule: not_null, field: policy_id}
+  - {rule: unique, field: policy_id}
+soft_warns:
+  - {rule: completeness_pct, fields: [premium], threshold: 0.95}

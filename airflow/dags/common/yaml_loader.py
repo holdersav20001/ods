@@ -24,11 +24,105 @@ from ods_pipeline.config import (  # noqa: E402
 # secret_ref names are kept; resolved secret values are looked up at
 # poll time from the env / Airflow Secrets Backend and never stored.
 _SECRET_KEYS = frozenset({"token", "password", "client_secret", "api_key"})
+_COMPONENT_FILES = {
+    "source.yaml",
+    "contract.yaml",
+    "quality.yaml",
+    "transform.yaml",
+    "delivery.yaml",
+    "reconciliation.yaml",
+}
+
+
+def _read_yaml(path: str) -> dict:
+    with open(path) as f:
+        return yaml.safe_load(f) or {}
+
+
+def _deep_merge(base: dict, overlay: dict) -> dict:
+    out = dict(base)
+    for key, value in overlay.items():
+        if (
+            key in out
+            and isinstance(out[key], dict)
+            and isinstance(value, dict)
+        ):
+            out[key] = _deep_merge(out[key], value)
+        else:
+            out[key] = value
+    return out
+
+
+def _compose_component(filename: str, component: dict) -> dict:
+    if filename == "quality.yaml":
+        return {"dq_rules": component.get("dq_rules", component)}
+    if filename == "reconciliation.yaml":
+        tolerances = component.get("tolerances", {})
+        composed = {"reconciliation": component}
+        if "records" in tolerances:
+            composed["recon_tolerance_records"] = tolerances["records"]
+        if "pct" in tolerances:
+            composed["recon_tolerance_pct"] = tolerances["pct"]
+        return composed
+    if filename == "contract.yaml" and "fields" in component:
+        component = dict(component)
+        component["schema_def"] = {"fields": component.pop("fields")}
+    return component
+
+
+def _component_paths(dataset_yaml_path: str, cfg: dict) -> list[str]:
+    base_dir = os.path.dirname(dataset_yaml_path)
+    refs = cfg.get("refs")
+    if isinstance(refs, dict):
+        return [
+            os.path.join(base_dir, ref)
+            for ref in refs.values()
+            if isinstance(ref, str)
+        ]
+    return [
+        os.path.join(base_dir, filename)
+        for filename in sorted(_COMPONENT_FILES)
+        if os.path.exists(os.path.join(base_dir, filename))
+    ]
+
+
+def _is_split_dataset_yaml(path: str, cfg: dict) -> bool:
+    if os.path.basename(path) == "dataset.yaml":
+        return True
+    refs = cfg.get("refs")
+    return isinstance(refs, dict) and bool(refs)
+
+
+def discover_dataset_yaml_paths(base_dir: str) -> list[str]:
+    """Return syncable dataset YAML entrypoints under ``base_dir``.
+
+    Split configs use ``dataset.yaml`` as the entrypoint; sibling component
+    YAMLs are loaded by :func:`load_dataset_yaml` and are not synced directly.
+    Legacy single-file configs remain valid.
+    """
+    paths: list[str] = []
+    for root, _dirs, files in os.walk(base_dir):
+        file_set = set(files)
+        if "dataset.yaml" in file_set:
+            paths.append(os.path.join(root, "dataset.yaml"))
+            continue
+        for filename in files:
+            if filename.endswith((".yaml", ".yml")) and filename not in _COMPONENT_FILES:
+                paths.append(os.path.join(root, filename))
+    return sorted(paths)
 
 
 def load_dataset_yaml(path: str) -> dict:
-    with open(path) as f:
-        return yaml.safe_load(f)
+    cfg = _read_yaml(path)
+    if not _is_split_dataset_yaml(path, cfg):
+        return cfg
+
+    cfg = {k: v for k, v in cfg.items() if k != "refs"}
+    for component_path in _component_paths(path, cfg):
+        component = _read_yaml(component_path)
+        filename = os.path.basename(component_path)
+        cfg = _deep_merge(cfg, _compose_component(filename, component))
+    return cfg
 
 
 def compute_hash(cfg: dict) -> str:

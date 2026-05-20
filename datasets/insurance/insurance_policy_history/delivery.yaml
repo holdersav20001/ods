@@ -1,0 +1,4 @@
+write_mode: append
+target_topic: ods.insurance.policy_history
+postgres_target_table: ods.insurance_policy_history
+s3_curated_path: s3://ods-curated/insurance/policy_history/

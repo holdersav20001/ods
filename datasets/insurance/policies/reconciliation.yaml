@@ -1,0 +1,12 @@
+tolerances:
+  records: 0
+  pct: 0
+checks:
+  - name: t0_ingestion_count
+    compares: source_rows_to_accounted_rows
+    produced_by: glue.jobs.ingestion.finalising
+    required: true
+  - name: t0_publish_count
+    compares: curated_rows_to_kafka_messages
+    produced_by: glue.jobs.ods_s3_publish
+    required: true

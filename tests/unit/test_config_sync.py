@@ -2,7 +2,12 @@ import json, pytest
 import sys, os
 HERE = os.path.dirname(__file__)
 sys.path.insert(0, os.path.abspath(os.path.join(HERE, '..', '..', 'airflow', 'dags')))
-from common.yaml_loader import load_dataset_yaml, compute_hash, sync_to_db
+from common.yaml_loader import (
+    compute_hash,
+    discover_dataset_yaml_paths,
+    load_dataset_yaml,
+    sync_to_db,
+)
 
 POLICIES_YAML = """
 domain: testdomain
@@ -23,9 +28,9 @@ schema_def:
     - {name: status,    type: string}
     - {name: premium,   type: 'decimal(10,2)'}
 dq_rules:
-  hard:
-    - {rule: not_null, column: policy_id}
-  soft: []
+  hard_blocks:
+    - {rule: not_null, field: policy_id}
+  soft_warns: []
 recon_tolerance_records: 0
 recon_tolerance_pct: 0
 """
@@ -42,6 +47,69 @@ def test_hash_is_deterministic():
     h1 = compute_hash({'a': 1, 'b': [1, 2]})
     h2 = compute_hash({'b': [1, 2], 'a': 1})
     assert h1 == h2 and len(h1) == 64
+
+def test_load_split_dataset_yaml(tmp_path):
+    root = tmp_path / "policies"
+    root.mkdir()
+    (root / "dataset.yaml").write_text("""
+domain: testdomain
+dataset: splitdataset
+source_type: s3_batch
+delivery: file_pipeline
+raw_format: csv
+filename_pattern: '^split_(?P<bd>\\\\d{8})\\\\.csv$'
+""")
+    (root / "contract.yaml").write_text("""
+schema_id: ods.testdomain.splitdataset-value
+schema_version: 1
+key_fields: [policy_id]
+schema_def:
+  fields:
+    - {name: policy_id, type: string}
+""")
+    (root / "quality.yaml").write_text("""
+hard_blocks:
+  - {rule: not_null, field: policy_id}
+soft_warns: []
+""")
+    (root / "delivery.yaml").write_text("""
+write_mode: upsert
+target_topic: ods.testdomain.splitdataset
+postgres_target_table: ods.testdomain_splitdataset
+""")
+    (root / "reconciliation.yaml").write_text("""
+tolerances:
+  records: 0
+  pct: 0
+checks:
+  - name: t0_ingestion_count
+""")
+
+    cfg = load_dataset_yaml(str(root / "dataset.yaml"))
+
+    assert cfg["domain"] == "testdomain"
+    assert cfg["key_fields"] == ["policy_id"]
+    assert cfg["dq_rules"] == {
+        "hard_blocks": [{"rule": "not_null", "field": "policy_id"}],
+        "soft_warns": [],
+    }
+    assert cfg["recon_tolerance_records"] == 0
+    assert cfg["reconciliation"]["checks"] == [{"name": "t0_ingestion_count"}]
+
+def test_discover_dataset_yaml_paths_skips_split_components(tmp_path):
+    root = tmp_path / "datasets" / "insurance" / "policies"
+    root.mkdir(parents=True)
+    (root / "dataset.yaml").write_text("domain: insurance\ndataset: policies\n")
+    (root / "quality.yaml").write_text("hard_blocks: []\n")
+    legacy = tmp_path / "datasets" / "insurance" / "legacy.yaml"
+    legacy.write_text("domain: insurance\ndataset: legacy\n")
+
+    paths = [os.path.relpath(p, tmp_path) for p in discover_dataset_yaml_paths(str(tmp_path))]
+
+    assert paths == [
+        os.path.join("datasets", "insurance", "legacy.yaml"),
+        os.path.join("datasets", "insurance", "policies", "dataset.yaml"),
+    ]
 
 def test_sync_inserts_then_bumps_version(pg_conn, tmp_path):
     # Clean any prior state for this isolated test dataset.
