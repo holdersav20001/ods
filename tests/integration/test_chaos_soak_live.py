@@ -183,7 +183,7 @@ def _wipe(pg, s3) -> None:
          USING pipeline.run_log r
          WHERE s.run_id = r.run_id
            AND r.domain = %s AND r.dataset = %s
-           AND r.business_date = ANY(%s)
+           AND r.business_date = ANY(%s::date[])
         """,
         (DOMAIN, DATASET, list(_CHAOS_BDS)),
     )
@@ -193,11 +193,11 @@ def _wipe(pg, s3) -> None:
          WHERE child_run_id IN (
                SELECT run_id FROM pipeline.run_log
                 WHERE domain = %s AND dataset = %s
-                  AND business_date = ANY(%s))
+                  AND business_date = ANY(%s::date[]))
             OR parent_file_id IN (
                SELECT file_id FROM pipeline.file_catalogue
                 WHERE domain = %s AND dataset = %s
-                  AND business_date = ANY(%s))
+                  AND business_date = ANY(%s::date[]))
         """,
         (DOMAIN, DATASET, list(_CHAOS_BDS),
          DOMAIN, DATASET, list(_CHAOS_BDS)),
@@ -206,7 +206,7 @@ def _wipe(pg, s3) -> None:
         """
         DELETE FROM pipeline.reconciliation_log
          WHERE domain = %s AND dataset = %s
-           AND business_date = ANY(%s)
+           AND business_date = ANY(%s::date[])
         """,
         (DOMAIN, DATASET, list(_CHAOS_BDS)),
     )
@@ -222,7 +222,7 @@ def _wipe(pg, s3) -> None:
         """
         DELETE FROM pipeline.run_log
          WHERE domain = %s AND dataset = %s
-           AND business_date = ANY(%s)
+           AND business_date = ANY(%s::date[])
         """,
         (DOMAIN, DATASET, list(_CHAOS_BDS)),
     )
@@ -230,7 +230,7 @@ def _wipe(pg, s3) -> None:
         """
         DELETE FROM pipeline.file_catalogue
          WHERE domain = %s AND dataset = %s
-           AND business_date = ANY(%s)
+           AND business_date = ANY(%s::date[])
         """,
         (DOMAIN, DATASET, list(_CHAOS_BDS)),
     )
@@ -378,7 +378,7 @@ def test_chaos_soak_kafka_connect_outage_mid_run(pg, s3, chaos_cleanup):
           COUNT(*) FILTER (WHERE status NOT IN ('succeeded','failed','running'))
           FROM pipeline.run_log
          WHERE domain = %s AND dataset = %s
-           AND business_date = ANY(%s)
+           AND business_date = ANY(%s::date[])
         """,
         (DOMAIN, DATASET, [SMALL_BD, LARGE_BD]),
     )
@@ -396,7 +396,7 @@ def test_chaos_soak_kafka_connect_outage_mid_run(pg, s3, chaos_cleanup):
         SELECT COALESCE(SUM(source_row_count), 0)
           FROM pipeline.file_catalogue
          WHERE domain = %s AND dataset = %s
-           AND business_date = ANY(%s)
+           AND business_date = ANY(%s::date[])
         """,
         (DOMAIN, DATASET, [SMALL_BD, LARGE_BD]),
     )
@@ -417,10 +417,10 @@ def test_chaos_soak_kafka_connect_outage_mid_run(pg, s3, chaos_cleanup):
         SELECT r.run_id, r.status,
                EXISTS (SELECT 1 FROM pipeline.reconciliation_log rl
                         WHERE rl.run_id = r.run_id
-                          AND rl.check_type LIKE 't0%') AS has_t0
+                          AND rl.check_type LIKE 't0%%') AS has_t0
           FROM pipeline.run_log r
          WHERE r.domain = %s AND r.dataset = %s
-           AND r.business_date = ANY(%s)
+           AND r.business_date = ANY(%s::date[])
         """,
         (DOMAIN, DATASET, [SMALL_BD, LARGE_BD]),
     )

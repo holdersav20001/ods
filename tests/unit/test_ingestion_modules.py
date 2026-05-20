@@ -146,6 +146,78 @@ def test_head_md5_falls_back_to_streaming_when_multipart_etag() -> None:
 # reading.resolve_business_date — jsonl path (no Spark needed)
 # ---------------------------------------------------------------------------
 
+class _RecordingCursor:
+    def __init__(self, statements):
+        self._statements = statements
+
+    def __enter__(self): return self
+
+    def __exit__(self, *exc): return None
+
+    def execute(self, sql, params):
+        self._statements.append((sql, params))
+
+
+class _RecordingConn:
+    def __init__(self):
+        self.statements = []
+        self.commits = 0
+
+    def cursor(self): return _RecordingCursor(self.statements)
+
+    def commit(self): self.commits += 1
+
+    def rollback(self): raise AssertionError("rollback should not be called")
+
+
+def test_mark_completed_updates_file_catalogue_and_file_state() -> None:
+    conn = _RecordingConn()
+
+    registration.mark_completed(
+        conn,
+        s3_input_path="s3://raw/policies.csv",
+        run_id="run-1",
+        record_count=7,
+        source_row_count=10,
+    )
+
+    assert any(
+        "UPDATE pipeline.file_catalogue" in sql
+        and "source_row_count=COALESCE" in sql
+        and params == (10, "run-1", "s3://raw/policies.csv")
+        for sql, params in conn.statements
+    )
+    assert any(
+        "INSERT INTO pipeline.file_state" in sql
+        and params == ("s3://raw/policies.csv", "run-1", "completed", 7, None)
+        for sql, params in conn.statements
+    )
+
+
+def test_mark_failed_updates_file_catalogue_and_file_state() -> None:
+    conn = _RecordingConn()
+
+    registration.mark_failed(
+        conn,
+        s3_input_path="s3://raw/policies.csv",
+        run_id="run-1",
+        reason="bad file",
+        source_row_count=10,
+    )
+
+    assert any(
+        "UPDATE pipeline.file_catalogue" in sql
+        and "state='failed'" in sql
+        and params == (10, "run-1", "s3://raw/policies.csv")
+        for sql, params in conn.statements
+    )
+    assert any(
+        "INSERT INTO pipeline.file_state" in sql
+        and params == ("s3://raw/policies.csv", "run-1", "failed", None, "bad file")
+        for sql, params in conn.statements
+    )
+
+
 from glue.jobs.ingestion import reading   # noqa: E402
 
 
@@ -176,6 +248,45 @@ def test_resolve_business_date_jsonl_uses_file_id_when_supplied() -> None:
         file_id="abc-123",
     )
     assert bd == "2026-04-30"
+
+
+def test_resolve_business_date_csv_uses_filename_pattern_first() -> None:
+    bd = reading.resolve_business_date(
+        None,
+        config={
+            "raw_format": "csv",
+            "filename_pattern": r"^policies_(?P<bd>\d{8})\.csv$",
+        },
+        s3_input_path="s3://raw/insurance/policies/date=20260501/policies_20260430.csv",
+        file_id=None,
+    )
+    assert bd == "2026-04-30"
+
+
+def test_resolve_business_date_csv_falls_back_to_compact_date_partition() -> None:
+    bd = reading.resolve_business_date(
+        None,
+        config={
+            "raw_format": "csv",
+            "filename_pattern": r"^policies_(?P<bd>\d{8})\.csv$",
+        },
+        s3_input_path="s3://raw/insurance/policies/date=20260901/policies_pre-small-00.csv",
+        file_id=None,
+    )
+    assert bd == "2026-09-01"
+
+
+def test_resolve_business_date_csv_falls_back_to_dashed_date_partition() -> None:
+    bd = reading.resolve_business_date(
+        None,
+        config={
+            "raw_format": "csv",
+            "filename_pattern": r"^policies_(?P<bd>\d{8})\.csv$",
+        },
+        s3_input_path="s3://raw/insurance/policies/date=2026-09-01/policies_pre-small-00.csv",
+        file_id=None,
+    )
+    assert bd == "2026-09-01"
 
 
 def test_resolve_business_date_jsonl_raises_when_no_catalogue_row() -> None:

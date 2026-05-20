@@ -23,6 +23,11 @@ from typing import Any
 class DQAllRowsFailed(RuntimeError):
     """Raised when every input row fails DQ — nothing to curate."""
 
+    def __init__(self, message: str, *, source_count: int, failing_count: int) -> None:
+        super().__init__(message)
+        self.source_count = source_count
+        self.failing_count = failing_count
+
 
 @dataclass(frozen=True)
 class DQOutcome:
@@ -77,7 +82,9 @@ def evaluate(
     dq_pass_count = source_count - failing_count
     if source_count > 0 and dq_pass_count == 0 and failing_count > 0:
         raise DQAllRowsFailed(
-            f"All {source_count} rows failed DQ — nothing curated."
+            f"All {source_count} rows failed DQ — nothing curated.",
+            source_count=source_count,
+            failing_count=failing_count,
         )
 
     return DQOutcome(

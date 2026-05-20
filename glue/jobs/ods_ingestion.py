@@ -30,12 +30,29 @@ import argparse
 import os
 import sys
 
-# Add repo root to sys.path so ods_pipeline package is importable from Glue
-_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-if _REPO_ROOT not in sys.path:
-    sys.path.insert(0, _REPO_ROOT)
+# Add both known Glue layouts to sys.path:
+#
+# * repo checkout:     <repo>/glue/jobs/ods_ingestion.py
+# * container runtime: /home/glue_user/workspace/jobs/ods_ingestion.py
+#
+# The container mounts ``ods_pipeline`` at /home/glue_user/ods_pipeline and
+# mounts this directory as /home/glue_user/workspace/jobs, so the top-level
+# ``glue`` package may not exist even though the sibling ``ingestion`` package
+# does.
+_HERE = os.path.dirname(__file__)
+for _root in (
+    os.path.abspath(os.path.join(_HERE, "..", "..")),
+    "/home/glue_user",
+):
+    if _root not in sys.path:
+        sys.path.insert(0, _root)
 
-from glue.jobs.ingestion import run  # noqa: E402  re-export for callers
+try:
+    from glue.jobs.ingestion import run  # noqa: E402  re-export for callers
+except ModuleNotFoundError as exc:  # pragma: no cover - exercised in container
+    if exc.name != "glue":
+        raise
+    from ingestion import run  # type: ignore[no-redef]  # noqa: E402
 
 
 def _parse_args(argv=None):

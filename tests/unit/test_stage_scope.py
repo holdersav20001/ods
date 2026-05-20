@@ -66,6 +66,9 @@ class _FakeConn:
 # INSERT param positions kept stable; this is the schema in stages.write.
 _INSERT_STATUS_IDX = 2
 _INSERT_ERROR_IDX = 10
+_INSERT_AIRFLOW_DAG_ID_IDX = 11
+_INSERT_AIRFLOW_RUN_ID_IDX = 12
+_INSERT_SPARK_APP_ID_IDX = 13
 
 
 def _stages_inserted(conn: _FakeConn) -> list[str]:
@@ -102,6 +105,30 @@ def test_stage_scope_success_writes_started_then_completed() -> None:
     assert statuses == ["running", "succeeded"]
     assert conn.commits >= 2
     assert conn.rollbacks == 0
+
+
+def test_stage_scope_preserves_runtime_correlation_fields() -> None:
+    conn = _FakeConn()
+    with stages.stage_scope(
+        conn,
+        run_id="rid",
+        stage="raw_read",
+        airflow_dag_id="dag_ingest",
+        airflow_run_id="manual__2026-05-20T10:00:00+00:00",
+        spark_app_id="local-123",
+    ):
+        pass
+
+    stage_rows = [
+        params
+        for sql, params in conn.statements
+        if "INSERT INTO pipeline.run_stage_log" in sql
+    ]
+    assert len(stage_rows) == 2
+    for params in stage_rows:
+        assert params[_INSERT_AIRFLOW_DAG_ID_IDX] == "dag_ingest"
+        assert params[_INSERT_AIRFLOW_RUN_ID_IDX] == "manual__2026-05-20T10:00:00+00:00"
+        assert params[_INSERT_SPARK_APP_ID_IDX] == "local-123"
 
 
 def test_stage_scope_failure_writes_started_then_failed_and_reraises() -> None:

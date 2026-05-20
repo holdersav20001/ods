@@ -13,7 +13,24 @@ bookkeeping.
 """
 from __future__ import annotations
 
+import re
 from typing import Any
+
+_DATE_PARTITION_RE = re.compile(
+    r"(?:^|/)date=(?P<date>\d{8}|\d{4}-\d{2}-\d{2})(?:/|$)"
+)
+
+
+def _business_date_from_partition(s3_input_path: str) -> str | None:
+    """Return YYYY-MM-DD from a date= partition when present."""
+    match = _DATE_PARTITION_RE.search(s3_input_path)
+    if not match:
+        return None
+
+    raw_date = match.group("date")
+    if "-" in raw_date:
+        return raw_date
+    return f"{raw_date[:4]}-{raw_date[4:6]}-{raw_date[6:8]}"
 
 
 def resolve_business_date(
@@ -30,8 +47,14 @@ def resolve_business_date(
         from utils import extract_business_date  # noqa: WPS433
 
         filename = s3_input_path.split("/")[-1]
-        bd = extract_business_date(filename, config["filename_pattern"])
-        return bd.strftime("%Y-%m-%d")
+        try:
+            bd = extract_business_date(filename, config["filename_pattern"])
+            return bd.strftime("%Y-%m-%d")
+        except ValueError:
+            partition_date = _business_date_from_partition(s3_input_path)
+            if partition_date:
+                return partition_date
+            raise
 
     if raw_format == "jsonl":
         with conn.cursor() as cur:

@@ -278,6 +278,9 @@ def stage_scope(
     record_count_in: int | None = None,
     input_ref: str | None = None,
     metrics: dict | None = None,
+    airflow_dag_id: str | None = None,
+    airflow_run_id: str | None = None,
+    spark_app_id: str | None = None,
     truncate_error: int = 500,
 ):
     """Context manager that opens a stage on entry and closes it on exit.
@@ -316,6 +319,9 @@ def stage_scope(
         record_count_in=record_count_in,
         input_ref=input_ref,
         metrics=metrics,
+        airflow_dag_id=airflow_dag_id,
+        airflow_run_id=airflow_run_id,
+        spark_app_id=spark_app_id,
     )
     box: dict = {
         "record_count_out": None,
@@ -380,6 +386,9 @@ def stage_scope(
                 output_ref=box["output_ref"],
                 metrics=box["metrics"],
                 error=str(exc)[:truncate_error] if str(exc) else type(exc).__name__,
+                airflow_dag_id=airflow_dag_id,
+                airflow_run_id=airflow_run_id,
+                spark_app_id=spark_app_id,
             )
         except Exception:
             # Last-ditch — heartbeat janitor catches any orphaned row.
@@ -422,4 +431,7 @@ def stage_scope(
             output_ref=box["output_ref"],
             metrics=finish_metrics,
             error=finish_error,
+            airflow_dag_id=airflow_dag_id,
+            airflow_run_id=airflow_run_id,
+            spark_app_id=spark_app_id,
         )

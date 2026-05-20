@@ -5,6 +5,6 @@ Public API: :func:`run` (same signature as the legacy entrypoint).
 The legacy file is now a thin shim that re-exports this function so
 existing ``--py-files`` lists in DAGs continue to work.
 """
-from glue.jobs.ingestion.pipeline import run
+from .pipeline import run
 
 __all__ = ["run"]

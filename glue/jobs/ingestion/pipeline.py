@@ -84,7 +84,7 @@ def _run(
     # while letting the orchestrator pull everything in one place.
     from utils import load_dataset_config  # noqa: WPS433
 
-    from glue.jobs.ingestion import (  # noqa: WPS433
+    from . import (  # noqa: WPS433
         curating,
         finalising,
         quality,
@@ -92,7 +92,7 @@ def _run(
         registration,
         validation,
     )
-    from glue.jobs.ingestion.spark import build_spark  # noqa: WPS433
+    from .spark import build_spark  # noqa: WPS433
 
     config = load_dataset_config(conn, domain, dataset)
     raw_format = (config.get("raw_format") or "csv").lower()
@@ -285,6 +285,9 @@ def _run(
         return 0
 
     except Exception as exc:
+        if isinstance(exc, quality.DQAllRowsFailed):
+            failing_count = exc.failing_count
+            source_count = exc.source_count
         finalising.finalise_failure(
             conn,
             run_id=run_id,

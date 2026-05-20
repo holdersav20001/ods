@@ -123,15 +123,52 @@ def mark_curated(conn, *, file_id: str, curated_uri: str) -> None:
     conn.commit()
 
 
-def mark_failed(conn, *, s3_input_path: str, run_id: str, reason: str) -> None:
+def mark_failed(
+    conn,
+    *,
+    s3_input_path: str,
+    run_id: str,
+    reason: str,
+    source_row_count: int | None = None,
+) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE pipeline.file_catalogue
+               SET state='failed',
+                   source_row_count=COALESCE(%s, source_row_count),
+                   last_run_id=%s,
+                   state_updated_at=NOW()
+             WHERE s3_raw_path=%s
+            """,
+            (source_row_count, run_id, s3_input_path),
+        )
+    conn.commit()
     ods_pipeline.files.set_state(
         conn, s3_input_path, run_id, "failed", error_reason=reason,
     )
 
 
 def mark_completed(
-    conn, *, s3_input_path: str, run_id: str, record_count: int,
+    conn,
+    *,
+    s3_input_path: str,
+    run_id: str,
+    record_count: int,
+    source_row_count: int | None = None,
 ) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE pipeline.file_catalogue
+               SET source_row_count=COALESCE(%s, source_row_count),
+                   last_run_id=%s,
+                   state_updated_at=NOW()
+             WHERE s3_raw_path=%s
+            """,
+            (source_row_count, run_id, s3_input_path),
+        )
+    conn.commit()
     ods_pipeline.files.set_state(
         conn, s3_input_path, run_id, "completed", record_count=record_count,
     )

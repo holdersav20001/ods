@@ -20,7 +20,8 @@ from __future__ import annotations
 from typing import Any
 
 import ods_pipeline
-from glue.jobs.ingestion import registration
+
+from . import registration
 
 
 def finalise_success(
@@ -54,6 +55,22 @@ def finalise_success(
     registration.mark_curated(conn, file_id=file_id, curated_uri=curated_uri)
 
     # 3. run_log → succeeded with final counts.
+    accounted_count = written_count + failing_count
+    ods_pipeline.reconciliation.write_check(
+        conn,
+        check_type="t0_ingestion_count",
+        run_id=run_id,
+        domain=domain,
+        dataset=dataset,
+        business_date=business_date,
+        source_count=source_count,
+        kafka_count=accounted_count,
+        status="ok" if accounted_count == source_count else "failed",
+        detail=None
+        if accounted_count == source_count
+        else f"accounted_count={accounted_count}",
+    )
+
     ods_pipeline.runs.update(
         conn, run_id,
         status="succeeded",
@@ -68,6 +85,7 @@ def finalise_success(
         s3_input_path=s3_input_path,
         run_id=run_id,
         record_count=written_count,
+        source_row_count=source_count,
     )
 
     # 5. Emit the success event last — consumers (Slack alerts, recon
@@ -102,11 +120,28 @@ def finalise_failure(
     failing_count: int | None = None,
 ) -> None:
     """Write the failure-path control-plane rows in canonical order."""
+    count_fields = {
+        key: value
+        for key, value in {
+            "record_count_source": source_count,
+            "record_count_dq_pass": dq_pass_count,
+            "record_count_dq_fail": failing_count,
+        }.items()
+        if value is not None
+    }
     ods_pipeline.runs.update(
-        conn, run_id, status="failed", error_summary=error_summary,
+        conn,
+        run_id,
+        status="failed",
+        error_summary=error_summary,
+        **count_fields,
     )
     registration.mark_failed(
-        conn, s3_input_path=s3_input_path, run_id=run_id, reason=error_summary,
+        conn,
+        s3_input_path=s3_input_path,
+        run_id=run_id,
+        reason=error_summary,
+        source_row_count=source_count,
     )
     ods_pipeline.events.produce(
         "ingestion.completed", run_id, domain, dataset,
