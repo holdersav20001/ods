@@ -1,0 +1,237 @@
+<mxfile host="app.diagrams.net">
+  <diagram name="Design 3 - Layered Architecture" id="d3">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1500" pageHeight="900" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <mxCell id="title" value="Design 3 — Layered Architecture: tasks → data artifacts → control tables" style="text;html=1;align=center;fontSize=16;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="20" width="1420" height="30" as="geometry"/>
+        </mxCell>
+        <mxCell id="legend" value="UUID legend:  file_id=11   route_run_id=17   ingestion_run_id=22   pg_write_run_id=28" style="text;html=1;align=center;fontSize=12;fontFamily=Courier New;fillColor=#F5F5F5;strokeColor=#999;" vertex="1" parent="1">
+          <mxGeometry x="40" y="55" width="1420" height="25" as="geometry"/>
+        </mxCell>
+
+        <!-- Layer band labels (background) -->
+        <mxCell id="bandT" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF8E1;strokeColor=#FFB300;opacity=40;" vertex="1" parent="1">
+          <mxGeometry x="40" y="100" width="1420" height="140" as="geometry"/>
+        </mxCell>
+        <mxCell id="bandTl" value="TASKS" style="text;html=1;align=left;fontSize=11;fontStyle=1;fontColor=#E65100;rotation=-90;" vertex="1" parent="1">
+          <mxGeometry x="20" y="160" width="40" height="20" as="geometry"/>
+        </mxCell>
+        <mxCell id="bandM" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E1F5FE;strokeColor=#0288D1;opacity=40;" vertex="1" parent="1">
+          <mxGeometry x="40" y="260" width="1420" height="120" as="geometry"/>
+        </mxCell>
+        <mxCell id="bandMl" value="DATA ARTIFACTS" style="text;html=1;align=left;fontSize=11;fontStyle=1;fontColor=#1565C0;rotation=-90;" vertex="1" parent="1">
+          <mxGeometry x="0" y="310" width="80" height="20" as="geometry"/>
+        </mxCell>
+        <mxCell id="bandB" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#F3E5F5;strokeColor=#8E24AA;opacity=40;" vertex="1" parent="1">
+          <mxGeometry x="40" y="500" width="1420" height="220" as="geometry"/>
+        </mxCell>
+        <mxCell id="bandBl" value="CONTROL TABLES" style="text;html=1;align=left;fontSize=11;fontStyle=1;fontColor=#6A1B9A;rotation=-90;" vertex="1" parent="1">
+          <mxGeometry x="-5" y="600" width="100" height="20" as="geometry"/>
+        </mxCell>
+
+        <!-- Tasks (top layer) -->
+        <mxCell id="t1" value="Step 1&#10;Landing task&#10;creates file_id=11" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4E5;strokeColor=#E65100;fontStyle=1;align=center;" vertex="1" parent="1">
+          <mxGeometry x="80" y="130" width="220" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2" value="Step 2&#10;DAG start task&#10;creates route_run_id=17" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4E5;strokeColor=#E65100;fontStyle=1;align=center;" vertex="1" parent="1">
+          <mxGeometry x="380" y="130" width="220" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="t3" value="Steps 3-5&#10;Ingestion task&#10;creates ingestion_run_id=22" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4E5;strokeColor=#E65100;fontStyle=1;align=center;" vertex="1" parent="1">
+          <mxGeometry x="680" y="130" width="220" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="t4" value="Steps 6-7&#10;Load task&#10;creates pg_write_run_id=28" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4E5;strokeColor=#E65100;fontStyle=1;align=center;" vertex="1" parent="1">
+          <mxGeometry x="1080" y="130" width="220" height="80" as="geometry"/>
+        </mxCell>
+
+        <!-- Workflow arrows between tasks -->
+        <mxCell id="w1" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#333;" edge="1" parent="1" source="t1" target="t2">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="w2" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#333;" edge="1" parent="1" source="t2" target="t3">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="w3" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#333;" edge="1" parent="1" source="t3" target="t4">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- Data artifacts (middle layer) -->
+        <mxCell id="d1" value="📄 SFTP drop&#10;/upload/...csv" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E3F2FD;strokeColor=#1565C0;align=center;" vertex="1" parent="1">
+          <mxGeometry x="80" y="290" width="220" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="d2" value="📄 S3 raw&#10;s3://ods-raw/.../...csv" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E3F2FD;strokeColor=#1565C0;align=center;" vertex="1" parent="1">
+          <mxGeometry x="380" y="290" width="220" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="d3" value="📦 S3 curated&#10;s3://ods-curated/.../" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E3F2FD;strokeColor=#1565C0;align=center;" vertex="1" parent="1">
+          <mxGeometry x="680" y="290" width="220" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="d4" value="💾 Postgres target&#10;ods.insurance_country_code" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E3F2FD;strokeColor=#1565C0;align=center;" vertex="1" parent="1">
+          <mxGeometry x="1080" y="290" width="220" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- Data flow arrows in middle band -->
+        <mxCell id="df1" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#1565C0;" edge="1" parent="1" source="d1" target="d2">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="df2" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#1565C0;" edge="1" parent="1" source="d2" target="d3">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="df3" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#1565C0;" edge="1" parent="1" source="d3" target="d4">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- Task to artifact (read/write) arrows -->
+        <mxCell id="ta1" style="endArrow=classic;html=1;strokeColor=#E65100;dashed=0;" edge="1" parent="1" source="t1" target="d2">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ta1lbl" value="writes" style="text;html=1;align=center;fontSize=9;fontStyle=2;fontColor=#E65100;" vertex="1" parent="1">
+          <mxGeometry x="200" y="240" width="50" height="15" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="ta3a" style="endArrow=classic;html=1;strokeColor=#E65100;" edge="1" parent="1" source="t3" target="d2">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ta3albl" value="reads" style="text;html=1;align=center;fontSize=9;fontStyle=2;fontColor=#E65100;" vertex="1" parent="1">
+          <mxGeometry x="610" y="225" width="50" height="15" as="geometry"/>
+        </mxCell>
+        <mxCell id="ta3b" style="endArrow=classic;html=1;strokeColor=#E65100;" edge="1" parent="1" source="t3" target="d3">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ta3blbl" value="writes" style="text;html=1;align=center;fontSize=9;fontStyle=2;fontColor=#E65100;" vertex="1" parent="1">
+          <mxGeometry x="800" y="240" width="50" height="15" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="ta4a" style="endArrow=classic;html=1;strokeColor=#E65100;" edge="1" parent="1" source="t4" target="d3">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ta4albl" value="reads" style="text;html=1;align=center;fontSize=9;fontStyle=2;fontColor=#E65100;" vertex="1" parent="1">
+          <mxGeometry x="990" y="225" width="50" height="15" as="geometry"/>
+        </mxCell>
+        <mxCell id="ta4b" style="endArrow=classic;html=1;strokeColor=#E65100;" edge="1" parent="1" source="t4" target="d4">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ta4blbl" value="writes" style="text;html=1;align=center;fontSize=9;fontStyle=2;fontColor=#E65100;" vertex="1" parent="1">
+          <mxGeometry x="1200" y="240" width="50" height="15" as="geometry"/>
+        </mxCell>
+
+        <!-- Control tables (bottom layer) - 6 boxes -->
+        <mxCell id="c1" value="pipeline.file_catalogue&#10;━━━━━━━━━━━━&#10;PK: file_id" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#1565C0;fontColor=#FFFFFF;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="80" y="540" width="200" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="c2" value="pipeline.run_log&#10;━━━━━━━━━━━━&#10;PK: run_id" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#2E7D32;fontColor=#FFFFFF;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="310" y="540" width="200" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="c3" value="pipeline.run_stage_log&#10;━━━━━━━━━━━━&#10;FK: run_id" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#6A1B9A;fontColor=#FFFFFF;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="540" y="540" width="200" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="c4" value="pipeline.lineage_edge&#10;━━━━━━━━━━━━&#10;child_run_id, parent_*" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#EF6C00;fontColor=#FFFFFF;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="770" y="540" width="200" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="c5" value="pipeline.reconciliation_log&#10;━━━━━━━━━━━━&#10;run_id, check_type" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#AD1457;fontColor=#FFFFFF;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="540" width="220" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="c6" value="ods.* target table&#10;━━━━━━━━━━━━&#10;_ods_file_id, _ods_run_id" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#00695C;fontColor=#FFFFFF;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1250" y="540" width="200" height="70" as="geometry"/>
+        </mxCell>
+
+        <!-- Task → control table dashed write arrows (fan-out) -->
+        <!-- Landing → file_catalogue -->
+        <mxCell id="wa1" style="endArrow=classic;html=1;dashed=1;strokeColor=#1565C0;exitX=0.2;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="t1" target="c1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="wa1lbl" value="state=received" style="text;html=1;align=center;fontSize=9;fontColor=#1565C0;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="60" y="400" width="120" height="15" as="geometry"/>
+        </mxCell>
+
+        <!-- DAG → run_log -->
+        <mxCell id="wa2" style="endArrow=classic;html=1;dashed=1;strokeColor=#2E7D32;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="t2" target="c2">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="wa2lbl" value="run_id=17" style="text;html=1;align=center;fontSize=9;fontColor=#2E7D32;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="380" y="400" width="120" height="15" as="geometry"/>
+        </mxCell>
+
+        <!-- Ingestion → 5 tables -->
+        <mxCell id="wa3a" style="endArrow=classic;html=1;dashed=1;strokeColor=#1565C0;exitX=0.2;exitY=1;entryX=0.8;entryY=0;" edge="1" parent="1" source="t3" target="c1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="wa3albl" value="state=curated" style="text;html=1;align=center;fontSize=9;fontColor=#1565C0;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="380" y="450" width="120" height="15" as="geometry"/>
+        </mxCell>
+        <mxCell id="wa3b" style="endArrow=classic;html=1;dashed=1;strokeColor=#2E7D32;exitX=0.35;exitY=1;entryX=0.8;entryY=0;" edge="1" parent="1" source="t3" target="c2">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="wa3blbl" value="run_id=22 (ingestion)" style="text;html=1;align=center;fontSize=9;fontColor=#2E7D32;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="560" y="425" width="150" height="15" as="geometry"/>
+        </mxCell>
+        <mxCell id="wa3c" style="endArrow=classic;html=1;dashed=1;strokeColor=#6A1B9A;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="t3" target="c3">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="wa3clbl" value="stages × N" style="text;html=1;align=center;fontSize=9;fontColor=#6A1B9A;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="680" y="400" width="120" height="15" as="geometry"/>
+        </mxCell>
+        <mxCell id="wa3d" style="endArrow=classic;html=1;dashed=1;strokeColor=#EF6C00;exitX=0.7;exitY=1;entryX=0.3;entryY=0;" edge="1" parent="1" source="t3" target="c4">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="wa3dlbl" value="raw_to_curated" style="text;html=1;align=center;fontSize=9;fontColor=#EF6C00;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="800" y="425" width="120" height="15" as="geometry"/>
+        </mxCell>
+        <mxCell id="wa3e" style="endArrow=classic;html=1;dashed=1;strokeColor=#AD1457;exitX=0.9;exitY=1;entryX=0.2;entryY=0;" edge="1" parent="1" source="t3" target="c5">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="wa3elbl" value="t0_ingestion_count" style="text;html=1;align=center;fontSize=9;fontColor=#AD1457;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="940" y="450" width="140" height="15" as="geometry"/>
+        </mxCell>
+
+        <!-- Load → 6 tables -->
+        <mxCell id="wa4a" style="endArrow=classic;html=1;dashed=1;strokeColor=#1565C0;exitX=0.1;exitY=1;entryX=0.9;entryY=0;" edge="1" parent="1" source="t4" target="c1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="wa4albl" value="state=sunk" style="text;html=1;align=center;fontSize=9;fontColor=#1565C0;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="650" y="475" width="100" height="15" as="geometry"/>
+        </mxCell>
+        <mxCell id="wa4b" style="endArrow=classic;html=1;dashed=1;strokeColor=#2E7D32;exitX=0.2;exitY=1;entryX=0.9;entryY=0;" edge="1" parent="1" source="t4" target="c2">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="wa4blbl" value="run_id=28 (load)" style="text;html=1;align=center;fontSize=9;fontColor=#2E7D32;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="780" y="475" width="120" height="15" as="geometry"/>
+        </mxCell>
+        <mxCell id="wa4c" style="endArrow=classic;html=1;dashed=1;strokeColor=#6A1B9A;exitX=0.35;exitY=1;entryX=0.9;entryY=0;" edge="1" parent="1" source="t4" target="c3">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="wa4clbl" value="postgres_write" style="text;html=1;align=center;fontSize=9;fontColor=#6A1B9A;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="900" y="425" width="120" height="15" as="geometry"/>
+        </mxCell>
+        <mxCell id="wa4d" style="endArrow=classic;html=1;dashed=1;strokeColor=#EF6C00;exitX=0.5;exitY=1;entryX=0.8;entryY=0;" edge="1" parent="1" source="t4" target="c4">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="wa4dlbl" value="curated_to_postgres" style="text;html=1;align=center;fontSize=9;fontColor=#EF6C00;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="940" y="475" width="160" height="15" as="geometry"/>
+        </mxCell>
+        <mxCell id="wa4e" style="endArrow=classic;html=1;dashed=1;strokeColor=#AD1457;exitX=0.7;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="t4" target="c5">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="wa4elbl" value="direct_postgres_count" style="text;html=1;align=center;fontSize=9;fontColor=#AD1457;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="1100" y="430" width="160" height="15" as="geometry"/>
+        </mxCell>
+        <mxCell id="wa4f" style="endArrow=classic;html=1;dashed=1;strokeColor=#00695C;exitX=0.9;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="t4" target="c6">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="wa4flbl" value="_ods_file_id=11&#10;_ods_run_id=28" style="text;html=1;align=center;fontSize=9;fontColor=#00695C;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="1280" y="420" width="160" height="30" as="geometry"/>
+        </mxCell>
+
+        <!-- footer -->
+        <mxCell id="legendF" value="Solid arrows = workflow / data flow.   Dashed colored arrows = task → control-table write (color matches the table)." style="text;html=1;align=center;fontSize=11;fontStyle=2;fontColor=#555555;" vertex="1" parent="1">
+          <mxGeometry x="40" y="740" width="1420" height="25" as="geometry"/>
+        </mxCell>
+        <mxCell id="legendF2" value="Fan-out from each task to multiple control tables = the scope of code-table impact when modifying that task." style="text;html=1;align=center;fontSize=11;fontStyle=2;fontColor=#555555;" vertex="1" parent="1">
+          <mxGeometry x="40" y="765" width="1420" height="25" as="geometry"/>
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

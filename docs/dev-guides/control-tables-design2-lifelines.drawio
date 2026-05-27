@@ -1,0 +1,187 @@
+<mxfile host="app.diagrams.net">
+  <diagram name="Design 2 - UUID Lifelines" id="d2">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <mxCell id="title" value="Design 2 — UUID Lifelines: when each UUID is born and what writes to it" style="text;html=1;align=center;fontSize=16;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="20" width="1320" height="30" as="geometry"/>
+        </mxCell>
+
+        <!-- UUID actors at top -->
+        <mxCell id="a1" value="file_id = 11&#10;pipeline.file_catalogue" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#1565C0;fontColor=#FFFFFF;fontStyle=1;align=center;" vertex="1" parent="1">
+          <mxGeometry x="180" y="70" width="220" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="a2" value="route_run_id = 17&#10;pipeline.run_log (s3_batch)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#2E7D32;fontColor=#FFFFFF;fontStyle=1;align=center;" vertex="1" parent="1">
+          <mxGeometry x="480" y="70" width="220" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="a3" value="ingestion_run_id = 22&#10;pipeline.run_log (ingestion)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#6A1B9A;fontColor=#FFFFFF;fontStyle=1;align=center;" vertex="1" parent="1">
+          <mxGeometry x="780" y="70" width="220" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="a4" value="pg_write_run_id = 28&#10;pipeline.run_log (direct_postgres)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E65100;fontColor=#FFFFFF;fontStyle=1;align=center;" vertex="1" parent="1">
+          <mxGeometry x="1080" y="70" width="220" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- Lifelines (vertical dashed lines) -->
+        <mxCell id="ll1" style="endArrow=none;dashed=1;html=1;strokeColor=#1565C0;strokeWidth=2;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="290" y="130" as="sourcePoint"/>
+            <mxPoint x="290" y="1020" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ll2" style="endArrow=none;dashed=1;html=1;strokeColor=#2E7D32;strokeWidth=2;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="590" y="130" as="sourcePoint"/>
+            <mxPoint x="590" y="1020" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ll3" style="endArrow=none;dashed=1;html=1;strokeColor=#6A1B9A;strokeWidth=2;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="890" y="130" as="sourcePoint"/>
+            <mxPoint x="890" y="1020" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ll4" style="endArrow=none;dashed=1;html=1;strokeColor=#E65100;strokeWidth=2;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1190" y="130" as="sourcePoint"/>
+            <mxPoint x="1190" y="1020" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Step 1: Landing creates file_id -->
+        <mxCell id="s1" value="Step 1: Landing task" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4E5;strokeColor=#E65100;fontStyle=1;align=center;" vertex="1" parent="1">
+          <mxGeometry x="40" y="160" width="140" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="s1b" value="●  born&#10;writes file_catalogue&#10;(state=received, sftp_path, s3_raw_path)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E3F2FD;strokeColor=#1565C0;align=left;spacingLeft=8;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="200" y="155" width="240" height="55" as="geometry"/>
+        </mxCell>
+
+        <!-- Step 2: DAG creates route_run -->
+        <mxCell id="s2" value="Step 2: DAG start task" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4E5;strokeColor=#E65100;fontStyle=1;align=center;" vertex="1" parent="1">
+          <mxGeometry x="40" y="240" width="140" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="s2b" value="●  born&#10;writes run_log&#10;(s3_batch, running)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;align=left;spacingLeft=8;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="500" y="240" width="240" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="s2link" value="links via run_log.file_id=11" style="text;html=1;align=center;fontSize=9;fontStyle=2;fontColor=#1565C0;" vertex="1" parent="1">
+          <mxGeometry x="300" y="255" width="200" height="20" as="geometry"/>
+        </mxCell>
+        <mxCell id="s2arrow" style="endArrow=classic;html=1;strokeColor=#1565C0;dashed=1;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="290" y="265" as="sourcePoint"/>
+            <mxPoint x="590" y="265" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Step 3: Ingestion task born -->
+        <mxCell id="s3" value="Step 3: Ingestion starts" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4E5;strokeColor=#E65100;fontStyle=1;align=center;" vertex="1" parent="1">
+          <mxGeometry x="40" y="330" width="140" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="s3b" value="●  born&#10;writes run_log (ingestion, running)&#10;parents=[route_run_id=17, orchestrates]&#10;file_id=11" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3E5F5;strokeColor=#6A1B9A;align=left;spacingLeft=8;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="800" y="325" width="280" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="s3a1" style="endArrow=classic;html=1;strokeColor=#1565C0;dashed=1;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="290" y="355" as="sourcePoint"/>
+            <mxPoint x="890" y="355" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s3a2" style="endArrow=classic;html=1;strokeColor=#2E7D32;dashed=1;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="590" y="365" as="sourcePoint"/>
+            <mxPoint x="890" y="365" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Step 4-5: Ingestion writes evidence -->
+        <mxCell id="s4" value="Steps 4-5: Ingestion does work" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4E5;strokeColor=#E65100;fontStyle=1;align=center;" vertex="1" parent="1">
+          <mxGeometry x="40" y="420" width="140" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="s4b" value="writes run_stage_log × N (raw_read..curated_write)&#10;writes lineage_edge (child=22, parent_file=11, raw_to_curated)&#10;writes reconciliation_log (t0_ingestion_count, run_id=22)&#10;updates file_catalogue (state=curated, last_run_id=22)&#10;updates run_log (status=succeeded)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3E5F5;strokeColor=#6A1B9A;align=left;spacingLeft=8;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="800" y="415" width="380" height="95" as="geometry"/>
+        </mxCell>
+        <mxCell id="s4back" style="endArrow=classic;html=1;strokeColor=#1565C0;dashed=1;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="800" y="445" as="sourcePoint"/>
+            <mxPoint x="290" y="445" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s4backlbl" value="updates file_catalogue (file_id=11)" style="text;html=1;align=center;fontSize=9;fontStyle=2;fontColor=#1565C0;" vertex="1" parent="1">
+          <mxGeometry x="450" y="425" width="240" height="20" as="geometry"/>
+        </mxCell>
+
+        <!-- Step 6: Load born -->
+        <mxCell id="s6" value="Step 6: Load starts" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4E5;strokeColor=#E65100;fontStyle=1;align=center;" vertex="1" parent="1">
+          <mxGeometry x="40" y="560" width="140" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="s6b" value="●  born&#10;writes run_log (direct_postgres, running)&#10;parents=[route_run_id=17, orchestrates]&#10;file_id=11" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#E65100;align=left;spacingLeft=8;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1080" y="555" width="280" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="s6a1" style="endArrow=classic;html=1;strokeColor=#1565C0;dashed=1;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="290" y="585" as="sourcePoint"/>
+            <mxPoint x="1190" y="585" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s6a2" style="endArrow=classic;html=1;strokeColor=#2E7D32;dashed=1;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="590" y="595" as="sourcePoint"/>
+            <mxPoint x="1190" y="595" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Step 7: Load does work -->
+        <mxCell id="s7" value="Step 7: Load does work" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4E5;strokeColor=#E65100;fontStyle=1;align=center;" vertex="1" parent="1">
+          <mxGeometry x="40" y="660" width="140" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="s7b" value="writes run_stage_log (postgres_write, start+finish)&#10;writes lineage_edge (child=28, parent_run=22, parent_file=11,&#10;                    curated_to_postgres)&#10;writes reconciliation_log (direct_postgres_count, run_id=28)&#10;writes target rows (_ods_file_id=11, _ods_run_id=28)&#10;updates file_catalogue (state=sunk, last_run_id=28)&#10;updates run_log (status=succeeded)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#E65100;align=left;spacingLeft=8;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1080" y="655" width="300" height="130" as="geometry"/>
+        </mxCell>
+        <mxCell id="s7back1" style="endArrow=classic;html=1;strokeColor=#6A1B9A;dashed=1;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1080" y="700" as="sourcePoint"/>
+            <mxPoint x="890" y="700" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s7back1lbl" value="lineage_edge.parent_run_id=22" style="text;html=1;align=center;fontSize=9;fontStyle=2;fontColor=#6A1B9A;" vertex="1" parent="1">
+          <mxGeometry x="900" y="680" width="180" height="20" as="geometry"/>
+        </mxCell>
+        <mxCell id="s7back2" style="endArrow=classic;html=1;strokeColor=#1565C0;dashed=1;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1080" y="740" as="sourcePoint"/>
+            <mxPoint x="290" y="740" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s7back2lbl" value="target rows _ods_file_id=11 + updates file_catalogue.state=sunk" style="text;html=1;align=center;fontSize=9;fontStyle=2;fontColor=#1565C0;" vertex="1" parent="1">
+          <mxGeometry x="400" y="720" width="400" height="20" as="geometry"/>
+        </mxCell>
+
+        <!-- Step 8: Final state -->
+        <mxCell id="s8" value="Final state" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#37474F;fontColor=#FFFFFF;fontStyle=1;align=center;" vertex="1" parent="1">
+          <mxGeometry x="40" y="840" width="140" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="s8f1" value="state=sunk" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E3F2FD;strokeColor=#1565C0;align=center;fontStyle=1;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="220" y="840" width="160" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="s8f2" value="status=succeeded" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;align=center;fontStyle=1;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="510" y="840" width="160" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="s8f3" value="status=succeeded" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3E5F5;strokeColor=#6A1B9A;align=center;fontStyle=1;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="810" y="840" width="160" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="s8f4" value="status=succeeded" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#E65100;align=center;fontStyle=1;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1110" y="840" width="160" height="40" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="legend2" value="● = UUID born (first row created).   Dashed horizontal arrows = a write that references an existing UUID on another lifeline." style="text;html=1;align=center;fontSize=11;fontStyle=2;fontColor=#555555;" vertex="1" parent="1">
+          <mxGeometry x="40" y="950" width="1320" height="25" as="geometry"/>
+        </mxCell>
+        <mxCell id="legend3" value="Read top-to-bottom = chronological. Read left-to-right = how the 4 UUIDs are reused across tables." style="text;html=1;align=center;fontSize=11;fontStyle=2;fontColor=#555555;" vertex="1" parent="1">
+          <mxGeometry x="40" y="980" width="1320" height="25" as="geometry"/>
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

@@ -1,46 +1,52 @@
 # ODS Platform — Pipeline Paths and Diagram Navigation
 
-**Last updated:** 2026-04-17
+**Last updated:** 2026-05-21
 
 This document describes the two ingestion paths supported by the ODS platform and maps each step to its draw.io diagram. Use it to navigate between diagrams or to trace a record from source to its final storage destination.
 
 ---
 
-## Path 1 — File-Based (SFTP → Parquet → Canonical Kafka → PostgreSQL / Iceberg)
+## Path 1 — File-Based (SFTP → S3 → Kafka → PostgreSQL / Iceberg)
 
-Data arrives as a structured file over SFTP. It is validated, transferred to S3, transformed to Parquet, schema-validated against the canonical Avro schema, and published directly to the canonical Kafka topic. There is no non-canonical Kafka staging hop.
+Data arrives as a structured file over SFTP. It is validated, transferred to S3 Raw, then a Glue Spark job reads, validates, DQ-checks, and writes Parquet to S3 Curated. A second Glue job publishes records as Avro to a raw Kafka topic. An optional canonicalization step transforms raw → canonical Avro. Kafka Sink connectors deliver to PostgreSQL (upsert current + append history) and Iceberg. Airflow is the sole scheduler — no EventBridge.
 
 ```
 SFTP Source
   │
   ▼
-DAG1 — Detect, validate, transfer to S3 Raw
-  │
+dag_drop_to_raw — detect, validate, transfer to S3 Raw
+  │  writes: pipeline.file_catalogue (file_id, state=registered)
   ▼
-DAG2 — Glue ETL → Parquet written to S3 Curated
-  │  handoff: EventBridge S3 Object Created rule fires (ods-curated-file-rule)
+dag_ingest — stage_ingest (Glue Spark / ods_ingestion.py)
+  │  RAW_READ → SCHEMA_VALIDATE → DQ_CHECK → CURATED_WRITE
+  │  writes: run_log, stage_log, lineage, reconciliation_log (t0_input_count)
+  │  DQ failures → s3://ods-dlq-{env}/
   ▼
-Airflow DAG — idempotency check → trigger Glue publish job
-  │
+dag_ingest — stage_publish (Glue / ods_s3_publish.py)
+  │  reads s3://ods-curated-{env}/ · produces Avro via OffsetTracker
+  │  output: {domain}.{dataset}.raw  ← raw Kafka topic
+  │  writes: publish_stage, reconciliation_log (t0_publish_count)
   ▼
-Glue Job — read Parquet · fetch canonical schema · run DQ · publish Avro
-  │  output: ods.{domain}.{dataset}  ← canonical topic (no raw Kafka hop)
+dag_ingest — stage_canonicalize (optional — is_canonical?)
+  │  output: {domain}.{dataset}  ← canonical Avro topic
   ▼
 Kafka Sink Connector — consume canonical topic
   │
-  ├──► Iceberg (S3)        — analytical / historical store
-  └──► PostgreSQL (ods.*)  — operational query layer
+  ├──► PostgreSQL (ods.*)   — upsert current + append history
+  └──► Iceberg (S3)         — analytical / historical store
+  │
+  ▼
+dag_ingest — finalise
+  │  writes: reconciliation_log (dual_sink_parity), run_log (completed)
 ```
 
 ### Draw.io diagrams for this path
 
-| Step | Overview diagram | Sequence diagram |
-|------|-----------------|-----------------|
-| SFTP → S3 Raw → S3 Curated (Parquet) | `ods-ingestion-overview.drawio` | `ods-ingestion-sequence.drawio` |
-| S3 Curated → Canonical Kafka topic | `ods-s3-kafka-overview.drawio` | `ods-s3-kafka-sequence.drawio` |
-| Canonical Kafka → Iceberg + PostgreSQL | `ods-kafka-sink-overview.drawio` | `ods-kafka-sink-sequence.drawio` |
-
-**Handoff between diagrams:** `ods-ingestion-sequence` → `ods-s3-kafka-sequence` is triggered by the EventBridge `ods-curated-file-rule` firing when Parquet lands in S3 Curated.
+| Diagram | Pages | Location |
+|---------|-------|----------|
+| **file-ingestion-route.drawio** — Process, Data Flow, Sequence | 3 pages covering full path end-to-end | `docs/dev-guides/file-ingestion-route.drawio` |
+| **reconciliation-patterns-file-and-message.drawio** — Recon checkpoints + check-type reference | 2 pages | `docs/reconciliation-patterns-file-and-message.drawio` |
+| **pipeline-table-population-guide.drawio** — Control table write order + schema quick-ref | 2 pages | `docs/pipeline-table-population-guide.drawio` |
 
 ---
 
@@ -84,16 +90,17 @@ Both paths write to the same canonical topic `ods.{domain}.{dataset}`. From that
 ```
 Path 1 (File) ──────────────────────────┐
                                          ▼
-                              ods.{domain}.{dataset}  (canonical Avro)
+                              {domain}.{dataset}  (canonical Avro)
                                          │
 Path 2 (CDC)  ──────────────────────────┘
                                          ▼
-                              ods-kafka-sink-overview.drawio
-                              ods-kafka-sink-sequence.drawio
+                              Kafka Sink Connector
                                          │
-                              ├──► Iceberg (S3)
-                              └──► PostgreSQL (ods.*)
+                              ├──► PostgreSQL ods.*   (JDBC upsert)
+                              └──► Iceberg (S3)       (append)
 ```
+
+See `docs/dev-guides/file-ingestion-route.drawio` (Data Flow page) for the full visual.
 
 ---
 

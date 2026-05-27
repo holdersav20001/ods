@@ -1,0 +1,158 @@
+<mxfile host="app.diagrams.net">
+  <diagram name="Control Tables Ledger" id="ledger">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="1400" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <!-- Title -->
+        <mxCell id="title" value="ODS Control Table Receipt — file_id=11   (one file, full lifecycle)" style="text;html=1;align=center;fontSize=16;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="20" width="1320" height="30" as="geometry"/>
+        </mxCell>
+
+        <!-- UUID legend -->
+        <mxCell id="legend" value="file_id=11    route_run_id=17    ingestion_run_id=22    pg_write_run_id=28" style="text;html=1;align=center;fontSize=12;fontFamily=Courier New;fillColor=#F5F5F5;strokeColor=#999;" vertex="1" parent="1">
+          <mxGeometry x="40" y="55" width="1320" height="25" as="geometry"/>
+        </mxCell>
+
+        <!-- Column headers -->
+        <mxCell id="hT" value="TIME" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#37474F;fontColor=#FFFFFF;fontStyle=1;align=center;" vertex="1" parent="1">
+          <mxGeometry x="40" y="100" width="120" height="35" as="geometry"/>
+        </mxCell>
+        <mxCell id="hS" value="STEP  /  CONTROL-TABLE WRITES   (indent = parent → child)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#37474F;fontColor=#FFFFFF;fontStyle=1;align=left;spacingLeft=12;" vertex="1" parent="1">
+          <mxGeometry x="160" y="100" width="1200" height="35" as="geometry"/>
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- LEVEL 0: file_id root -->
+        <!-- ============================================================ -->
+        <mxCell id="t0" value="10:00:00" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ECEFF1;strokeColor=#37474F;fontFamily=Courier New;fontSize=11;fontStyle=1;align=center;" vertex="1" parent="1">
+          <mxGeometry x="40" y="135" width="120" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="s0" value="◉ ROOT — file lifecycle for file_id=11&#10;   (everything below is scoped to this file)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#CFD8DC;strokeColor=#37474F;fontStyle=1;fontSize=12;align=left;spacingLeft=12;" vertex="1" parent="1">
+          <mxGeometry x="160" y="135" width="1200" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- LEVEL 1: Landing (child of root) -->
+        <!-- ============================================================ -->
+        <mxCell id="t1" value="10:00:00" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ECEFF1;strokeColor=#37474F;fontFamily=Courier New;fontSize=11;align=center;" vertex="1" parent="1">
+          <mxGeometry x="40" y="200" width="120" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="s1h" value="└─ STEP 1 — Landing task" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF4E5;strokeColor=#E65100;fontStyle=1;fontSize=12;align=left;spacingLeft=20;" vertex="1" parent="1">
+          <mxGeometry x="200" y="200" width="1160" height="25" as="geometry"/>
+        </mxCell>
+        <mxCell id="s1b" value="     + file_catalogue   INSERT  file_id=11, domain=insurance, dataset=country_codes,&#10;                                business_date=2026-05-21, state=received,&#10;                                sftp_path=/upload/country_codes_20260521.csv,&#10;                                s3_raw_path=s3://ods-raw/.../country_codes_20260521.csv" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#E65100;fontFamily=Courier New;fontSize=10;align=left;spacingLeft=12;" vertex="1" parent="1">
+          <mxGeometry x="200" y="225" width="1160" height="55" as="geometry"/>
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- LEVEL 1: DAG (orchestration parent for tasks below) -->
+        <!-- ============================================================ -->
+        <mxCell id="t2" value="10:00:05" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ECEFF1;strokeColor=#37474F;fontFamily=Courier New;fontSize=11;align=center;" vertex="1" parent="1">
+          <mxGeometry x="40" y="290" width="120" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="s2h" value="└─ STEP 2 — DAG start  (route_run_id=17 — orchestration parent for all task runs below)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;fontStyle=1;fontSize=12;align=left;spacingLeft=20;" vertex="1" parent="1">
+          <mxGeometry x="200" y="290" width="1160" height="25" as="geometry"/>
+        </mxCell>
+        <mxCell id="s2b" value="     + run_log          INSERT  run_id=17, pipeline_type=s3_batch, file_id=11, status=running, parents=[]" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#2E7D32;fontFamily=Courier New;fontSize=10;align=left;spacingLeft=12;" vertex="1" parent="1">
+          <mxGeometry x="200" y="315" width="1160" height="30" as="geometry"/>
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- LEVEL 2: Ingestion (indented under DAG) -->
+        <!-- ============================================================ -->
+        <mxCell id="t3" value="10:00:10" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ECEFF1;strokeColor=#37474F;fontFamily=Courier New;fontSize=11;align=center;" vertex="1" parent="1">
+          <mxGeometry x="40" y="360" width="120" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="s3h" value="    └─ STEP 3 — Ingestion task starts  (child of route_run_id=17)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#F3E5F5;strokeColor=#6A1B9A;fontStyle=1;fontSize=12;align=left;spacingLeft=40;" vertex="1" parent="1">
+          <mxGeometry x="240" y="360" width="1120" height="25" as="geometry"/>
+        </mxCell>
+        <mxCell id="s3b" value="         + run_log         INSERT  run_id=22, pipeline_type=ingestion, file_id=11, status=running,&#10;                                   parents=[{run_id:17, edge_type:orchestrates}]" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6A1B9A;fontFamily=Courier New;fontSize=10;align=left;spacingLeft=12;" vertex="1" parent="1">
+          <mxGeometry x="240" y="385" width="1120" height="30" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="t4" value="10:00:12&#10;..&#10;10:00:28" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ECEFF1;strokeColor=#37474F;fontFamily=Courier New;fontSize=11;align=center;" vertex="1" parent="1">
+          <mxGeometry x="40" y="430" width="120" height="125" as="geometry"/>
+        </mxCell>
+        <mxCell id="s4h" value="    └─ STEP 4 — Ingestion writes stage evidence" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#F3E5F5;strokeColor=#6A1B9A;fontStyle=1;fontSize=12;align=left;spacingLeft=40;" vertex="1" parent="1">
+          <mxGeometry x="240" y="430" width="1120" height="25" as="geometry"/>
+        </mxCell>
+        <mxCell id="s4b" value="         + run_stage_log   INSERT  run_id=22, stage=raw_read,        event=stage_started,   attempt=1&#10;         ~ run_stage_log   INSERT  run_id=22, stage=raw_read,        event=stage_completed, status=succeeded, record_count_out=100&#10;         + run_stage_log   INSERT  run_id=22, stage=schema_validate, event=stage_started,   attempt=1&#10;         ~ run_stage_log   INSERT  run_id=22, stage=schema_validate, event=stage_completed, status=succeeded&#10;         + run_stage_log   INSERT  run_id=22, stage=dq_check,        event=stage_started,   attempt=1&#10;         ~ run_stage_log   INSERT  run_id=22, stage=dq_check,        event=stage_completed, status=succeeded&#10;         + run_stage_log   INSERT  run_id=22, stage=curated_write,   event=stage_started,   attempt=1&#10;         ~ run_stage_log   INSERT  run_id=22, stage=curated_write,   event=stage_completed, status=succeeded, record_count_out=100" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6A1B9A;fontFamily=Courier New;fontSize=10;align=left;spacingLeft=12;" vertex="1" parent="1">
+          <mxGeometry x="240" y="455" width="1120" height="100" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="t5" value="10:00:30" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ECEFF1;strokeColor=#37474F;fontFamily=Courier New;fontSize=11;align=center;" vertex="1" parent="1">
+          <mxGeometry x="40" y="570" width="120" height="115" as="geometry"/>
+        </mxCell>
+        <mxCell id="s5h" value="    └─ STEP 5 — Ingestion finishes  (closes ingestion run)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#F3E5F5;strokeColor=#6A1B9A;fontStyle=1;fontSize=12;align=left;spacingLeft=40;" vertex="1" parent="1">
+          <mxGeometry x="240" y="570" width="1120" height="25" as="geometry"/>
+        </mxCell>
+        <mxCell id="s5b" value="         ~ file_catalogue  UPDATE  file_id=11 → state=curated, s3_curated_path=s3://ods-curated/.../, last_run_id=22&#10;         + lineage_edge    INSERT  child_run_id=22, parent_file_id=11, parent_run_id=NULL,&#10;                                   edge_type=raw_to_curated, source_ref=s3://.../raw/...csv,&#10;                                   target_ref=s3://.../curated/.../, record_count=100&#10;         + reconciliation_log INSERT run_id=22, check_type=t0_ingestion_count, source_count=100, status=ok&#10;         ~ run_log          UPDATE run_id=22 → status=succeeded, record_count_source=100, record_count_dq_pass=100" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6A1B9A;fontFamily=Courier New;fontSize=10;align=left;spacingLeft=12;" vertex="1" parent="1">
+          <mxGeometry x="240" y="595" width="1120" height="90" as="geometry"/>
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- LEVEL 2: Load (sibling of Ingestion, child of DAG) -->
+        <!-- ============================================================ -->
+        <mxCell id="t6" value="10:00:35" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ECEFF1;strokeColor=#37474F;fontFamily=Courier New;fontSize=11;align=center;" vertex="1" parent="1">
+          <mxGeometry x="40" y="700" width="120" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="s6h" value="    └─ STEP 6 — Load task starts  (child of route_run_id=17 — sibling of ingestion)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#E65100;fontStyle=1;fontSize=12;align=left;spacingLeft=40;" vertex="1" parent="1">
+          <mxGeometry x="240" y="700" width="1120" height="25" as="geometry"/>
+        </mxCell>
+        <mxCell id="s6b" value="         + run_log         INSERT  run_id=28, pipeline_type=direct_postgres, file_id=11, status=running,&#10;                                   parents=[{run_id:17, edge_type:orchestrates}]" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#E65100;fontFamily=Courier New;fontSize=10;align=left;spacingLeft=12;" vertex="1" parent="1">
+          <mxGeometry x="240" y="725" width="1120" height="30" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="t7" value="10:00:37" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ECEFF1;strokeColor=#37474F;fontFamily=Courier New;fontSize=11;align=center;" vertex="1" parent="1">
+          <mxGeometry x="40" y="770" width="120" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="s7h" value="    └─ STEP 7 — Load writes stage evidence" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#E65100;fontStyle=1;fontSize=12;align=left;spacingLeft=40;" vertex="1" parent="1">
+          <mxGeometry x="240" y="770" width="1120" height="25" as="geometry"/>
+        </mxCell>
+        <mxCell id="s7b" value="         + run_stage_log   INSERT  run_id=28, stage=postgres_write, event=stage_started,   attempt=1&#10;         ~ run_stage_log   INSERT  run_id=28, stage=postgres_write, event=stage_completed, status=succeeded, record_count_out=100" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#E65100;fontFamily=Courier New;fontSize=10;align=left;spacingLeft=12;" vertex="1" parent="1">
+          <mxGeometry x="240" y="795" width="1120" height="30" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="t8" value="10:00:40" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ECEFF1;strokeColor=#37474F;fontFamily=Courier New;fontSize=11;align=center;" vertex="1" parent="1">
+          <mxGeometry x="40" y="840" width="120" height="135" as="geometry"/>
+        </mxCell>
+        <mxCell id="s8h" value="    └─ STEP 8 — Load finishes  (writes target rows, lineage, recon, closes load run)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#E65100;fontStyle=1;fontSize=12;align=left;spacingLeft=40;" vertex="1" parent="1">
+          <mxGeometry x="240" y="840" width="1120" height="25" as="geometry"/>
+        </mxCell>
+        <mxCell id="s8b" value="         + ods.insurance_country_code  INSERT × 100 rows  (each row: _ods_file_id=11, _ods_run_id=28,&#10;                                                            _ods_business_date=2026-05-21, _ods_domain=insurance,&#10;                                                            _ods_dataset=country_codes)&#10;         + lineage_edge    INSERT  child_run_id=28, parent_run_id=22, parent_file_id=11,&#10;                                   edge_type=curated_to_postgres,&#10;                                   source_ref=s3://.../curated/.../, target_ref=jdbc:postgresql://.../ods.insurance_country_code,&#10;                                   record_count=100&#10;         + reconciliation_log INSERT run_id=28, check_type=direct_postgres_count, source_count=100, postgres_count=100, status=ok&#10;         ~ file_catalogue  UPDATE  file_id=11 → state=sunk, last_run_id=28&#10;         ~ run_log         UPDATE  run_id=28 → status=succeeded, record_count_published=100" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#E65100;fontFamily=Courier New;fontSize=10;align=left;spacingLeft=12;" vertex="1" parent="1">
+          <mxGeometry x="240" y="865" width="1120" height="110" as="geometry"/>
+        </mxCell>
+
+        <!-- DAG run closes -->
+        <mxCell id="t9" value="10:00:42" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ECEFF1;strokeColor=#37474F;fontFamily=Courier New;fontSize=11;align=center;" vertex="1" parent="1">
+          <mxGeometry x="40" y="990" width="120" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="s9h" value="└─ STEP 9 — DAG run closes  (both child tasks succeeded → orchestration run can close)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;fontStyle=1;fontSize=12;align=left;spacingLeft=20;" vertex="1" parent="1">
+          <mxGeometry x="200" y="990" width="1160" height="25" as="geometry"/>
+        </mxCell>
+        <mxCell id="s9b" value="     ~ run_log          UPDATE  run_id=17 → status=succeeded" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#2E7D32;fontFamily=Courier New;fontSize=10;align=left;spacingLeft=12;" vertex="1" parent="1">
+          <mxGeometry x="200" y="1015" width="1160" height="25" as="geometry"/>
+        </mxCell>
+
+        <!-- Summary footer -->
+        <mxCell id="sumH" value="═════════════════════════════════════ TOTAL ═════════════════════════════════════" style="text;html=1;align=center;fontFamily=Courier New;fontSize=11;fontStyle=1;fontColor=#37474F;" vertex="1" parent="1">
+          <mxGeometry x="40" y="1060" width="1320" height="25" as="geometry"/>
+        </mxCell>
+        <mxCell id="sum" value="1 file_catalogue row  •  3 run_log rows (17 s3_batch, 22 ingestion, 28 direct_postgres)  •  10 run_stage_log rows  •&#10;2 lineage_edge rows  •  2 reconciliation_log rows  •  100 target rows in ods.insurance_country_code" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ECEFF1;strokeColor=#37474F;fontFamily=Courier New;fontSize=11;align=center;" vertex="1" parent="1">
+          <mxGeometry x="40" y="1085" width="1320" height="45" as="geometry"/>
+        </mxCell>
+
+        <!-- Legend -->
+        <mxCell id="lg1" value="+ = INSERT      ~ = UPDATE      indent = parent → child (orchestration tree)" style="text;html=1;align=center;fontFamily=Courier New;fontSize=11;fontColor=#555;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="40" y="1145" width="1320" height="25" as="geometry"/>
+        </mxCell>
+        <mxCell id="lg2" value="Orange=Landing/Load task   Green=DAG/orchestration run   Purple=Ingestion task" style="text;html=1;align=center;fontFamily=Courier New;fontSize=11;fontColor=#555;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="40" y="1170" width="1320" height="25" as="geometry"/>
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

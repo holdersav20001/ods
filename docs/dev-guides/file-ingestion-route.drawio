@@ -1,0 +1,338 @@
+<mxfile host="Claude">
+  <diagram id="fi-process" name="File Ingestion — Process">
+    <mxGraphModel dx="1200" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1000" pageHeight="1600" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <mxCell id="P-title" value="File Ingestion — Process Flow" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=15;fontStyle=1;fontColor=#1F5C8B;" vertex="1" parent="1">
+          <mxGeometry x="0" y="20" width="1000" height="36" as="geometry"/>
+        </mxCell>
+
+        <!-- Legend -->
+        <mxCell id="P-leg-src"  value="Source / S3"     style="rounded=1;whiteSpace=wrap;html=1;fontSize=9;fillColor=#FFE0B2;strokeColor=#E65100;" vertex="1" parent="1"><mxGeometry x="770" y="90"  width="110" height="24" as="geometry"/></mxCell>
+        <mxCell id="P-leg-af"   value="Airflow"          style="rounded=1;whiteSpace=wrap;html=1;fontSize=9;fillColor=#C8E6C9;strokeColor=#2E7D32;" vertex="1" parent="1"><mxGeometry x="770" y="119" width="110" height="24" as="geometry"/></mxCell>
+        <mxCell id="P-leg-gl"   value="Glue / Spark"     style="rounded=1;whiteSpace=wrap;html=1;fontSize=9;fillColor=#BBDEFB;strokeColor=#1565C0;" vertex="1" parent="1"><mxGeometry x="770" y="148" width="110" height="24" as="geometry"/></mxCell>
+        <mxCell id="P-leg-kf"   value="Kafka"            style="rounded=1;whiteSpace=wrap;html=1;fontSize=9;fillColor=#E1BEE7;strokeColor=#6A1B9A;" vertex="1" parent="1"><mxGeometry x="770" y="177" width="110" height="24" as="geometry"/></mxCell>
+        <mxCell id="P-leg-rc"   value="Reconciliation"   style="rounded=1;whiteSpace=wrap;html=1;fontSize=9;fillColor=#FFF8E1;strokeColor=#F57F17;" vertex="1" parent="1"><mxGeometry x="770" y="206" width="110" height="24" as="geometry"/></mxCell>
+        <mxCell id="P-leg-err"  value="DLQ / Error"      style="rounded=1;whiteSpace=wrap;html=1;fontSize=9;fillColor=#FFCDD2;strokeColor=#C62828;" vertex="1" parent="1"><mxGeometry x="770" y="235" width="110" height="24" as="geometry"/></mxCell>
+
+        <!-- START -->
+        <mxCell id="P-start" value="File arrives via SFTP" style="ellipse;whiteSpace=wrap;html=1;fontSize=10;fillColor=#FFE0B2;strokeColor=#E65100;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="380" y="80" width="220" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="P-a1" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="P-start" target="P-drop" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- dag_drop_to_raw -->
+        <mxCell id="P-drop" value="dag_drop_to_raw&#10;validate · transfer → S3 Raw" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#C8E6C9;strokeColor=#2E7D32;" vertex="1" parent="1">
+          <mxGeometry x="380" y="170" width="220" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="P-a2" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="P-drop" target="P-trigger" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- dag_ingest triggered -->
+        <mxCell id="P-trigger" value="dag_ingest triggered&#10;{file_id, domain, dataset, business_date}" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#C8E6C9;strokeColor=#2E7D32;" vertex="1" parent="1">
+          <mxGeometry x="380" y="265" width="220" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="P-a3" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="P-trigger" target="P-init" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- init_run -->
+        <mxCell id="P-init" value="init_run&#10;generate run_id" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#C8E6C9;strokeColor=#2E7D32;" vertex="1" parent="1">
+          <mxGeometry x="380" y="360" width="220" height="45" as="geometry"/>
+        </mxCell>
+
+        <!-- Glue group background -->
+        <mxCell id="P-gl-bg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E3F2FD;strokeColor=#1565C0;dashed=1;strokeWidth=2;opacity=50;" vertex="1" parent="1">
+          <mxGeometry x="340" y="425" width="300" height="375" as="geometry"/>
+        </mxCell>
+        <mxCell id="P-gl-lbl" value="stage_ingest — Glue Spark (ods_ingestion.py)" style="text;html=1;strokeColor=none;fillColor=none;align=center;whiteSpace=wrap;fontSize=9;fontStyle=3;fontColor=#1565C0;" vertex="1" parent="1">
+          <mxGeometry x="340" y="428" width="300" height="18" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="P-a4" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="P-init" target="P-reg" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- register_file -->
+        <mxCell id="P-reg" value="register_file&#10;→ pipeline.file_catalogue" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#BBDEFB;strokeColor=#1565C0;" vertex="1" parent="1">
+          <mxGeometry x="380" y="452" width="220" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="P-a5" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="P-reg" target="P-read" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- RAW_READ -->
+        <mxCell id="P-read" value="RAW_READ&#10;read from s3://ods-raw-{env}/" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#BBDEFB;strokeColor=#1565C0;" vertex="1" parent="1">
+          <mxGeometry x="380" y="512" width="220" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="P-a6" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="P-read" target="P-schema" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- SCHEMA_VALIDATE -->
+        <mxCell id="P-schema" value="SCHEMA_VALIDATE&#10;check columns vs schema_id" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#BBDEFB;strokeColor=#1565C0;" vertex="1" parent="1">
+          <mxGeometry x="380" y="572" width="220" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="P-a7" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="P-schema" target="P-dq" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- DQ_CHECK -->
+        <mxCell id="P-dq" value="DQ_CHECK&#10;quality.evaluate(df, rules)" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#BBDEFB;strokeColor=#1565C0;" vertex="1" parent="1">
+          <mxGeometry x="380" y="632" width="220" height="45" as="geometry"/>
+        </mxCell>
+
+        <!-- DLQ side branch -->
+        <mxCell id="P-dlq" value="S3 DLQ&#10;s3://ods-dlq-{env}/failed.csv" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#FFCDD2;strokeColor=#C62828;" vertex="1" parent="1">
+          <mxGeometry x="660" y="632" width="180" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="P-a-dlq" value="failures (soft)" style="edgeStyle=orthogonalEdgeStyle;fontSize=9;fontStyle=2;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" source="P-dq" target="P-dlq" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="P-a8" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="P-dq" target="P-curate" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- CURATED_WRITE -->
+        <mxCell id="P-curate" value="CURATED_WRITE&#10;→ s3://ods-curated-{env}/ (Parquet)" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#BBDEFB;strokeColor=#1565C0;" vertex="1" parent="1">
+          <mxGeometry x="380" y="692" width="220" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="P-a9" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="P-curate" target="P-fin-g" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- finalise_success -->
+        <mxCell id="P-fin-g" value="finalise_success&#10;lineage edge · recon t0_input_count&#10;→ pipeline.reconciliation_log" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#BBDEFB;strokeColor=#1565C0;" vertex="1" parent="1">
+          <mxGeometry x="380" y="752" width="220" height="50" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="P-a10" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="P-fin-g" target="P-publish" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- stage_publish -->
+        <mxCell id="P-publish" value="stage_publish&#10;ods_s3_publish.py&#10;→ Kafka topic: {domain}.{dataset}.raw" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#E1BEE7;strokeColor=#6A1B9A;" vertex="1" parent="1">
+          <mxGeometry x="380" y="845" width="220" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="P-a11" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="P-publish" target="P-t0" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- T0 reconciliation -->
+        <mxCell id="P-t0" value="t0_check_publish&#10;offset delta = kafka_count − source_count&#10;→ pipeline.reconciliation_log" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#FFF8E1;strokeColor=#F57F17;" vertex="1" parent="1">
+          <mxGeometry x="380" y="950" width="220" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="P-a12" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="P-t0" target="P-cd" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- is_canonical? -->
+        <mxCell id="P-cd" value="is_canonical?" style="rhombus;whiteSpace=wrap;html=1;fontSize=10;fillColor=#FFF9C4;strokeColor=#F9A825;" vertex="1" parent="1">
+          <mxGeometry x="400" y="1050" width="180" height="50" as="geometry"/>
+        </mxCell>
+
+        <!-- stage_canonicalize -->
+        <mxCell id="P-canon" value="stage_canonicalize&#10;raw → canonical Avro&#10;topic: {domain}.{dataset}" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#E1BEE7;strokeColor=#6A1B9A;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="380" y="1155" width="220" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="P-a-yes" value="yes" style="edgeStyle=orthogonalEdgeStyle;fontSize=9;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" source="P-cd" target="P-canon" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- wait_sinks -->
+        <mxCell id="P-wait" value="wait_sinks&#10;JDBC + Iceberg consumer lag" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#C8E6C9;strokeColor=#2E7D32;" vertex="1" parent="1">
+          <mxGeometry x="380" y="1270" width="220" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="P-a-canon-wait" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="P-canon" target="P-wait" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="P-a-no" value="no" style="edgeStyle=orthogonalEdgeStyle;fontSize=9;exitX=1;exitY=0.5;entryX=1;entryY=0.5;" edge="1" source="P-cd" target="P-wait" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="660" y="1075"/>
+              <mxPoint x="660" y="1292"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- T2 check -->
+        <mxCell id="P-t2" value="check_dual_sink_parity&#10;current vs history row count&#10;→ pipeline.reconciliation_log" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#FFF8E1;strokeColor=#F57F17;" vertex="1" parent="1">
+          <mxGeometry x="380" y="1365" width="220" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="P-a14" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="P-wait" target="P-t2" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- finalise -->
+        <mxCell id="P-fin" value="finalise&#10;mark run complete" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#C8E6C9;strokeColor=#2E7D32;" vertex="1" parent="1">
+          <mxGeometry x="380" y="1470" width="220" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="P-a15" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="P-t2" target="P-fin" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- END -->
+        <mxCell id="P-end" value="Records in ODS / Iceberg" style="ellipse;whiteSpace=wrap;html=1;fontSize=10;fillColor=#C8E6C9;strokeColor=#2E7D32;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="380" y="1560" width="220" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="P-a16" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="P-fin" target="P-end" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+
+  <diagram id="fi-dataflow" name="File Ingestion — Data Flow">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="1000" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <mxCell id="DF-title" value="File Ingestion — Data Flow" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=15;fontStyle=1;fontColor=#1F5C8B;" vertex="1" parent="1">
+          <mxGeometry x="0" y="20" width="1700" height="36" as="geometry"/>
+        </mxCell>
+
+        <!-- Row labels -->
+        <mxCell id="DF-rl1" value="INGEST" style="text;html=1;strokeColor=none;fillColor=none;align=right;verticalAlign=middle;fontSize=10;fontStyle=1;fontColor=#666666;" vertex="1" parent="1"><mxGeometry x="20" y="140" width="80" height="20" as="geometry"/></mxCell>
+        <mxCell id="DF-rl2" value="PUBLISH" style="text;html=1;strokeColor=none;fillColor=none;align=right;verticalAlign=middle;fontSize=10;fontStyle=1;fontColor=#666666;" vertex="1" parent="1"><mxGeometry x="20" y="360" width="80" height="20" as="geometry"/></mxCell>
+        <mxCell id="DF-rl3" value="SINKS" style="text;html=1;strokeColor=none;fillColor=none;align=right;verticalAlign=middle;fontSize=10;fontStyle=1;fontColor=#666666;" vertex="1" parent="1"><mxGeometry x="20" y="580" width="80" height="20" as="geometry"/></mxCell>
+        <mxCell id="DF-rl4" value="CONTROL&#10;PLANE" style="text;html=1;strokeColor=none;fillColor=none;align=right;verticalAlign=middle;fontSize=10;fontStyle=1;fontColor=#666666;" vertex="1" parent="1"><mxGeometry x="20" y="800" width="80" height="30" as="geometry"/></mxCell>
+
+        <!-- INGEST row -->
+        <mxCell id="DF-sftp" value="SFTP Source" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#FFE0B2;strokeColor=#E65100;" vertex="1" parent="1">
+          <mxGeometry x="120" y="125" width="130" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="DF-s3r" value="S3 Raw&#10;s3://ods-raw-{env}/" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#FFE0B2;strokeColor=#E65100;" vertex="1" parent="1">
+          <mxGeometry x="320" y="125" width="150" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="DF-glue-i" value="Glue Spark — stage_ingest&#10;RAW_READ · SCHEMA_VALIDATE&#10;DQ_CHECK · CURATED_WRITE" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#BBDEFB;strokeColor=#1565C0;" vertex="1" parent="1">
+          <mxGeometry x="540" y="110" width="220" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="DF-s3c" value="S3 Curated&#10;s3://ods-curated-{env}/" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#C8E6C9;strokeColor=#2E7D32;" vertex="1" parent="1">
+          <mxGeometry x="840" y="100" width="150" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="DF-s3dlq" value="S3 DLQ&#10;s3://ods-dlq-{env}/" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#FFCDD2;strokeColor=#C62828;" vertex="1" parent="1">
+          <mxGeometry x="840" y="175" width="150" height="50" as="geometry"/>
+        </mxCell>
+
+        <!-- PUBLISH row -->
+        <mxCell id="DF-pub" value="Glue Spark — stage_publish&#10;ods_s3_publish.py&#10;read Parquet · Avro encode · OffsetTracker" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#E1BEE7;strokeColor=#6A1B9A;" vertex="1" parent="1">
+          <mxGeometry x="540" y="340" width="220" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="DF-kfr" value="Kafka Raw Topic&#10;{domain}.{dataset}.raw&#10;Avro, short retention" style="shape=parallelogram;whiteSpace=wrap;html=1;fontSize=10;fillColor=#E1BEE7;strokeColor=#6A1B9A;" vertex="1" parent="1">
+          <mxGeometry x="840" y="345" width="170" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="DF-canon-g" value="Glue — stage_canonicalize&#10;raw → canonical Avro&#10;(optional — is_canonical?)" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#E1BEE7;strokeColor=#6A1B9A;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="1080" y="340" width="200" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="DF-kfc" value="Kafka Canonical Topic&#10;{domain}.{dataset}&#10;Canonical Avro" style="shape=parallelogram;whiteSpace=wrap;html=1;fontSize=10;fillColor=#E1BEE7;strokeColor=#6A1B9A;" vertex="1" parent="1">
+          <mxGeometry x="1360" y="345" width="170" height="55" as="geometry"/>
+        </mxCell>
+
+        <!-- SINKS row -->
+        <mxCell id="DF-jdbc" value="JDBC Sink&#10;Kafka Connect" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#E0F2F1;strokeColor=#00695C;" vertex="1" parent="1">
+          <mxGeometry x="1360" y="555" width="170" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="DF-ice" value="Iceberg Sink&#10;Kafka Connect" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#E0F2F1;strokeColor=#00695C;" vertex="1" parent="1">
+          <mxGeometry x="1360" y="630" width="170" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="DF-pgods" value="PostgreSQL ODS&#10;ods.* (upsert current + history)" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#E0F2F1;strokeColor=#00695C;" vertex="1" parent="1">
+          <mxGeometry x="1590" y="545" width="90" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="DF-s3ice" value="S3 Iceberg&#10;s3://ods-iceberg-{env}/" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#C8E6C9;strokeColor=#388E3C;" vertex="1" parent="1">
+          <mxGeometry x="1590" y="630" width="90" height="55" as="geometry"/>
+        </mxCell>
+
+        <!-- CONTROL PLANE -->
+        <mxCell id="DF-ctrl" value="PostgreSQL — pipeline.*&#10;file_catalogue · run_log · stage_log · lineage&#10;publish_stage · reconciliation_log" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#FFF8E1;strokeColor=#F57F17;" vertex="1" parent="1">
+          <mxGeometry x="540" y="785" width="290" height="65" as="geometry"/>
+        </mxCell>
+
+        <!-- Arrows — INGEST -->
+        <mxCell id="DFa1"  value="files"           style="edgeStyle=orthogonalEdgeStyle;fontSize=9;" edge="1" source="DF-sftp"    target="DF-s3r"    parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="DFa2"  value="reads raw"        style="edgeStyle=orthogonalEdgeStyle;fontSize=9;" edge="1" source="DF-s3r"     target="DF-glue-i" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="DFa3"  value="writes Parquet"   style="edgeStyle=orthogonalEdgeStyle;fontSize=9;" edge="1" source="DF-glue-i" target="DF-s3c"    parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="DFa4"  value="DQ failures"      style="edgeStyle=orthogonalEdgeStyle;fontSize=9;fontStyle=2;" edge="1" source="DF-glue-i" target="DF-s3dlq" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- Arrows — PUBLISH -->
+        <mxCell id="DFa5"  value="reads Parquet"    style="edgeStyle=orthogonalEdgeStyle;fontSize=9;" edge="1" source="DF-s3c"    target="DF-pub"    parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="DFa6"  value="PRODUCE Avro"     style="edgeStyle=orthogonalEdgeStyle;fontSize=9;" edge="1" source="DF-pub"    target="DF-kfr"    parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="DFa7"  value="CONSUME + transform&#10;(optional)"  style="edgeStyle=orthogonalEdgeStyle;fontSize=9;dashed=1;" edge="1" source="DF-kfr" target="DF-canon-g" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="DFa8"  value="PRODUCE canonical" style="edgeStyle=orthogonalEdgeStyle;fontSize=9;" edge="1" source="DF-canon-g" target="DF-kfc" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- Arrows — SINKS -->
+        <mxCell id="DFa9"  style="edgeStyle=orthogonalEdgeStyle;fontSize=9;" edge="1" source="DF-kfc"   target="DF-jdbc"  parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="DFa10" style="edgeStyle=orthogonalEdgeStyle;fontSize=9;" edge="1" source="DF-kfc"   target="DF-ice"   parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="DFa11" value="UPSERT"  style="edgeStyle=orthogonalEdgeStyle;fontSize=9;" edge="1" source="DF-jdbc"  target="DF-pgods" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="DFa12" value="APPEND"  style="edgeStyle=orthogonalEdgeStyle;fontSize=9;" edge="1" source="DF-ice"   target="DF-s3ice" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- Arrows — Control plane writes -->
+        <mxCell id="DFa13" value="file_catalogue · run_log&#10;stage_log · lineage · recon_log" style="edgeStyle=orthogonalEdgeStyle;fontSize=9;exitX=0.5;exitY=1;entryX=0;entryY=0.5;" edge="1" source="DF-glue-i" target="DF-ctrl" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="DFa14" value="publish_stage · recon T0" style="edgeStyle=orthogonalEdgeStyle;fontSize=9;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" source="DF-pub" target="DF-ctrl" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="DFa15" value="recon T2" style="edgeStyle=orthogonalEdgeStyle;fontSize=9;exitX=0;exitY=0.5;entryX=1;entryY=0;" edge="1" source="DF-pgods" target="DF-ctrl" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1580" y="577"/>
+              <mxPoint x="1580" y="817"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+
+  <diagram id="fi-sequence" name="File Ingestion — Sequence">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1500" pageHeight="1800" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <mxCell id="S-title" value="File Ingestion — Sequence" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=15;fontStyle=1;fontColor=#1F5C8B;" vertex="1" parent="1">
+          <mxGeometry x="0" y="20" width="1500" height="36" as="geometry"/>
+        </mxCell>
+        <mxCell id="S-sub" value="dag_drop_to_raw triggers dag_ingest — file_id · domain · dataset · business_date" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=11;fontStyle=2;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="0" y="56" width="1500" height="22" as="geometry"/>
+        </mxCell>
+
+        <!-- Lifeline headers (y=90, h=50) -->
+        <mxCell id="SL1h" value="Airflow&#10;dag_ingest" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#C8E6C9;strokeColor=#2E7D32;fontSize=10;fontStyle=1;arcSize=15;" vertex="1" parent="1"><mxGeometry x="60"   y="90" width="150" height="50" as="geometry"/></mxCell>
+        <mxCell id="SL2h" value="Glue / Spark&#10;(DockerOperator)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#BBDEFB;strokeColor=#1565C0;fontSize=10;fontStyle=1;arcSize=15;" vertex="1" parent="1"><mxGeometry x="290"  y="90" width="150" height="50" as="geometry"/></mxCell>
+        <mxCell id="SL3h" value="S3" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE0B2;strokeColor=#E65100;fontSize=10;fontStyle=1;arcSize=15;" vertex="1" parent="1"><mxGeometry x="510"  y="90" width="120" height="50" as="geometry"/></mxCell>
+        <mxCell id="SL4h" value="Kafka" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1BEE7;strokeColor=#6A1B9A;fontSize=10;fontStyle=1;arcSize=15;" vertex="1" parent="1"><mxGeometry x="710"  y="90" width="120" height="50" as="geometry"/></mxCell>
+        <mxCell id="SL5h" value="PostgreSQL&#10;pipeline.*" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF8E1;strokeColor=#F57F17;fontSize=10;fontStyle=1;arcSize=15;" vertex="1" parent="1"><mxGeometry x="910"  y="90" width="140" height="50" as="geometry"/></mxCell>
+        <mxCell id="SL6h" value="PostgreSQL&#10;ODS (ods.*)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E0F2F1;strokeColor=#00695C;fontSize=10;fontStyle=1;arcSize=15;" vertex="1" parent="1"><mxGeometry x="1130" y="90" width="140" height="50" as="geometry"/></mxCell>
+
+        <!-- Lifelines (cx: 135, 365, 570, 770, 980, 1200) -->
+        <mxCell id="SL1l" style="endArrow=none;dashed=1;strokeColor=#2E7D32;strokeWidth=1;opacity=35;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="135"  y="140" as="sourcePoint"/><mxPoint x="135"  y="1740" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="SL2l" style="endArrow=none;dashed=1;strokeColor=#1565C0;strokeWidth=1;opacity=35;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="365"  y="140" as="sourcePoint"/><mxPoint x="365"  y="1740" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="SL3l" style="endArrow=none;dashed=1;strokeColor=#E65100;strokeWidth=1;opacity=35;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="570"  y="140" as="sourcePoint"/><mxPoint x="570"  y="1740" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="SL4l" style="endArrow=none;dashed=1;strokeColor=#6A1B9A;strokeWidth=1;opacity=35;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="770"  y="140" as="sourcePoint"/><mxPoint x="770"  y="1740" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="SL5l" style="endArrow=none;dashed=1;strokeColor=#F57F17;strokeWidth=1;opacity=35;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="980"  y="140" as="sourcePoint"/><mxPoint x="980"  y="1740" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="SL6l" style="endArrow=none;dashed=1;strokeColor=#00695C;strokeWidth=1;opacity=35;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="1200" y="140" as="sourcePoint"/><mxPoint x="1200" y="1740" as="targetPoint"/></mxGeometry></mxCell>
+
+        <!-- ── SECTION 1: stage_ingest ── -->
+        <mxCell id="S-sep1" value="stage_ingest" style="text;html=1;strokeColor=#BBDEFB;fillColor=#E3F2FD;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=9;fontStyle=1;fontColor=#1565C0;" vertex="1" parent="1"><mxGeometry x="60" y="158" width="1380" height="18" as="geometry"/></mxCell>
+
+        <mxCell id="Sm1"  value="stage_ingest (spark-submit)" style="endArrow=block;endFill=1;fontSize=9;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="135" y="190" as="sourcePoint"/><mxPoint x="365" y="190" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="Sm2"  value="READ s3://ods-raw-{env}/" style="endArrow=block;endFill=1;fontSize=9;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="365" y="225" as="sourcePoint"/><mxPoint x="570" y="225" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="Sm3"  value="raw DataFrame" style="endArrow=open;dashed=1;fontSize=9;strokeWidth=1;fontStyle=2;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="570" y="250" as="sourcePoint"/><mxPoint x="365" y="250" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="Sm4"  value="INSERT file_catalogue" style="endArrow=block;endFill=1;fontSize=9;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="365" y="285" as="sourcePoint"/><mxPoint x="980" y="285" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="Sm5"  value="INSERT run_log (started)" style="endArrow=block;endFill=1;fontSize=9;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="365" y="315" as="sourcePoint"/><mxPoint x="980" y="315" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="Sm6"  value="INSERT stage_log (RAW_READ · SCHEMA_VALIDATE · DQ_CHECK)" style="endArrow=block;endFill=1;fontSize=9;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="365" y="345" as="sourcePoint"/><mxPoint x="980" y="345" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="Sm7"  value="WRITE failed.csv → s3://ods-dlq-{env}/ (if DQ failures)" style="endArrow=block;endFill=1;fontSize=9;strokeWidth=1.5;dashed=1;fontStyle=2;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="365" y="375" as="sourcePoint"/><mxPoint x="570" y="375" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="Sm8"  value="WRITE s3://ods-curated-{env}/ (Parquet)" style="endArrow=block;endFill=1;fontSize=9;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="365" y="405" as="sourcePoint"/><mxPoint x="570" y="405" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="Sm9"  value="INSERT lineage (raw_to_curated)" style="endArrow=block;endFill=1;fontSize=9;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="365" y="435" as="sourcePoint"/><mxPoint x="980" y="435" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="Sm10" value="INSERT recon_log (t0_input_count)" style="endArrow=block;endFill=1;fontSize=9;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="365" y="465" as="sourcePoint"/><mxPoint x="980" y="465" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="Sm11" value="stage_ingest complete" style="endArrow=open;dashed=1;fontSize=9;strokeWidth=1;fontStyle=2;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="365" y="495" as="sourcePoint"/><mxPoint x="135" y="495" as="targetPoint"/></mxGeometry></mxCell>
+
+        <!-- ── SECTION 2: stage_publish ── -->
+        <mxCell id="S-sep2" value="stage_publish" style="text;html=1;strokeColor=#E1BEE7;fillColor=#F3E5F5;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=9;fontStyle=1;fontColor=#6A1B9A;" vertex="1" parent="1"><mxGeometry x="60" y="518" width="1380" height="18" as="geometry"/></mxCell>
+
+        <mxCell id="Sm12" value="stage_publish" style="endArrow=block;endFill=1;fontSize=9;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="135" y="550" as="sourcePoint"/><mxPoint x="365" y="550" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="Sm13" value="READ s3://ods-curated-{env}/" style="endArrow=block;endFill=1;fontSize=9;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="365" y="580" as="sourcePoint"/><mxPoint x="570" y="580" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="Sm14" value="Parquet DataFrame" style="endArrow=open;dashed=1;fontSize=9;strokeWidth=1;fontStyle=2;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="570" y="605" as="sourcePoint"/><mxPoint x="365" y="605" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="Sm15" value="PRODUCE {domain}.{dataset}.raw (Avro)" style="endArrow=block;endFill=1;fontSize=9;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="365" y="640" as="sourcePoint"/><mxPoint x="770" y="640" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="Sm16" value="delivery ACK + offsets" style="endArrow=open;dashed=1;fontSize=9;strokeWidth=1;fontStyle=2;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="770" y="665" as="sourcePoint"/><mxPoint x="365" y="665" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="Sm17" value="INSERT publish_stage (offsets)" style="endArrow=block;endFill=1;fontSize=9;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="365" y="700" as="sourcePoint"/><mxPoint x="980" y="700" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="Sm18" value="INSERT recon_log (t0_publish_count)" style="endArrow=block;endFill=1;fontSize=9;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="365" y="730" as="sourcePoint"/><mxPoint x="980" y="730" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="Sm19" value="stage_publish complete" style="endArrow=open;dashed=1;fontSize=9;strokeWidth=1;fontStyle=2;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="365" y="760" as="sourcePoint"/><mxPoint x="135" y="760" as="targetPoint"/></mxGeometry></mxCell>
+
+        <!-- ── SECTION 3: canonicalize (optional) ── -->
+        <mxCell id="S-sep3" value="stage_canonicalize (optional — is_canonical?)" style="text;html=1;strokeColor=#E1BEE7;fillColor=#F3E5F5;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=9;fontStyle=3;fontColor=#6A1B9A;" vertex="1" parent="1"><mxGeometry x="60" y="783" width="1380" height="18" as="geometry"/></mxCell>
+
+        <mxCell id="Sm20" value="prepare_canonicalize: extract offset ranges" style="endArrow=block;endFill=0;fontSize=9;strokeWidth=1;dashed=0;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="135" y="815" as="sourcePoint"/><mxPoint x="365" y="815" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="Sm21" value="stage_canonicalize [if is_canonical=true]" style="endArrow=block;endFill=1;fontSize=9;strokeWidth=1.5;dashed=1;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="135" y="850" as="sourcePoint"/><mxPoint x="365" y="850" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="Sm22" value="CONSUME {domain}.{dataset}.raw · PRODUCE {domain}.{dataset}" style="endArrow=block;endFill=1;fontSize=9;strokeWidth=1.5;dashed=1;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="365" y="880" as="sourcePoint"/><mxPoint x="770" y="880" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="Sm23" value="stage_canonicalize complete" style="endArrow=open;dashed=1;fontSize=9;strokeWidth=1;fontStyle=2;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="365" y="910" as="sourcePoint"/><mxPoint x="135" y="910" as="targetPoint"/></mxGeometry></mxCell>
+
+        <!-- ── SECTION 4: sinks + reconciliation ── -->
+        <mxCell id="S-sep4" value="wait_sinks · reconciliation · finalise" style="text;html=1;strokeColor=#C8E6C9;fillColor=#E8F5E9;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=9;fontStyle=1;fontColor=#2E7D32;" vertex="1" parent="1"><mxGeometry x="60" y="933" width="1380" height="18" as="geometry"/></mxCell>
+
+        <mxCell id="Sm24" value="wait_sinks (poll run_stage_log for sink completion)" style="endArrow=block;endFill=0;fontSize=9;strokeWidth=1;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="135" y="965" as="sourcePoint"/><mxPoint x="980" y="965" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="Sm25" value="JDBC Sink: UPSERT ods.* (current + history)" style="endArrow=block;endFill=1;fontSize=9;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="770" y="1000" as="sourcePoint"/><mxPoint x="1200" y="1000" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="Sm26" value="check_dual_sink_parity" style="endArrow=block;endFill=1;fontSize=9;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="135" y="1040" as="sourcePoint"/><mxPoint x="980" y="1040" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="Sm27" value="T2 result (ok / pending / failed)" style="endArrow=open;dashed=1;fontSize=9;strokeWidth=1;fontStyle=2;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="980" y="1065" as="sourcePoint"/><mxPoint x="135" y="1065" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="Sm28" value="INSERT recon_log (dual_sink_parity)" style="endArrow=block;endFill=1;fontSize=9;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="135" y="1100" as="sourcePoint"/><mxPoint x="980" y="1100" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="Sm29" value="UPDATE run_log (completed)" style="endArrow=block;endFill=1;fontSize=9;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="135" y="1130" as="sourcePoint"/><mxPoint x="980" y="1130" as="targetPoint"/></mxGeometry></mxCell>
+
+        <!-- finalise complete note -->
+        <mxCell id="S-done" value="✓ run complete — records in ODS + Iceberg, all recon checks logged" style="text;html=1;strokeColor=#2E7D32;fillColor=#E8F5E9;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=10;fontStyle=1;fontColor=#2E7D32;" vertex="1" parent="1">
+          <mxGeometry x="200" y="1165" width="750" height="30" as="geometry"/>
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+
+</mxfile>
