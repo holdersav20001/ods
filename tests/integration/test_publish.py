@@ -169,13 +169,13 @@ def test_publish_happy_path(s3, pg):
         cur.execute(
             """
             DELETE FROM pipeline.lineage_edge
-             WHERE child_run_id IN (
+             WHERE consumer_run_id IN (
                    SELECT run_id FROM pipeline.run_log
                     WHERE domain='insurance'
                       AND dataset='policies'
                       AND business_date='2026-05-01'
              )
-                OR parent_file_id IN (
+                OR source_file_id IN (
                    SELECT file_id FROM pipeline.file_catalogue
                     WHERE domain='insurance'
                       AND dataset='policies'
@@ -215,7 +215,7 @@ def test_publish_happy_path(s3, pg):
             "AND business_date='2026-05-01'"
         )
         cur.execute(
-            "DELETE FROM pipeline.file_state "
+            "DELETE FROM pipeline.file_processing_attempt "
             "WHERE s3_path IN (%s, %s)",
             (
                 f"s3://ods-raw-local/{raw_key}",
@@ -291,7 +291,7 @@ def test_publish_happy_path(s3, pg):
 
     # ── file_state: completed ────────────────────────────────────────────
     cur.execute(
-        "SELECT status FROM pipeline.file_state WHERE run_id = %s",
+        "SELECT status FROM pipeline.file_processing_attempt WHERE run_id = %s",
         (pub_run_id,),
     )
     assert cur.fetchone()[0] == "completed"
@@ -309,11 +309,11 @@ def test_publish_rerun_does_not_republish_completed_curated_path(s3, pg):
         cur.execute(
             """
             DELETE FROM pipeline.lineage_edge
-             WHERE child_run_id IN (
+             WHERE consumer_run_id IN (
                    SELECT run_id FROM pipeline.run_log
                     WHERE domain='insurance' AND dataset='policies' AND business_date=%s
              )
-                OR parent_file_id IN (
+                OR source_file_id IN (
                    SELECT file_id FROM pipeline.file_catalogue
                     WHERE domain='insurance' AND dataset='policies' AND business_date=%s
              )
@@ -357,7 +357,7 @@ def test_publish_rerun_does_not_republish_completed_curated_path(s3, pg):
             (business_date,),
         )
         cur.execute(
-            "DELETE FROM pipeline.file_state WHERE s3_path IN (%s, %s)",
+            "DELETE FROM pipeline.file_processing_attempt WHERE s3_path IN (%s, %s)",
             (f"s3://ods-raw-local/{raw_key}", curated_path),
         )
     pg.commit()

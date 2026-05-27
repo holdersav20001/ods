@@ -24,7 +24,7 @@ Python helper                 writes to
 -------------                 ---------
 ods_pipeline.runs             pipeline.run_log
 ods_pipeline.stages           pipeline.run_stage_log
-ods_pipeline.files            pipeline.file_catalogue / pipeline.file_state
+ods_pipeline.files            pipeline.file_catalogue / pipeline.file_processing_attempt
 ods_pipeline.lineage          pipeline.lineage_edge
 ods_pipeline.reconciliation   pipeline.reconciliation_log
 ```
@@ -82,7 +82,7 @@ erDiagram
         uuid file_id FK
         text status
         bigint config_version_id
-        json parents
+        json orchestrators
     }
 
     RUN_STAGE_LOG {
@@ -96,9 +96,9 @@ erDiagram
 
     LINEAGE_EDGE {
         bigint lineage_edge_id PK
-        uuid child_run_id FK
-        uuid parent_run_id FK
-        uuid parent_file_id FK
+        uuid consumer_run_id FK
+        uuid upstream_run_id FK
+        uuid source_file_id FK
         text edge_type
         text source_ref
         text target_ref
@@ -122,10 +122,10 @@ erDiagram
     FILE_CATALOGUE ||--o{ RUN_LOG : "physical file_id"
     FILE_CATALOGUE ||--o| FILE_STATE : "logical s3_raw_path=s3_path"
     RUN_LOG ||--o{ RUN_STAGE_LOG : "physical run_id"
-    RUN_LOG ||--o{ LINEAGE_EDGE : "physical child_run_id"
-    RUN_LOG ||--o{ LINEAGE_EDGE : "physical parent_run_id"
+    RUN_LOG ||--o{ LINEAGE_EDGE : "physical consumer_run_id"
+    RUN_LOG ||--o{ LINEAGE_EDGE : "physical upstream_run_id"
     RUN_STAGE_LOG }o..o{ LINEAGE_EDGE : "logical run_id+refs"
-    FILE_CATALOGUE ||--o{ LINEAGE_EDGE : "physical parent_file_id"
+    FILE_CATALOGUE ||--o{ LINEAGE_EDGE : "physical source_file_id"
     RUN_LOG ||--o{ RECONCILIATION_LOG : "logical run_id"
 ```
 
@@ -136,9 +136,9 @@ Key points:
 | `dataset_config` to `file_catalogue` | Logical join on `(domain, dataset)`. A file is registered against the active dataset config. |
 | `file_catalogue` to `run_log` | Physical FK through `run_log.file_id`. One file can have parent, ingestion, and direct-Postgres runs. |
 | `run_log` to `run_stage_log` | Physical FK through `run_stage_log.run_id`. Each run has append-only stage evidence. |
-| `run_log` to `lineage_edge` | Physical FK through `child_run_id` and optional `parent_run_id`. |
-| `run_stage_log` to `lineage_edge` | Logical association only. Join `run_stage_log.run_id = lineage_edge.child_run_id` and compare stage `input_ref/output_ref` with lineage `source_ref/target_ref`. There is no physical FK from `lineage_edge` to a stage row today. |
-| `file_catalogue` to `lineage_edge` | Physical FK through `parent_file_id`, so lineage can be found by file. |
+| `run_log` to `lineage_edge` | Physical FK through `consumer_run_id` and optional `upstream_run_id`. |
+| `run_stage_log` to `lineage_edge` | Logical association only. Join `run_stage_log.run_id = lineage_edge.consumer_run_id` and compare stage `input_ref/output_ref` with lineage `source_ref/target_ref`. There is no physical FK from `lineage_edge` to a stage row today. |
+| `file_catalogue` to `lineage_edge` | Physical FK through `source_file_id`, so lineage can be found by file. |
 | `run_log` to `reconciliation_log` | Logical join on `run_id`. Direct-Postgres writes `direct_postgres_count` here. |
 | `file_catalogue` to `file_state` | Logical join from `file_catalogue.s3_raw_path` to `file_state.s3_path`. `file_state` is for idempotency. |
 
@@ -155,7 +155,7 @@ The direct-Postgres route is a file route that skips Kafka after curated data ha
 | 3. Register received file | The file is copied to raw S3 and registered as a received file. | `pipeline.file_catalogue` | `ods_pipeline.files.upsert(...)` or SQL contract. | [Example 2](#example-2---file-is-registered) |
 | 4. Start route run | The route creates an overall route run. | `pipeline.run_log` | `ods_pipeline.runs.start(...)` | [Example 3](#example-3---run-rows) |
 | 5. Ingestion starts | Raw S3 is read; schema and DQ checks begin. | `pipeline.file_catalogue`, `pipeline.run_stage_log` | `ods_pipeline.files.update_catalogue(...)`, `ods_pipeline.stages.start(...)`, `ods_pipeline.stages.finish(...)` | [Example 4](#example-4---ingestion-starts-processing-the-file) |
-| 6. Ingestion completes | Curated Parquet is written to S3 and the ingestion run is closed. | `pipeline.file_catalogue`, `pipeline.file_state`, `pipeline.lineage_edge`, `pipeline.reconciliation_log`, `pipeline.run_log` | `ods_pipeline.files.*`, `ods_pipeline.lineage.write_edge(...)`, `ods_pipeline.reconciliation.write_check(...)`, `ods_pipeline.runs.update(...)` | [Example 5](#example-5---ingestion-succeeds) |
+| 6. Ingestion completes | Curated Parquet is written to S3 and the ingestion run is closed. | `pipeline.file_catalogue`, `pipeline.file_processing_attempt`, `pipeline.lineage_edge`, `pipeline.reconciliation_log`, `pipeline.run_log` | `ods_pipeline.files.*`, `ods_pipeline.lineage.write_edge(...)`, `ods_pipeline.reconciliation.write_check(...)`, `ods_pipeline.runs.update(...)` | [Example 5](#example-5---ingestion-succeeds) |
 | 7. Direct-Postgres run starts | Curated-to-target processing starts after ingestion succeeds. | `pipeline.run_log`, `pipeline.run_stage_log` | `ods_pipeline.runs.start(...)`, `ods_pipeline.stages.start(...)` | [Example 3](#example-3---run-rows), [Example 7](#example-7---direct-postgres-load-succeeds) |
 | 8. Non-canonical transform prepares target shape, if needed | If `is_canonical=false`, source-shaped curated rows are transformed into target-shaped rows before the Postgres load. | No separate control-table row; evidence stays under the `direct_postgres` run. | `transform_yaml_path` mapping used before loading Postgres. | [Example 6](#example-6---non-canonical-transform) |
 | 9. Postgres load starts | Target-shaped rows are loaded or merged into the Postgres target. | `pipeline.run_stage_log` | `ods_pipeline.stages.start(...)` | [Example 7](#example-7---direct-postgres-load-succeeds) |
@@ -654,7 +654,7 @@ Required data:
 | `business_date` | `2026-05-21` | `2026-05-21` | `2026-05-21` |
 | `file_id` | `<file-id>` | `<file-id>` | `<file-id>` |
 | `config_version_id` | `<config-version>` | `<config-version>` | `<config-version>` |
-| `parents` | `NULL` | Reference to the route run. | Reference to the route run. |
+| `orchestrators` | `NULL` | Reference to the route run. | Reference to the route run. |
 
 Example variable names used below:
 
@@ -689,7 +689,7 @@ ods_pipeline.runs.start(
     business_date="2026-05-21",
     file_id=file_id,
     config_version_id=config_version_id,
-    parents=[{"run_id": route_run_id, "edge_type": "orchestrates"}],
+    orchestrators=[{"run_id": route_run_id, "edge_type": "orchestrates"}],
 )
 ```
 
@@ -718,7 +718,7 @@ ods_pipeline.runs.start(
     business_date="2026-05-21",
     file_id=file_id,
     config_version_id=config_version_id,
-    parents=[{"run_id": route_run_id, "edge_type": "orchestrates"}],
+    orchestrators=[{"run_id": route_run_id, "edge_type": "orchestrates"}],
 )
 ```
 
@@ -826,7 +826,7 @@ When curated Parquet is written, ingestion updates:
 
 ```text
 pipeline.file_catalogue
-pipeline.file_state
+pipeline.file_processing_attempt
 pipeline.lineage_edge
 pipeline.reconciliation_log
 pipeline.run_log
@@ -878,7 +878,7 @@ ods_pipeline.files.update_catalogue(
 Expected effect:
 
 ```text
-table         pipeline.file_state
+table         pipeline.file_processing_attempt
 s3_path       s3://ods-raw/insurance/country_codes/date=20260521/country_codes_20260521.csv
 run_id        <ingestion-run-id>
 status        completed
@@ -890,9 +890,9 @@ Lineage records the raw-to-curated edge:
 ```python
 ods_pipeline.lineage.write_edge(
     conn,
-    child_run_id=ingestion_run_id,
-    parent_run_id=route_run_id,
-    parent_file_id=file_id,
+    consumer_run_id=ingestion_run_id,
+    upstream_run_id=route_run_id,
+    source_file_id=file_id,
     edge_type="raw_to_curated",
     source_ref="s3://ods-raw/insurance/country_codes/date=20260521/country_codes_20260521.csv",
     target_ref="s3://ods-curated/insurance/country_codes/date=20260521/",
@@ -1072,8 +1072,8 @@ Lineage records the curated-to-Postgres edge:
 ```python
 ods_pipeline.lineage.write_edge(
     conn,
-    child_run_id=postgres_run_id,
-    parent_file_id=file_id,
+    consumer_run_id=postgres_run_id,
+    source_file_id=file_id,
     edge_type="curated_to_postgres",
     source_ref="s3://ods-curated/insurance/country_codes/date=20260521/",
     target_ref="jdbc:postgresql://.../ods.insurance_country_code",
@@ -1170,7 +1170,7 @@ last_run_id  <route-run-id>
 |---|---|---|---|
 | `pipeline.dataset_config` | Config-sync process or SQL contract | Same path | Active route configuration. |
 | `pipeline.file_catalogue` | File-drop route | Ingestion step, Postgres load step, route finalise | File lifecycle state. |
-| `pipeline.file_state` | Ingestion step | Ingestion step | Idempotency by raw S3 path. |
+| `pipeline.file_processing_attempt` | Ingestion step | Ingestion step | Idempotency by raw S3 path. |
 | `pipeline.run_log` | Route code | Route code | Run lifecycle and counts. |
 | `pipeline.run_stage_log` | Stage helpers | Stage helpers | Stage-level progress and failures. |
 | `pipeline.lineage_edge` | Ingestion step and Postgres load step | Append-only | Data movement evidence. |
@@ -1288,7 +1288,7 @@ So `_ods_domain` and `_ods_dataset` are useful, but they are not the required li
 ```text
 target._ods_file_id -> pipeline.file_catalogue.file_id
 target._ods_run_id  -> pipeline.run_log.run_id
-run_log.run_id      -> pipeline.lineage_edge.child_run_id
+run_log.run_id      -> pipeline.lineage_edge.consumer_run_id
 ```
 
 Diagram:
@@ -1348,17 +1348,17 @@ So multiple input lineage edges are allowed and expected:
 
 ```text
 pipeline.lineage_edge
-  child_run_id   = <gold_or_direct_postgres_run_id>
-  parent_run_id  = <silver_run_for_file1>
-  parent_file_id = <file1>
+  consumer_run_id   = <gold_or_direct_postgres_run_id>
+  upstream_run_id  = <silver_run_for_file1>
+  source_file_id = <file1>
   edge_type      = silver_to_gold
   source_ref     = s3://.../silver/table_a/date=...
   target_ref     = postgres://.../gold_table_c
 
 pipeline.lineage_edge
-  child_run_id   = <gold_or_direct_postgres_run_id>
-  parent_run_id  = <silver_run_for_file2>
-  parent_file_id = <file2>
+  consumer_run_id   = <gold_or_direct_postgres_run_id>
+  upstream_run_id  = <silver_run_for_file2>
+  source_file_id = <file2>
   edge_type      = silver_to_gold
   source_ref     = s3://.../silver/table_b/date=...
   target_ref     = postgres://.../gold_table_c
@@ -1370,7 +1370,7 @@ Walking backwards from the target row then uses `_ods_run_id`:
 SELECT le.*
 FROM ods.gold_table_c t
 JOIN pipeline.lineage_edge le
-  ON le.child_run_id = t._ods_run_id::uuid
+  ON le.consumer_run_id = t._ods_run_id::uuid
 WHERE t.business_key = '<key>';
 ```
 

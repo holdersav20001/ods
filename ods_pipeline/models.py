@@ -124,7 +124,7 @@ ALLOWED_RUN_FIELDS: frozenset[str] = frozenset({
     "kafka_offset_end",
     "config_version_id",
     "schema_version_id",
-    "parents",
+    "orchestrators",
     "runtime_context",
     "error_summary",
     "file_id",

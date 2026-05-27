@@ -284,7 +284,7 @@ def _recreate_topic(topic: str):
 def _clean_pipeline(pg, domain: str, dataset: str):
     with pg.cursor() as cur:
         cur.execute(
-            "DELETE FROM pipeline.lineage_edge WHERE child_run_id IN "
+            "DELETE FROM pipeline.lineage_edge WHERE consumer_run_id IN "
             "(SELECT run_id FROM pipeline.run_log WHERE domain=%s AND dataset=%s)",
             (domain, dataset))
         cur.execute(
@@ -295,9 +295,9 @@ def _clean_pipeline(pg, domain: str, dataset: str):
                     (domain, dataset))
         cur.execute("DELETE FROM pipeline.run_log WHERE domain=%s AND dataset=%s", (domain, dataset))
         cur.execute("DELETE FROM pipeline.file_catalogue WHERE domain=%s AND dataset=%s", (domain, dataset))
-        cur.execute("DELETE FROM pipeline.file_state WHERE s3_path LIKE %s",
+        cur.execute("DELETE FROM pipeline.file_processing_attempt WHERE s3_path LIKE %s",
                     (f"s3://ods-raw-local/{domain}/{dataset}/%",))
-        cur.execute("DELETE FROM pipeline.file_state WHERE s3_path LIKE %s",
+        cur.execute("DELETE FROM pipeline.file_processing_attempt WHERE s3_path LIKE %s",
                     (f"s3://ods-curated-local/{domain}/{dataset}/%",))
     pg.commit()
 
@@ -699,7 +699,7 @@ def test_lineage_edges_written(pg):
         cur.execute("""
             SELECT le.edge_type, COUNT(*)
               FROM pipeline.lineage_edge le
-              JOIN pipeline.run_log rl ON rl.run_id = le.child_run_id
+              JOIN pipeline.run_log rl ON rl.run_id = le.consumer_run_id
              WHERE rl.domain='insurance' AND rl.dataset='policies'
                AND rl.business_date IN ('2026-08-01', '2026-08-02')
              GROUP BY le.edge_type

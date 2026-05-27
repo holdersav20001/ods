@@ -111,7 +111,7 @@ def test_run_log_table_exists(conn):
     assert 'pipeline_type' in cols
     assert 'record_count_published' in cols
     assert 'kafka_offset_start' in cols and cols['kafka_offset_start'] == 'bigint'
-    assert 'parents' in cols and cols['parents'] == 'jsonb'
+    assert 'orchestrators' in cols and cols['orchestrators'] == 'jsonb'
     assert 'runtime_context' in cols and cols['runtime_context'] == 'jsonb'
 
 def test_run_stage_log_fk(conn):

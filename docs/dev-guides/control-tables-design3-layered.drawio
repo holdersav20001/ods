@@ -126,7 +126,7 @@
         <mxCell id="c3" value="pipeline.run_stage_log&#10;━━━━━━━━━━━━&#10;FK: run_id" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#6A1B9A;fontColor=#FFFFFF;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1">
           <mxGeometry x="540" y="540" width="200" height="70" as="geometry"/>
         </mxCell>
-        <mxCell id="c4" value="pipeline.lineage_edge&#10;━━━━━━━━━━━━&#10;child_run_id, parent_*" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#EF6C00;fontColor=#FFFFFF;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1">
+        <mxCell id="c4" value="pipeline.lineage_edge&#10;━━━━━━━━━━━━&#10;consumer_run_id, parent_*" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#EF6C00;fontColor=#FFFFFF;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1">
           <mxGeometry x="770" y="540" width="200" height="70" as="geometry"/>
         </mxCell>
         <mxCell id="c5" value="pipeline.reconciliation_log&#10;━━━━━━━━━━━━&#10;run_id, check_type" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#AD1457;fontColor=#FFFFFF;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1">

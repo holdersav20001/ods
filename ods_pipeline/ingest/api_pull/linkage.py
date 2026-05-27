@@ -7,7 +7,7 @@ two-layer match below:
 
   1. A replay of the same ``file_id`` with a different api_pull poll
      would match a "latest by file_id" lookup. Fixed by requiring the
-     ``triggered_by_api_pull`` edge in ``run_log.parents``.
+     ``triggered_by_api_pull`` edge in ``run_log.orchestrators``.
   2. TriggerDagRunOperator retries, manual re-triggers, or bugs could
      produce TWO rows that both carry the ``triggered_by_api_pull``
      edge for the same ``api_pull_run_id``. A "latest by edge" lookup
@@ -59,7 +59,7 @@ def ingest_status_for_api_pull_run(
 
       * If ``expected_parent_run_id`` is supplied, look up by PK and
         verify the ``triggered_by_api_pull`` edge is present in
-        ``run_log.parents``. Returns the status iff both match.
+        ``run_log.orchestrators``. Returns the status iff both match.
       * Otherwise, fall back to JSONB containment on the edge alone.
         If MORE THAN ONE row matches, return ``None`` — the lookup is
         ambiguous and the caller (finalise_watermark) MUST NOT promote
@@ -80,7 +80,7 @@ def ingest_status_for_api_pull_run(
                   FROM pipeline.run_log
                  WHERE run_id = %s::uuid
                    AND pipeline_type = 's3_batch'
-                   AND parents @> %s::jsonb
+                   AND orchestrators @> %s::jsonb
                 """,
                 (expected_parent_run_id, needle),
             )
@@ -94,7 +94,7 @@ def ingest_status_for_api_pull_run(
             SELECT status
               FROM pipeline.run_log
              WHERE pipeline_type = 's3_batch'
-               AND parents @> %s::jsonb
+               AND orchestrators @> %s::jsonb
              ORDER BY started_at DESC NULLS LAST, run_id::text DESC
              LIMIT 2
             """,

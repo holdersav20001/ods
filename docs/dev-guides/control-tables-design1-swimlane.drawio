@@ -89,13 +89,13 @@
         <mxCell id="r3c1" value="UPDATE file_id=11&#10;state=curated&#10;s3_curated_path=...&#10;last_run_id=22" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E3F2FD;strokeColor=#1565C0;align=left;spacingLeft=8;fontFamily=Courier New;fontSize=10;" vertex="1" parent="1">
           <mxGeometry x="240" y="350" width="220" height="180" as="geometry"/>
         </mxCell>
-        <mxCell id="r3c2" value="INSERT&#10;run_id=22&#10;pipeline_type=ingestion&#10;parents=[17, orchestrates]&#10;file_id=11&#10;&#10;UPDATE → succeeded&#10;record_count_source=100" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;align=left;spacingLeft=8;fontFamily=Courier New;fontSize=10;" vertex="1" parent="1">
+        <mxCell id="r3c2" value="INSERT&#10;run_id=22&#10;pipeline_type=ingestion&#10;orchestrators=[17, orchestrates]&#10;file_id=11&#10;&#10;UPDATE → succeeded&#10;record_count_source=100" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;align=left;spacingLeft=8;fontFamily=Courier New;fontSize=10;" vertex="1" parent="1">
           <mxGeometry x="460" y="350" width="220" height="180" as="geometry"/>
         </mxCell>
         <mxCell id="r3c3" value="INSERT × N rows&#10;run_id=22&#10;stages:&#10;  raw_read&#10;  schema_validate&#10;  dq_check&#10;  curated_write&#10;(start + finish each)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#F3E5F5;strokeColor=#6A1B9A;align=left;spacingLeft=8;fontFamily=Courier New;fontSize=10;" vertex="1" parent="1">
           <mxGeometry x="680" y="350" width="220" height="180" as="geometry"/>
         </mxCell>
-        <mxCell id="r3c4" value="INSERT&#10;child_run_id=22&#10;parent_file_id=11&#10;parent_run_id=NULL&#10;edge_type=raw_to_curated&#10;record_count=100" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#E65100;align=left;spacingLeft=8;fontFamily=Courier New;fontSize=10;" vertex="1" parent="1">
+        <mxCell id="r3c4" value="INSERT&#10;consumer_run_id=22&#10;source_file_id=11&#10;upstream_run_id=NULL&#10;edge_type=raw_to_curated&#10;record_count=100" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#E65100;align=left;spacingLeft=8;fontFamily=Courier New;fontSize=10;" vertex="1" parent="1">
           <mxGeometry x="900" y="350" width="240" height="180" as="geometry"/>
         </mxCell>
         <mxCell id="r3c5" value="INSERT&#10;run_id=22&#10;check_type=&#10;  t0_ingestion_count&#10;source_count=100&#10;status=ok" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FCE4EC;strokeColor=#AD1457;align=left;spacingLeft=8;fontFamily=Courier New;fontSize=10;" vertex="1" parent="1">
@@ -112,13 +112,13 @@
         <mxCell id="r4c1" value="UPDATE file_id=11&#10;state=sunk&#10;last_run_id=28" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E3F2FD;strokeColor=#1565C0;align=left;spacingLeft=8;fontFamily=Courier New;fontSize=10;" vertex="1" parent="1">
           <mxGeometry x="240" y="530" width="220" height="200" as="geometry"/>
         </mxCell>
-        <mxCell id="r4c2" value="INSERT&#10;run_id=28&#10;pipeline_type=&#10;  direct_postgres&#10;parents=[17, orchestrates]&#10;file_id=11&#10;&#10;UPDATE → succeeded&#10;record_count_published=100" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;align=left;spacingLeft=8;fontFamily=Courier New;fontSize=10;" vertex="1" parent="1">
+        <mxCell id="r4c2" value="INSERT&#10;run_id=28&#10;pipeline_type=&#10;  direct_postgres&#10;orchestrators=[17, orchestrates]&#10;file_id=11&#10;&#10;UPDATE → succeeded&#10;record_count_published=100" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;align=left;spacingLeft=8;fontFamily=Courier New;fontSize=10;" vertex="1" parent="1">
           <mxGeometry x="460" y="530" width="220" height="200" as="geometry"/>
         </mxCell>
         <mxCell id="r4c3" value="INSERT × N rows&#10;run_id=28&#10;stages:&#10;  postgres_write&#10;(start + finish)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#F3E5F5;strokeColor=#6A1B9A;align=left;spacingLeft=8;fontFamily=Courier New;fontSize=10;" vertex="1" parent="1">
           <mxGeometry x="680" y="530" width="220" height="200" as="geometry"/>
         </mxCell>
-        <mxCell id="r4c4" value="INSERT&#10;child_run_id=28&#10;parent_run_id=22&#10;parent_file_id=11&#10;edge_type=&#10;  curated_to_postgres&#10;record_count=100" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#E65100;align=left;spacingLeft=8;fontFamily=Courier New;fontSize=10;" vertex="1" parent="1">
+        <mxCell id="r4c4" value="INSERT&#10;consumer_run_id=28&#10;upstream_run_id=22&#10;source_file_id=11&#10;edge_type=&#10;  curated_to_postgres&#10;record_count=100" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#E65100;align=left;spacingLeft=8;fontFamily=Courier New;fontSize=10;" vertex="1" parent="1">
           <mxGeometry x="900" y="530" width="240" height="200" as="geometry"/>
         </mxCell>
         <mxCell id="r4c5" value="INSERT&#10;run_id=28&#10;check_type=&#10;  direct_postgres_count&#10;source_count=100&#10;postgres_count=100&#10;status=ok" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FCE4EC;strokeColor=#AD1457;align=left;spacingLeft=8;fontFamily=Courier New;fontSize=10;" vertex="1" parent="1">

@@ -244,7 +244,7 @@ def run(
     transform_yaml_path: str,
     offset_ranges: dict[int, tuple[int, int]],
     file_id: str | None = None,
-    parent_run_id: str | None = None,
+    upstream_run_id: str | None = None,
     business_date: str | None = None,
     key_fields: list[str] | None = None,
 ) -> int:
@@ -274,8 +274,8 @@ def run(
             file_id=file_id,
             kafka_topic=canonical_topic,
             config_version_id=config.get("version"),
-            parents=[{"run_id": parent_run_id, "edge_type": "raw_to_canonical"}]
-            if parent_run_id else None,
+            orchestrators=[{"run_id": upstream_run_id, "edge_type": "raw_to_canonical"}]
+            if upstream_run_id else None,
         )
 
         deserializer = AvroDeserializer(sr, raw_schema)
@@ -283,7 +283,7 @@ def run(
         offset_range_count = _sum_ranges(offset_ranges)
         rows = [
             row for row in consumed_rows
-            if matches_context(row, file_id=file_id, parent_run_id=parent_run_id)
+            if matches_context(row, file_id=file_id, upstream_run_id=upstream_run_id)
         ]
         raw_count = len(rows)
         filtered_count = len(consumed_rows) - raw_count
@@ -299,7 +299,7 @@ def run(
                 "offset_range_count": offset_range_count,
                 "consumed_count": len(consumed_rows),
                 "filtered_count": filtered_count,
-                "filter": {"file_id": file_id, "parent_run_id": parent_run_id},
+                "filter": {"file_id": file_id, "upstream_run_id": upstream_run_id},
             },
         )
 
@@ -321,7 +321,7 @@ def run(
         if "_ods_run_id" in pass_df.columns:
             pass_df = pass_df.withColumn("_ods_raw_run_id", F.col("_ods_run_id"))
         else:
-            pass_df = pass_df.withColumn("_ods_raw_run_id", F.lit(parent_run_id))
+            pass_df = pass_df.withColumn("_ods_raw_run_id", F.lit(upstream_run_id))
         pass_df = (
             pass_df
             .withColumn("_ods_canonicalize_run_id", F.lit(run_id))
@@ -423,9 +423,9 @@ def run(
 
         ods_pipeline.lineage.write_edge(
             conn,
-            child_run_id=run_id,
-            parent_file_id=file_id,
-            parent_run_id=parent_run_id,
+            consumer_run_id=run_id,
+            source_file_id=file_id,
+            upstream_run_id=upstream_run_id,
             edge_type="raw_to_canonical",
             source_ref=f"kafka://{raw_topic}#{json.dumps(offset_ranges, sort_keys=True)}",
             target_ref=f"kafka://{canonical_topic}",
@@ -487,7 +487,7 @@ def _parse_args(argv=None):
     parser.add_argument("--offset_end", type=int, default=None,
                         help="Single-partition fallback end offset")
     parser.add_argument("--file_id", default=None)
-    parser.add_argument("--parent_run_id", default=None)
+    parser.add_argument("--upstream_run_id", default=None)
     parser.add_argument("--business_date", default=None)
     return parser.parse_args(argv)
 
@@ -507,6 +507,6 @@ if __name__ == "__main__":
             args.offset_end,
         ),
         file_id=args.file_id,
-        parent_run_id=args.parent_run_id,
+        upstream_run_id=args.upstream_run_id,
         business_date=args.business_date,
     ))

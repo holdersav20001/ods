@@ -3,7 +3,7 @@
 The finalise contract (docstring on :func:`ods_pipeline.runs.finalise`):
 
   1. If ``record_count_published > 0``, at least one ``lineage_edge``
-     row must exist with ``child_run_id = run_id``.
+     row must exist with ``consumer_run_id = run_id``.
   2. No non-terminal ``run_stage_log`` rows may exist for ``run_id``.
 
 Violations → run is marked ``failed`` with an explanatory
@@ -41,7 +41,7 @@ def cleanup(pg_conn):
         )
         cur.execute(
             "DELETE FROM pipeline.lineage_edge "
-            "WHERE child_run_id IN (SELECT run_id FROM pipeline.run_log "
+            "WHERE consumer_run_id IN (SELECT run_id FROM pipeline.run_log "
             "                        WHERE domain=%s AND dataset=%s)",
             (DOMAIN, DATASET),
         )
@@ -69,9 +69,9 @@ def _seed_run(pg_conn, *, published: int, edges: int, open_stages: int) -> str:
     for _ in range(edges):
         ods_pipeline.lineage.write_edge(
             pg_conn,
-            child_run_id=run_id,
-            parent_file_id=None,
-            parent_run_id=run_id,  # self-edge ok for the invariant — only count matters
+            consumer_run_id=run_id,
+            source_file_id=None,
+            upstream_run_id=run_id,  # self-edge ok for the invariant — only count matters
             edge_type="curated_to_kafka",
             record_count=published or 1,
         )
@@ -102,7 +102,7 @@ def _wipe(pg_conn):
         )
         cur.execute(
             "DELETE FROM pipeline.lineage_edge "
-            "WHERE child_run_id IN (SELECT run_id FROM pipeline.run_log "
+            "WHERE consumer_run_id IN (SELECT run_id FROM pipeline.run_log "
             "                        WHERE domain=%s AND dataset=%s)",
             (DOMAIN, DATASET),
         )

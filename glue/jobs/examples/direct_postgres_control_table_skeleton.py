@@ -50,7 +50,7 @@ class JobArgs:
     file_id: str
     s3_silver_path: str
     postgres_target_table: str
-    parent_run_id: str | None
+    upstream_run_id: str | None
     select_exprs: tuple[str, ...]
 
 
@@ -174,9 +174,9 @@ def count_loaded_rows(conn: Any, *, target_table: str, run_id: str) -> int:
 
 def start_run(conn: Any, args: JobArgs) -> None:
     """Create the direct_postgres run row."""
-    parents = (
-        [{"run_id": args.parent_run_id, "edge_type": "orchestrates"}]
-        if args.parent_run_id else None
+    orchestrators = (
+        [{"run_id": args.upstream_run_id, "edge_type": "orchestrates"}]
+        if args.upstream_run_id else None
     )
     ods_pipeline.runs.start(
         conn,
@@ -186,7 +186,7 @@ def start_run(conn: Any, args: JobArgs) -> None:
         dataset=args.dataset,
         business_date=args.business_date,
         file_id=args.file_id,
-        parents=parents,
+        orchestrators=orchestrators,
     )
 
 
@@ -211,8 +211,8 @@ def mark_success(
     )
     ods_pipeline.lineage.write_edge(
         conn,
-        child_run_id=args.run_id,
-        parent_file_id=args.file_id,
+        consumer_run_id=args.run_id,
+        source_file_id=args.file_id,
         edge_type="curated_to_postgres",
         source_ref=args.s3_silver_path,
         target_ref=f"jdbc:postgresql://.../{args.postgres_target_table}",
@@ -350,7 +350,7 @@ def parse_args(argv: Sequence[str] | None = None) -> JobArgs:
     parser.add_argument("--s3_silver_path", required=True)
     parser.add_argument("--postgres_target_table", required=True)
     parser.add_argument("--run_id", default=None)
-    parser.add_argument("--parent_run_id", default=None)
+    parser.add_argument("--upstream_run_id", default=None)
     parser.add_argument(
         "--select_expr",
         action="append",
@@ -369,7 +369,7 @@ def parse_args(argv: Sequence[str] | None = None) -> JobArgs:
         file_id=ns.file_id,
         s3_silver_path=ns.s3_silver_path,
         postgres_target_table=ns.postgres_target_table,
-        parent_run_id=ns.parent_run_id,
+        upstream_run_id=ns.upstream_run_id,
         select_exprs=tuple(ns.select_expr),
     )
 

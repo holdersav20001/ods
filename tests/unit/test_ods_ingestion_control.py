@@ -54,7 +54,7 @@ def test_start_run_calls_database_function_and_commits():
         domain="insurance",
         dataset="policies",
         business_date="2026-05-23",
-        parents=[{"run_id": "parent", "edge_type": "orchestrates"}],
+        orchestrators=[{"run_id": "parent", "edge_type": "orchestrates"}],
     )
 
     assert result == "run-1"
@@ -123,9 +123,9 @@ def test_finish_stage_routes_to_finish_stage_function_without_commit_when_reques
         (
             control.write_lineage_edge,
             {
-                "child_run_id": "run-1",
+                "consumer_run_id": "run-1",
                 "edge_type": "raw_to_curated",
-                "parent_file_id": "file-1",
+                "source_file_id": "file-1",
             },
             "pipeline.control_write_lineage_edge",
         ),

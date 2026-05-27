@@ -64,7 +64,7 @@ def _parse_args(argv=None):
                         help="S3 path to input CSV, e.g. s3://ods-raw-local/...")
     parser.add_argument("--file_id", default=None,
                         help="Explicit file_id UUID from file_catalogue (passed by DAG)")
-    parser.add_argument("--parent_run_id", default=None,
+    parser.add_argument("--upstream_run_id", default=None,
                         help="Optional s3_batch parent run id for run hierarchy")
     parser.add_argument("--airflow_dag_id", default=None,
                         help="Airflow DAG id for CloudWatch/Airflow correlation")
@@ -82,7 +82,7 @@ if __name__ == "__main__":
             dataset=args.dataset,
             s3_input_path=args.s3_input_path,
             file_id=args.file_id,
-            parent_run_id=args.parent_run_id,
+            upstream_run_id=args.upstream_run_id,
             airflow_dag_id=args.airflow_dag_id,
             airflow_run_id=args.airflow_run_id,
         )

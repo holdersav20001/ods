@@ -45,7 +45,7 @@ table is the serving table that users or downstream systems query.
 | S3 silver/curated | One validated dataset output for a file/run | Validated rows, ODS metadata columns, and possibly source-shape or canonical-shape columns. |
 | `pipeline.dataset_config` | One row per logical dataset/version | Route configuration: source type, delivery, file pattern, schema/DQ rules, target table, write mode, key fields, transform path. |
 | `pipeline.file_catalogue` | One row per landed raw file | File identity and lifecycle: file id, raw path, source path, MD5, business date, curated path, state, counts, last run. |
-| `pipeline.file_state` | One row per processed S3 object path | Idempotency state for a path: processing/completed/failed, run id, count, error. |
+| `pipeline.file_processing_attempt` | One row per processed S3 object path | Idempotency state for a path: processing/completed/failed, run id, count, error. |
 | `pipeline.run_log` | One row per run | Run lifecycle: route run, ingestion run, direct-Postgres run, status, counts, config version, parent metadata, runtime context. |
 | `pipeline.run_stage_log` | One row per stage attempt | Step-level evidence: raw read, schema validate, DQ check, curated write, transform, Postgres write, counts, paths, errors. |
 | `pipeline.lineage_edge` | One row per data movement edge | Links from file/run to child run: raw to curated, curated to Postgres, source and target refs, record count. |
@@ -130,7 +130,7 @@ Example ingestion run row:
 | `record_count_dq_pass` | `100` |
 | `record_count_dq_fail` | `0` |
 | `config_version_id` | config version used by this run |
-| `parents` | route/run parent metadata |
+| `orchestrators` | route/run parent metadata |
 | `runtime_context` | Glue/Airflow/Spark/CloudWatch correlation IDs |
 
 Example `runtime_context`:
@@ -180,7 +180,7 @@ metrics, error,
 airflow_dag_id, airflow_run_id, spark_app_id
 ```
 
-## `pipeline.file_state`
+## `pipeline.file_processing_attempt`
 
 This table is a simpler idempotency marker for a processed S3 path.
 
@@ -202,7 +202,7 @@ This is the graph table. It records how data moved between assets and runs.
 
 For one direct-Postgres file route, expect at least two useful edges:
 
-| Edge | `child_run_id` | `parent_file_id` | `source_ref` | `target_ref` |
+| Edge | `consumer_run_id` | `source_file_id` | `source_ref` | `target_ref` |
 |---|---|---|---|---|
 | `raw_to_curated` | ingestion run id | original `file_id` | S3 raw file | S3 curated path |
 | `curated_to_postgres` | direct-Postgres run id | original `file_id` | S3 curated path | Postgres target table |
@@ -339,7 +339,7 @@ sequenceDiagram
     GI->>Curated: Write curated parquet
     GI->>CT: run_stage_log curated_write completed
     GI->>CT: file_catalogue state=curated, s3_curated_path=...
-    GI->>CT: lineage_edge raw_to_curated, child_run_id=33333333...
+    GI->>CT: lineage_edge raw_to_curated, consumer_run_id=33333333...
     GI->>CT: reconciliation_log ingestion_count, run_id=33333333...
     GI->>CT: run_log ingestion_run_id=33333333... status=succeeded
     deactivate GI
@@ -357,7 +357,7 @@ sequenceDiagram
     GP->>CT: run_stage_log postgres_write started
     GP->>Target: Merge rows with _ods_file_id=11111111... and _ods_run_id=44444444...
     GP->>CT: run_stage_log postgres_write completed, record_count_out=2
-    GP->>CT: lineage_edge curated_to_postgres, child_run_id=44444444...
+    GP->>CT: lineage_edge curated_to_postgres, consumer_run_id=44444444...
     GP->>CT: reconciliation_log direct_postgres_count, run_id=44444444...
     GP->>CT: file_catalogue state=sunk, last_run_id=44444444...
     GP->>CT: run_log postgres_run_id=44444444... status=succeeded
@@ -458,9 +458,9 @@ flowchart LR
 
 | ID | Appears in | Purpose |
 |---|---|---|
-| `file_id` | `pipeline.file_catalogue.file_id`, `pipeline.run_log.file_id`, `pipeline.lineage_edge.parent_file_id`, target `_ods_file_id` | Identifies the original landed file. |
-| `route_run_id` | `pipeline.run_log.run_id`, child run `parents` | Identifies the parent route/orchestration run. |
-| `ingestion_run_id` | `pipeline.run_log.run_id`, `pipeline.run_stage_log.run_id`, `pipeline.lineage_edge.child_run_id` for `raw_to_curated` | Identifies the raw-to-curated run. |
+| `file_id` | `pipeline.file_catalogue.file_id`, `pipeline.run_log.file_id`, `pipeline.lineage_edge.source_file_id`, target `_ods_file_id` | Identifies the original landed file. |
+| `route_run_id` | `pipeline.run_log.run_id`, child run `orchestrators` | Identifies the parent route/orchestration run. |
+| `ingestion_run_id` | `pipeline.run_log.run_id`, `pipeline.run_stage_log.run_id`, `pipeline.lineage_edge.consumer_run_id` for `raw_to_curated` | Identifies the raw-to-curated run. |
 | `postgres_run_id` | `pipeline.run_log.run_id`, `pipeline.run_stage_log.run_id`, `pipeline.reconciliation_log.run_id`, target `_ods_run_id` | Identifies the curated-to-Postgres load that wrote the target rows. |
 
 ### `pipeline.dataset_config`
@@ -475,7 +475,7 @@ flowchart LR
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | 11111111-1111-1111-1111-111111111111 | insurance | policies | 2026-05-21 | /upload/policies_20260521.csv | s3://ods-raw-local/insurance/policies/date=20260521/policies_20260521.csv | NULL | s3://ods-curated-local/insurance/policies/date=20260521/ | 4096 | 2 | 9f86d081884c7d659a2feaa0c55ad015 | sunk | 2026-05-23 09:07:00 | 2026-05-23 09:01:00 | 44444444-4444-4444-4444-444444444444 |
 
-### `pipeline.file_state`
+### `pipeline.file_processing_attempt`
 
 | id | s3_path | run_id | status | record_count | error_reason | created_at | updated_at |
 |---|---|---|---|---|---|---|---|
@@ -483,7 +483,7 @@ flowchart LR
 
 ### `pipeline.run_log`
 
-| run_id | pipeline_type | domain | dataset | business_date | file_id | status | started_at | ended_at | record_count_source | record_count_dq_pass | record_count_dq_fail | record_count_published | kafka_topic | kafka_offset_start | kafka_offset_end | config_version_id | schema_version_id | parents | error_summary | created_at | runtime_context |
+| run_id | pipeline_type | domain | dataset | business_date | file_id | status | started_at | ended_at | record_count_source | record_count_dq_pass | record_count_dq_fail | record_count_published | kafka_topic | kafka_offset_start | kafka_offset_end | config_version_id | schema_version_id | orchestrators | error_summary | created_at | runtime_context |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | 22222222-2222-2222-2222-222222222222 | s3_batch | insurance | policies | 2026-05-21 | 11111111-1111-1111-1111-111111111111 | succeeded | 2026-05-23 09:01:00 | 2026-05-23 09:08:00 | 2 | 2 | 0 | 2 | NULL | NULL | NULL | 42 | 1 | NULL | NULL | 2026-05-23 09:01:00 | {"airflow_dag_id":"dag_drop_to_raw","airflow_run_id":"manual__2026-05-23T09:01:00+00:00"} |
 | 33333333-3333-3333-3333-333333333333 | ingestion | insurance | policies | 2026-05-21 | 11111111-1111-1111-1111-111111111111 | succeeded | 2026-05-23 09:02:00 | 2026-05-23 09:05:00 | 2 | 2 | 0 | 2 | NULL | NULL | NULL | 42 | 1 | [{"run_id":"22222222-2222-2222-2222-222222222222","edge_type":"orchestrates"}] | NULL | 2026-05-23 09:02:00 | {"platform":"glue","glue_job_name":"ods_ingestion","glue_job_run_id":"jr_ingest_001","spark_app_id":"application_001"} |
@@ -502,7 +502,7 @@ flowchart LR
 
 ### `pipeline.lineage_edge`
 
-| lineage_edge_id | child_run_id | parent_run_id | parent_file_id | edge_type | source_ref | target_ref | record_count | created_at |
+| lineage_edge_id | consumer_run_id | upstream_run_id | source_file_id | edge_type | source_ref | target_ref | record_count | created_at |
 |---|---|---|---|---|---|---|---|---|
 | 7001 | 33333333-3333-3333-3333-333333333333 | 22222222-2222-2222-2222-222222222222 | 11111111-1111-1111-1111-111111111111 | raw_to_curated | s3://ods-raw-local/insurance/policies/date=20260521/policies_20260521.csv | s3://ods-curated-local/insurance/policies/date=20260521/ | 2 | 2026-05-23 09:04:30 |
 | 7002 | 44444444-4444-4444-4444-444444444444 | 33333333-3333-3333-3333-333333333333 | 11111111-1111-1111-1111-111111111111 | curated_to_postgres | s3://ods-curated-local/insurance/policies/date=20260521/ | ods.insurance_policy | 2 | 2026-05-23 09:06:30 |

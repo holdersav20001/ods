@@ -58,10 +58,10 @@ def test_failed_run_resumes_cleanly(pg_conn):
     with pg_conn.cursor() as cur:
         cur.execute("DELETE FROM ods.insurance_policy WHERE policy_id='DR1'")
         cur.execute(
-            "DELETE FROM pipeline.lineage_edge WHERE child_run_id IN ("
+            "DELETE FROM pipeline.lineage_edge WHERE consumer_run_id IN ("
             "  SELECT run_id FROM pipeline.run_log WHERE domain='insurance' "
             "  AND dataset='policies' AND business_date='2026-04-20') "
-            "OR parent_file_id IN ("
+            "OR source_file_id IN ("
             "  SELECT file_id FROM pipeline.file_catalogue WHERE domain='insurance' "
             "  AND dataset='policies' AND business_date='2026-04-20')"
         )
@@ -79,7 +79,7 @@ def test_failed_run_resumes_cleanly(pg_conn):
             "AND dataset='policies' AND business_date='2026-04-20'"
         )
         cur.execute(
-            "DELETE FROM pipeline.file_state "
+            "DELETE FROM pipeline.file_processing_attempt "
             "WHERE s3_path IN (%s, %s)",
             (
                 "s3://ods-raw-local/insurance/policies/2026-04-20/policies_20260420.csv",

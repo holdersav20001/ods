@@ -6,7 +6,7 @@ that loads curated data to Postgres and writes ODS control-table evidence.
 Use this pattern for application jobs. It is different from a manual SQL replay:
 
 - the job owns one `run_id`;
-- upstream identity such as `file_id` and `parent_run_id` is passed in;
+- upstream identity such as `file_id` and `upstream_run_id` is passed in;
 - each control-table write is a durable checkpoint through the existing helpers;
 - failures are recorded in the control tables instead of being rolled back;
 - restarts can inspect `run_log`, `run_stage_log`, `file_catalogue`,
@@ -21,7 +21,7 @@ control-table sequence is easy to follow and easy to test.
 1. Confirm the upstream job has already created the curated S3 output and the
    source file exists in `pipeline.file_catalogue`.
 2. Get the upstream `file_id` from `pipeline.file_catalogue`.
-3. Get the upstream `parent_run_id` from the raw/curated run that produced the
+3. Get the upstream `upstream_run_id` from the raw/curated run that produced the
    curated file. Pass it when you want explicit run-to-run lineage.
 4. Start this job with one current `run_id`. Omit `--run_id` for a brand-new
    attempt, or pass the same `--run_id` when intentionally replaying the same
@@ -35,7 +35,7 @@ python glue_curated_to_postgres.py \
   --dataset policies \
   --business_date 2026-04-11 \
   --file_id 11111111-1111-1111-1111-111111111111 \
-  --parent_run_id 22222222-2222-2222-2222-222222222222 \
+  --upstream_run_id 22222222-2222-2222-2222-222222222222 \
   --s3_curated_path s3://ods-curated-local/insurance/policies/business_date=2026-04-11/policies.parquet \
   --postgres_target_table ods.insurance_policy
 ```
@@ -49,7 +49,7 @@ python glue_curated_to_postgres.py \
   --dataset policies \
   --business_date 2026-04-11 \
   --file_id 11111111-1111-1111-1111-111111111111 \
-  --parent_run_id 22222222-2222-2222-2222-222222222222 \
+  --upstream_run_id 22222222-2222-2222-2222-222222222222 \
   --s3_curated_path s3://ods-curated-local/insurance/policies/business_date=2026-04-11/policies.parquet \
   --postgres_target_table ods.insurance_policy
 ```
@@ -87,7 +87,7 @@ For this direct Postgres workload, the YAML sequence is:
 8. `dag_config_sync` merges those files and upserts `pipeline.dataset_config`.
 9. `dag_drop_to_raw` sees `delivery='direct_postgres'` and triggers
    `dag_ingest_direct_postgres`.
-10. The Glue job receives `file_id`, `parent_run_id`, `s3_curated_path`, and
+10. The Glue job receives `file_id`, `upstream_run_id`, `s3_curated_path`, and
     `postgres_target_table` from Airflow/config.
 
 ### `dataset.yaml`
@@ -273,7 +273,7 @@ class JobArgs:
     file_id: str
     s3_curated_path: str
     postgres_target_table: str
-    parent_run_id: str | None
+    upstream_run_id: str | None
     select_exprs: tuple[str, ...]
 
 
@@ -294,7 +294,7 @@ def parse_args(argv: Sequence[str] | None = None) -> JobArgs:
     parser.add_argument("--s3_curated_path", required=True)
     parser.add_argument("--postgres_target_table", required=True)
     parser.add_argument("--run_id", default=None)
-    parser.add_argument("--parent_run_id", default=None)
+    parser.add_argument("--upstream_run_id", default=None)
     parser.add_argument(
         "--select_expr",
         action="append",
@@ -313,7 +313,7 @@ def parse_args(argv: Sequence[str] | None = None) -> JobArgs:
         file_id=ns.file_id,
         s3_curated_path=ns.s3_curated_path,
         postgres_target_table=ns.postgres_target_table,
-        parent_run_id=ns.parent_run_id,
+        upstream_run_id=ns.upstream_run_id,
         select_exprs=tuple(ns.select_expr),
     )
 
@@ -436,9 +436,9 @@ def count_loaded_rows(conn: Any, *, target_table: str, run_id: str) -> int:
 def start_run(conn: Any, args: JobArgs) -> None:
     """2. Make this job visible as a running control-plane run."""
 
-    parents = (
-        [{"run_id": args.parent_run_id, "edge_type": "orchestrates"}]
-        if args.parent_run_id
+    orchestrators = (
+        [{"run_id": args.upstream_run_id, "edge_type": "orchestrates"}]
+        if args.upstream_run_id
         else None
     )
     ods_pipeline.runs.start(
@@ -449,7 +449,7 @@ def start_run(conn: Any, args: JobArgs) -> None:
         dataset=args.dataset,
         business_date=args.business_date,
         file_id=args.file_id,
-        parents=parents,
+        orchestrators=orchestrators,
     )
 
 
@@ -572,9 +572,9 @@ def mark_success(
     )
     ods_pipeline.lineage.write_edge(
         conn,
-        child_run_id=args.run_id,
-        parent_run_id=args.parent_run_id,
-        parent_file_id=args.file_id,
+        consumer_run_id=args.run_id,
+        upstream_run_id=args.upstream_run_id,
+        source_file_id=args.file_id,
         edge_type="curated_to_postgres",
         source_ref=args.s3_curated_path,
         target_ref=target_ref,
@@ -702,4 +702,4 @@ on error after step 4 starts:
 The important restart rule is that each helper call writes through the
 Postgres function API and commits its own checkpoint. A retry should reuse a
 known `run_id` when replaying the same attempt, or use a new `run_id` for a new
-attempt while preserving `file_id` and `parent_run_id`.
+attempt while preserving `file_id` and `upstream_run_id`.

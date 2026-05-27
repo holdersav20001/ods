@@ -28,7 +28,7 @@ After one successful `POST /events` with `event_id='ev_42abc'`:
 ```
 run_id   | pipeline_type | status    | source | published | kafka_topic
 run_001  | message_api   | succeeded | 1      | 1         | ods.insurance.event_demo
-parents: [{"_ods_source_event_id": "ev_42abc", "edge_type": "message_correlation"}]
+orchestrators: [{"_ods_source_event_id": "ev_42abc", "edge_type": "message_correlation"}]
 ```
 
 #### `pipeline.run_stage_log`
@@ -50,10 +50,10 @@ detail: {"source_count":1,"published_count":1,"archive_count":1,"archive_discrep
 
 #### `pipeline.lineage_edge` — **empty for event pattern**
 The event push has no upstream run or file. The correlation lives on
-`run_log.parents` (jsonb), not in `lineage_edge`. Find a run by event:
+`run_log.orchestrators` (jsonb), not in `lineage_edge`. Find a run by event:
 ```sql
 SELECT run_id FROM pipeline.run_log
- WHERE parents @> '[{"_ods_source_event_id": "ev_42abc"}]'::jsonb;
+ WHERE orchestrators @> '[{"_ods_source_event_id": "ev_42abc"}]'::jsonb;
 ```
 
 ---
@@ -119,7 +119,7 @@ Direct `INSERT` bypasses validation and breaks the dashboard.
 | Manual stage open/close (rich outcomes) | `stages.start` + `stages.finish` | same |
 | Open a message run | `messages.start_run(...)` | [`ods_pipeline/messages.py`](../../ods_pipeline/messages.py) |
 | Close a message run | `messages.record_result(...)` | same |
-| Open a file/api_pull/CDC run | `runs.start(parents=[…])` | [`ods_pipeline/runs.py`](../../ods_pipeline/runs.py) |
+| Open a file/api_pull/CDC run | `runs.start(orchestrators=[…])` | [`ods_pipeline/runs.py`](../../ods_pipeline/runs.py) |
 | Add a lineage edge | `lineage.write_edge(...)` | [`ods_pipeline/lineage.py`](../../ods_pipeline/lineage.py) |
 | Write a recon check | `reconciliation.write_check(...)` | [`ods_pipeline/reconciliation.py`](../../ods_pipeline/reconciliation.py) |
 
@@ -151,19 +151,19 @@ from ods_pipeline import runs
 runs.start(
     conn, run_id=child_id, pipeline_type="ingestion",
     domain=..., dataset=..., business_date=...,
-    parents=[{
+    orchestrators=[{
         "edge_type": "triggered_by_api_pull",
-        "parent_run_id": api_pull_run_id,
+        "upstream_run_id": api_pull_run_id,
     }],
 )
-# parents stored on run_log; also fan-out to lineage_edge via write_edge
+# orchestrators stored on run_log; also fan-out to lineage_edge via write_edge
 # inside the DAG that consumes them.
 ```
 
 Then to find children of a parent:
 ```sql
-SELECT child_run_id FROM pipeline.lineage_edge
- WHERE parent_run_id = 'api_pull_run_007';
+SELECT consumer_run_id FROM pipeline.lineage_edge
+ WHERE upstream_run_id = 'api_pull_run_007';
 ```
 
 ### Mark a stage as warned (soft DQ failure)
@@ -279,7 +279,7 @@ SELECT check_type, status, source_count, target_count, detail
 
 -- Find by upstream
 SELECT run_id FROM pipeline.run_log
- WHERE parents @> '[{"_ods_source_event_id": "ev_42abc"}]'::jsonb;
+ WHERE orchestrators @> '[{"_ods_source_event_id": "ev_42abc"}]'::jsonb;
 ```
 
 If any of those is empty when you expected rows, the wiring is broken.

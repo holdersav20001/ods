@@ -72,7 +72,7 @@ def reset_pipeline_state(pg, s3):
             OR policy_id LIKE 'P%'
     """)
     cur.execute("""
-        DELETE FROM pipeline.file_state
+        DELETE FROM pipeline.file_processing_attempt
         WHERE s3_path LIKE 's3://ods-raw-local/insurance/policies/%'
            OR s3_path LIKE 's3://ods-curated-local/insurance/policies/%'
     """)
@@ -83,11 +83,11 @@ def reset_pipeline_state(pg, s3):
     """)
     cur.execute("""
         DELETE FROM pipeline.lineage_edge
-         WHERE child_run_id IN (
+         WHERE consumer_run_id IN (
                SELECT run_id FROM pipeline.run_log
                 WHERE domain='insurance' AND dataset='policies'
          )
-            OR parent_file_id IN (
+            OR source_file_id IN (
                SELECT file_id FROM pipeline.file_catalogue
                 WHERE domain='insurance' AND dataset='policies'
          )

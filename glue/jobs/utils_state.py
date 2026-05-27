@@ -1,5 +1,5 @@
 # glue/jobs/utils_state.py
-"""File-state control-plane writes (pipeline.file_state)."""
+"""File-state control-plane writes (pipeline.file_processing_attempt)."""
 
 from utils_bootstrap import *  # noqa: F401,F403  ensure ods_pipeline on sys.path
 
@@ -20,7 +20,7 @@ def set_file_state(conn, s3_path: str, run_id: str, status: str, **extra) -> Non
 def get_file_state(conn, s3_path: str) -> str | None:
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT status FROM pipeline.file_state WHERE s3_path = %s",
+            "SELECT status FROM pipeline.file_processing_attempt WHERE s3_path = %s",
             (s3_path,),
         )
         row = cur.fetchone()

@@ -58,7 +58,7 @@ Important modules:
 | `ods_pipeline._db` | Connection helpers such as `connect()` and `build_dsn()` |
 | `ods_pipeline.runs` | `pipeline.run_log` lifecycle helpers |
 | `ods_pipeline.stages` | `pipeline.run_stage_log` stage checkpoints |
-| `ods_pipeline.files` | `pipeline.file_catalogue` and `pipeline.file_state` helpers |
+| `ods_pipeline.files` | `pipeline.file_catalogue` and `pipeline.file_processing_attempt` helpers |
 | `ods_pipeline.lineage` | `pipeline.lineage_edge` writes |
 | `ods_pipeline.reconciliation` | `pipeline.reconciliation_log` writes |
 | `ods_pipeline.events` | Queryable/event-stream run events |
@@ -75,7 +75,7 @@ ods_pipeline.runs.start(
     dataset="policies",
     business_date="2026-04-11",
     file_id=file_id,
-    parents=[{"run_id": parent_run_id}],
+    orchestrators=[{"run_id": upstream_run_id}],
 )
 ```
 
@@ -185,7 +185,7 @@ The functions write to tables such as:
 pipeline.run_log
 pipeline.run_stage_log
 pipeline.file_catalogue
-pipeline.file_state
+pipeline.file_processing_attempt
 pipeline.lineage_edge
 pipeline.reconciliation_log
 pipeline.run_events

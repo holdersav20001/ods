@@ -78,7 +78,7 @@
         <mxCell id="s3" value="Step 3: Ingestion starts" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4E5;strokeColor=#E65100;fontStyle=1;align=center;" vertex="1" parent="1">
           <mxGeometry x="40" y="330" width="140" height="40" as="geometry"/>
         </mxCell>
-        <mxCell id="s3b" value="●  born&#10;writes run_log (ingestion, running)&#10;parents=[route_run_id=17, orchestrates]&#10;file_id=11" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3E5F5;strokeColor=#6A1B9A;align=left;spacingLeft=8;fontSize=10;" vertex="1" parent="1">
+        <mxCell id="s3b" value="●  born&#10;writes run_log (ingestion, running)&#10;orchestrators=[route_run_id=17, orchestrates]&#10;file_id=11" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3E5F5;strokeColor=#6A1B9A;align=left;spacingLeft=8;fontSize=10;" vertex="1" parent="1">
           <mxGeometry x="800" y="325" width="280" height="65" as="geometry"/>
         </mxCell>
         <mxCell id="s3a1" style="endArrow=classic;html=1;strokeColor=#1565C0;dashed=1;" edge="1" parent="1">
@@ -115,7 +115,7 @@
         <mxCell id="s6" value="Step 6: Load starts" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4E5;strokeColor=#E65100;fontStyle=1;align=center;" vertex="1" parent="1">
           <mxGeometry x="40" y="560" width="140" height="40" as="geometry"/>
         </mxCell>
-        <mxCell id="s6b" value="●  born&#10;writes run_log (direct_postgres, running)&#10;parents=[route_run_id=17, orchestrates]&#10;file_id=11" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#E65100;align=left;spacingLeft=8;fontSize=10;" vertex="1" parent="1">
+        <mxCell id="s6b" value="●  born&#10;writes run_log (direct_postgres, running)&#10;orchestrators=[route_run_id=17, orchestrates]&#10;file_id=11" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#E65100;align=left;spacingLeft=8;fontSize=10;" vertex="1" parent="1">
           <mxGeometry x="1080" y="555" width="280" height="65" as="geometry"/>
         </mxCell>
         <mxCell id="s6a1" style="endArrow=classic;html=1;strokeColor=#1565C0;dashed=1;" edge="1" parent="1">
@@ -144,7 +144,7 @@
             <mxPoint x="890" y="700" as="targetPoint"/>
           </mxGeometry>
         </mxCell>
-        <mxCell id="s7back1lbl" value="lineage_edge.parent_run_id=22" style="text;html=1;align=center;fontSize=9;fontStyle=2;fontColor=#6A1B9A;" vertex="1" parent="1">
+        <mxCell id="s7back1lbl" value="lineage_edge.upstream_run_id=22" style="text;html=1;align=center;fontSize=9;fontStyle=2;fontColor=#6A1B9A;" vertex="1" parent="1">
           <mxGeometry x="900" y="680" width="180" height="20" as="geometry"/>
         </mxCell>
         <mxCell id="s7back2" style="endArrow=classic;html=1;strokeColor=#1565C0;dashed=1;" edge="1" parent="1">

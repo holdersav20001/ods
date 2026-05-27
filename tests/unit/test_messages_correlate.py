@@ -115,7 +115,7 @@ def test_canonicalize_matches_context_delegates_to_correlate():
     """Existing canonicalize.matches_context now delegates — preserves contract."""
     from glue.jobs.canonicalize import matches_context
 
-    assert matches_context({"_ods_file_id": "f-1"}, file_id="f-1", parent_run_id=None)
-    assert not matches_context({"_ods_file_id": "f-2"}, file_id="f-1", parent_run_id=None)
-    assert matches_context({"_ods_run_id": "r-1"}, file_id=None, parent_run_id="r-1")
-    assert matches_context({}, file_id=None, parent_run_id=None)
+    assert matches_context({"_ods_file_id": "f-1"}, file_id="f-1", upstream_run_id=None)
+    assert not matches_context({"_ods_file_id": "f-2"}, file_id="f-1", upstream_run_id=None)
+    assert matches_context({"_ods_run_id": "r-1"}, file_id=None, upstream_run_id="r-1")
+    assert matches_context({}, file_id=None, upstream_run_id=None)

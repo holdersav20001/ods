@@ -23,7 +23,7 @@ pipeline.dataset_config
   -> pipeline.file_catalogue
   -> pipeline.run_log
   -> pipeline.run_stage_log
-  -> pipeline.file_state
+  -> pipeline.file_processing_attempt
   -> pipeline.lineage_edge
   -> pipeline.reconciliation_log
 ```
@@ -90,7 +90,7 @@ run UUIDs at DAG start, and do not call `runs.start(...)` for future work.
 ```
 
 If Airflow has a separate route/orchestration run, create that run inside the
-task that owns orchestration and pass its ID as `parent_run_id`. Do not require
+task that owns orchestration and pass its ID as `upstream_run_id`. Do not require
 one route run for every implementation. Some DAGs may have more or fewer runs
 depending on retries, dynamic tasks, splits, or multi-source joins.
 
@@ -119,9 +119,9 @@ Naming used in the examples below:
 |---|---|---|
 | `file_uuid` | `file_id` | The source file identity in `pipeline.file_catalogue`. |
 | `orchestration_run_uuid` | top-level `run_id` | The Airflow/DAG route run UUID when one orchestrator owns the whole route. |
-| `child_run_uuid` | `run_id` and `child_run_id` | The UUID for the current task/run. It becomes the child in lineage when it consumes an upstream input. |
-| `parent_run_uuid` | `parents[].run_id` | The orchestration parent for the current task/run when Airflow owns the route. |
-| `data_parent_run_uuid` | `lineage_edge.parent_run_id` | The immediate upstream run whose data output is consumed by the child run. This can be different from the orchestration parent. |
+| `child_run_uuid` | `run_id` and `consumer_run_id` | The UUID for the current task/run. It becomes the child in lineage when it consumes an upstream input. |
+| `parent_run_uuid` | `orchestrators[].run_id` | The orchestration parent for the current task/run when Airflow owns the route. |
+| `data_parent_run_uuid` | `lineage_edge.upstream_run_id` | The immediate upstream run whose data output is consumed by the child run. This can be different from the orchestration parent. |
 
 Stage evidence in `pipeline.run_stage_log` is tied back by
 `run_id = child_run_uuid`, plus `stage` and `attempt_number`.
@@ -210,8 +210,8 @@ This records what the ingestion run produced.
 ```python
 ods_pipeline.lineage.write_edge(
     conn,
-    child_run_id=child_run_uuid,
-    parent_file_id=file_uuid,
+    consumer_run_id=child_run_uuid,
+    source_file_id=file_uuid,
     edge_type="raw_to_curated",
     source_ref="s3://ods-raw/insurance/country_codes/date=20260521/country_codes_20260521.csv",
     target_ref="s3://ods-curated/insurance/country_codes/date=20260521/",
@@ -279,7 +279,7 @@ ods_pipeline.runs.start(
     dataset="country_codes",
     business_date="2026-05-21",
     file_id=file_uuid,
-    parents=[{"run_id": parent_run_uuid, "edge_type": "produced_curated"}],
+    orchestrators=[{"run_id": parent_run_uuid, "edge_type": "produced_curated"}],
 )
 ```
 
@@ -331,9 +331,9 @@ that produced the curated data.
 ```python
 ods_pipeline.lineage.write_edge(
     conn,
-    child_run_id=child_run_uuid,
-    parent_run_id=data_parent_run_uuid,
-    parent_file_id=file_uuid,
+    consumer_run_id=child_run_uuid,
+    upstream_run_id=data_parent_run_uuid,
+    source_file_id=file_uuid,
     edge_type="curated_to_postgres",
     source_ref="s3://ods-curated/insurance/country_codes/date=20260521/",
     target_ref="jdbc:postgresql://.../ods.insurance_country_code",
@@ -441,7 +441,7 @@ Required joins:
 ```text
 target._ods_file_id -> pipeline.file_catalogue.file_id
 target._ods_run_id  -> pipeline.run_log.run_id
-run_log.run_id      -> pipeline.lineage_edge.child_run_id
+run_log.run_id      -> pipeline.lineage_edge.consumer_run_id
 ```
 
 ## Multi-Source Rule
@@ -552,7 +552,7 @@ flowchart TD
     F["run_stage_log\nraw_read/schema/dq/curated_write"]
     G["file_catalogue\nstate = curated"]
     H["lineage_edge\nraw_to_curated"]
-    H_ID["[child_run_id]\n22222222-2222-2222-2222-222222222222\n[parent_file_id]\n11111111-1111-1111-1111-111111111111"]
+    H_ID["[consumer_run_id]\n22222222-2222-2222-2222-222222222222\n[source_file_id]\n11111111-1111-1111-1111-111111111111"]
     I["reconciliation_log\nt0_ingestion_count"]
 
     PR["data_parent_run_uuid for next task\nsame value as ingestion child_run_uuid"]
@@ -567,7 +567,7 @@ flowchart TD
     N_ID["[_ods_file_id]\n11111111-1111-1111-1111-111111111111\n[_ods_run_id]\n33333333-3333-3333-3333-333333333333"]
     O["reconciliation_log\ndirect_postgres_count"]
     P["lineage_edge\ncurated_to_postgres"]
-    P_ID["[child_run_id]\n33333333-3333-3333-3333-333333333333\n[parent_run_id]\n22222222-2222-2222-2222-222222222222"]
+    P_ID["[consumer_run_id]\n33333333-3333-3333-3333-333333333333\n[upstream_run_id]\n22222222-2222-2222-2222-222222222222"]
     Q["file_catalogue\nstate = sunk"]
 
     A --> B --> C
@@ -593,13 +593,13 @@ flowchart TD
 | Curated to Postgres | Direct-Postgres task | Creates current `child_run_uuid`; receives `file_uuid`, `parent_run_uuid` if Airflow owns the route, and `data_parent_run_uuid` for lineage. | `run_log`, `run_stage_log`, target `_ods_*` columns, `reconciliation_log`, `lineage_edge`, `file_catalogue`. |
 
 The parent/child naming is only a readability layer. In SQL and Python helpers,
-use the real names: `run_id`, `parent_run_id`, `child_run_id`, and `file_id`.
+use the real names: `run_id`, `upstream_run_id`, `consumer_run_id`, and `file_id`.
 
 ### Airflow-managed parent run
 
 If Airflow owns the whole route, create one parent run UUID for the DAG/route
 and start it when the orchestration begins. Each Glue/task run then gets its
-own child run UUID and records the Airflow parent run UUID in `run_log.parents`.
+own child run UUID and records the Airflow parent run UUID in `run_log.orchestrators`.
 
 The data lineage parent is still the immediate upstream data-producing run. For
 example, the Postgres load can be orchestrated by UUID `0000...`, but its data

@@ -70,10 +70,10 @@ CREATE INDEX IF NOT EXISTS idx_file_catalogue_md5
     ON pipeline.file_catalogue(domain, dataset, file_md5);
 ```
 
-### `pipeline.file_state`
+### `pipeline.file_processing_attempt`
 
 ```sql
-CREATE TABLE IF NOT EXISTS pipeline.file_state (
+CREATE TABLE IF NOT EXISTS pipeline.file_processing_attempt (
     id            SERIAL PRIMARY KEY,
     s3_path       VARCHAR NOT NULL UNIQUE,
     run_id        UUID NOT NULL,
@@ -107,7 +107,7 @@ CREATE TABLE pipeline.run_log (
     kafka_offset_end        BIGINT,
     config_version_id       BIGINT,
     schema_version_id       INT,
-    parents                 JSONB,
+    orchestrators                 JSONB,
     error_summary           TEXT,
     created_at              TIMESTAMP NOT NULL DEFAULT NOW(),
     runtime_context         JSONB
@@ -167,9 +167,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS run_stage_log_started_unique
 ```sql
 CREATE TABLE IF NOT EXISTS pipeline.lineage_edge (
     lineage_edge_id  BIGSERIAL PRIMARY KEY,
-    child_run_id     UUID NOT NULL REFERENCES pipeline.run_log(run_id),
-    parent_run_id    UUID REFERENCES pipeline.run_log(run_id),
-    parent_file_id   UUID REFERENCES pipeline.file_catalogue(file_id),
+    consumer_run_id     UUID NOT NULL REFERENCES pipeline.run_log(run_id),
+    upstream_run_id    UUID REFERENCES pipeline.run_log(run_id),
+    source_file_id   UUID REFERENCES pipeline.file_catalogue(file_id),
     edge_type        VARCHAR NOT NULL,
     source_ref       TEXT,
     target_ref       TEXT,
@@ -178,10 +178,10 @@ CREATE TABLE IF NOT EXISTS pipeline.lineage_edge (
 );
 
 CREATE INDEX IF NOT EXISTS lineage_edge_child_run_idx
-    ON pipeline.lineage_edge(child_run_id);
+    ON pipeline.lineage_edge(consumer_run_id);
 
 CREATE INDEX IF NOT EXISTS lineage_edge_file_id_idx
-    ON pipeline.lineage_edge(parent_file_id);
+    ON pipeline.lineage_edge(source_file_id);
 ```
 
 ### `pipeline.reconciliation_log`
@@ -410,7 +410,7 @@ BEGIN
     INSERT INTO pipeline.run_log
         (run_id, pipeline_type, domain, dataset, business_date,
          file_id, status, kafka_topic, config_version_id,
-         schema_version_id, parents, runtime_context)
+         schema_version_id, orchestrators, runtime_context)
     VALUES
         (p_run_id, p_pipeline_type, p_domain, p_dataset, p_business_date,
          p_file_id, 'running', p_kafka_topic, p_config_version_id,
@@ -420,7 +420,7 @@ BEGIN
 
     IF v_inserted IS NULL THEN
         SELECT pipeline_type, domain, dataset, business_date, file_id,
-               kafka_topic, config_version_id, schema_version_id, parents
+               kafka_topic, config_version_id, schema_version_id, orchestrators
           INTO v_existing
           FROM pipeline.run_log
          WHERE run_id = p_run_id;
@@ -458,8 +458,8 @@ BEGIN
            AND v_existing.schema_version_id IS DISTINCT FROM p_schema_version_id THEN
             v_mismatches := array_append(v_mismatches, 'schema_version_id');
         END IF;
-        IF p_parents IS NOT NULL AND v_existing.parents IS DISTINCT FROM p_parents THEN
-            v_mismatches := array_append(v_mismatches, 'parents');
+        IF p_parents IS NOT NULL AND v_existing.orchestrators IS DISTINCT FROM p_parents THEN
+            v_mismatches := array_append(v_mismatches, 'orchestrators');
         END IF;
 
         IF array_length(v_mismatches, 1) IS NOT NULL THEN
@@ -600,7 +600,7 @@ BEGIN
         'kafka_offset_end',
         'config_version_id',
         'schema_version_id',
-        'parents',
+        'orchestrators',
         'runtime_context',
         'error_summary',
         'file_id',
@@ -719,9 +719,9 @@ BEGIN
                    THEN (p_fields->>'schema_version_id')::integer
                ELSE schema_version_id
            END,
-           parents = CASE
-               WHEN p_fields ? 'parents' THEN p_fields->'parents'
-               ELSE parents
+           orchestrators = CASE
+               WHEN p_fields ? 'orchestrators' THEN p_fields->'orchestrators'
+               ELSE orchestrators
            END,
            runtime_context = CASE
                WHEN p_fields ? 'runtime_context' THEN p_fields->'runtime_context'
@@ -916,7 +916,7 @@ BEGIN
     );
     PERFORM pipeline.control_assert_nonnegative('record_count', p_record_count);
 
-    INSERT INTO pipeline.file_state
+    INSERT INTO pipeline.file_processing_attempt
         (s3_path, run_id, status, record_count, error_reason)
     VALUES
         (p_s3_path, p_run_id, p_status, p_record_count, p_error_reason)
@@ -1204,7 +1204,7 @@ DECLARE
     v_id bigint;
 BEGIN
     IF p_child_run_id IS NULL THEN
-        RAISE EXCEPTION 'child_run_id is required'
+        RAISE EXCEPTION 'consumer_run_id is required'
             USING ERRCODE = '23502';
     END IF;
 
@@ -1212,11 +1212,11 @@ BEGIN
     PERFORM pipeline.control_assert_nonnegative('record_count', p_record_count);
 
     IF p_parent_run_id IS NULL AND p_parent_file_id IS NULL THEN
-        RAISE EXCEPTION 'lineage edge requires parent_run_id or parent_file_id';
+        RAISE EXCEPTION 'lineage edge requires upstream_run_id or source_file_id';
     END IF;
 
     INSERT INTO pipeline.lineage_edge
-        (child_run_id, parent_run_id, parent_file_id,
+        (consumer_run_id, upstream_run_id, source_file_id,
          edge_type, source_ref, target_ref, record_count)
     VALUES
         (p_child_run_id, p_parent_run_id, p_parent_file_id,
@@ -1777,7 +1777,7 @@ COMMIT;
 ### Python Wrapper Calls
 
 Use this shape for Glue-style jobs. The job owns one `run_id` only; upstream
-identity such as `file_id` and `parent_run_id` is passed in by the orchestrator
+identity such as `file_id` and `upstream_run_id` is passed in by the orchestrator
 or previous job. Each control-table helper commits by default, so stages become
 durable checkpoints and a restart can inspect what already happened.
 
@@ -1810,7 +1810,7 @@ class JobArgs:
     dataset: str = "policies"
     business_date: str = "2026-04-11"
     file_id: str = "00000000-0000-0000-0000-000000000000"
-    parent_run_id: str | None = None
+    upstream_run_id: str | None = None
     s3_curated_path: str = "s3://ods-curated-local/insurance/policies/business_date=2026-04-11/policies.parquet"
     postgres_target_table: str = "ods.insurance_policy"
 
@@ -1825,7 +1825,7 @@ def build_args(**overrides: Any) -> JobArgs:
 def start_job(conn: Any, args: JobArgs) -> None:
     """Checkpoint 1: make the current job visible as running."""
 
-    parents = [{"run_id": args.parent_run_id}] if args.parent_run_id else None
+    orchestrators = [{"run_id": args.upstream_run_id}] if args.upstream_run_id else None
     ods_pipeline.runs.start(
         conn,
         run_id=args.run_id,
@@ -1834,7 +1834,7 @@ def start_job(conn: Any, args: JobArgs) -> None:
         dataset=args.dataset,
         business_date=args.business_date,
         file_id=args.file_id,
-        parents=parents,
+        orchestrators=orchestrators,
     )
 
 
@@ -1934,9 +1934,9 @@ def mark_success(conn: Any, args: JobArgs, *, source_count: int, loaded_count: i
     )
     ods_pipeline.lineage.write_edge(
         conn,
-        child_run_id=args.run_id,
-        parent_run_id=args.parent_run_id,
-        parent_file_id=args.file_id,
+        consumer_run_id=args.run_id,
+        upstream_run_id=args.upstream_run_id,
+        source_file_id=args.file_id,
         edge_type="curated_to_postgres",
         source_ref=args.s3_curated_path,
         target_ref=f"jdbc:postgresql://.../{args.postgres_target_table}",
@@ -2029,8 +2029,8 @@ ORDER BY r.started_at, s.started_at, s.id;
 SELECT le.edge_type, parent.pipeline_type AS parent_run,
        child.pipeline_type AS child_run, le.source_ref, le.target_ref, le.record_count
 FROM pipeline.lineage_edge le
-JOIN pipeline.run_log child ON child.run_id = le.child_run_id
-LEFT JOIN pipeline.run_log parent ON parent.run_id = le.parent_run_id
+JOIN pipeline.run_log child ON child.run_id = le.consumer_run_id
+LEFT JOIN pipeline.run_log parent ON parent.run_id = le.upstream_run_id
 WHERE child.domain = 'insurance'
   AND child.dataset = 'policies'
   AND child.business_date = DATE '2026-04-11'

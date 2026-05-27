@@ -350,7 +350,7 @@ async def run_detail(run_id: str):
                     """
                     SELECT *
                     FROM pipeline.lineage_edge
-                    WHERE child_run_id = %s OR parent_run_id = %s
+                    WHERE consumer_run_id = %s OR upstream_run_id = %s
                     ORDER BY created_at
                     """,
                     (run_uuid, run_uuid),
@@ -401,15 +401,15 @@ async def file_lineage(file_id: str):
                            child.business_date AS child_business_date,
                            parent.pipeline_type AS parent_pipeline_type
                     FROM pipeline.lineage_edge le
-                    JOIN pipeline.run_log child ON child.run_id = le.child_run_id
-                    LEFT JOIN pipeline.run_log parent ON parent.run_id = le.parent_run_id
-                    WHERE le.parent_file_id = %s
+                    JOIN pipeline.run_log child ON child.run_id = le.consumer_run_id
+                    LEFT JOIN pipeline.run_log parent ON parent.run_id = le.upstream_run_id
+                    WHERE le.source_file_id = %s
                        OR child.file_id = %s
                     ORDER BY le.created_at
                     """,
                     (file_uuid, file_uuid),
                 )
-                edge_run_ids = sorted({str(e["child_run_id"]) for e in edges if e.get("child_run_id")})
+                edge_run_ids = sorted({str(e["consumer_run_id"]) for e in edges if e.get("consumer_run_id")})
                 if edge_run_ids:
                     placeholders = ",".join(["%s"] * len(edge_run_ids))
                     edge_runs = _q(
@@ -624,9 +624,9 @@ async def api_pull_dashboard(
                 LEFT JOIN pipeline.run_stage_log rsl
                   ON rsl.run_id = r.run_id AND rsl.stage = 'message_archive'
                 LEFT JOIN pipeline.lineage_edge le
-                  ON le.child_run_id = r.run_id AND le.edge_type = 'api_to_archive'
+                  ON le.consumer_run_id = r.run_id AND le.edge_type = 'api_to_archive'
                 LEFT JOIN pipeline.file_catalogue fc
-                  ON fc.file_id = le.parent_file_id
+                  ON fc.file_id = le.source_file_id
                 {archive_where}
                 ORDER BY r.started_at DESC
                 LIMIT %s
@@ -710,9 +710,9 @@ async def api_pull_dashboard(
                        COALESCE(downstream.error_summary, api.error_summary) AS error_summary
                 FROM pipeline.run_log api
                 LEFT JOIN pipeline.lineage_edge le
-                  ON le.child_run_id = api.run_id AND le.edge_type = 'api_to_archive'
+                  ON le.consumer_run_id = api.run_id AND le.edge_type = 'api_to_archive'
                 LEFT JOIN pipeline.file_catalogue fc
-                  ON fc.file_id = le.parent_file_id
+                  ON fc.file_id = le.source_file_id
                 LEFT JOIN pipeline.run_log downstream
                   ON downstream.file_id = fc.file_id
                  AND downstream.pipeline_type = 's3_batch'
@@ -1975,9 +1975,9 @@ function reconTable(rows) {
 function edgeTable(rows) {
   return table(rows, [
     {label:'Edge Type', html:true, value:r => `<span class="edge">${esc(r.edge_type)}</span>`},
-    {label:'Parent File', html:true, value:r => r.parent_file_id ? `<a class="link mono" href="#" onclick="openFile('${esc(r.parent_file_id)}')">${shortId(r.parent_file_id)}</a>` : '-'},
-    {label:'Parent Run', html:true, value:r => r.parent_run_id ? `<a class="link mono" href="#" onclick="openRun('${esc(r.parent_run_id)}')">${shortId(r.parent_run_id)}</a>` : '-'},
-    {label:'Child Run', html:true, value:r => r.child_run_id ? `<a class="link mono" href="#" onclick="openRun('${esc(r.child_run_id)}')">${shortId(r.child_run_id)}</a>` : '-'},
+    {label:'Parent File', html:true, value:r => r.source_file_id ? `<a class="link mono" href="#" onclick="openFile('${esc(r.source_file_id)}')">${shortId(r.source_file_id)}</a>` : '-'},
+    {label:'Parent Run', html:true, value:r => r.upstream_run_id ? `<a class="link mono" href="#" onclick="openRun('${esc(r.upstream_run_id)}')">${shortId(r.upstream_run_id)}</a>` : '-'},
+    {label:'Child Run', html:true, value:r => r.consumer_run_id ? `<a class="link mono" href="#" onclick="openRun('${esc(r.consumer_run_id)}')">${shortId(r.consumer_run_id)}</a>` : '-'},
     {label:'Source', key:'source_ref', truncate:true},
     {label:'Target', key:'target_ref', truncate:true},
     {label:'Records', key:'record_count', right:true},

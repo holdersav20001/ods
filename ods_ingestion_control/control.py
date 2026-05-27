@@ -47,7 +47,7 @@ def start_run(
     kafka_topic: str | None = None,
     config_version_id: int | None = None,
     schema_version_id: int | None = None,
-    parents: JsonLike | None = None,
+    orchestrators: JsonLike | None = None,
     runtime_context: JsonLike | None = None,
     commit: bool = True,
 ) -> str:
@@ -69,7 +69,7 @@ def start_run(
             kafka_topic,
             config_version_id,
             schema_version_id,
-            _json(parents),
+            _json(orchestrators),
             _json(runtime_context),
         ),
         commit=commit,
@@ -221,7 +221,7 @@ def set_file_state(
     error_reason: str | None = None,
     commit: bool = True,
 ) -> str:
-    """Upsert ``pipeline.file_state`` for an S3 path."""
+    """Upsert ``pipeline.file_processing_attempt`` for an S3 path."""
     return _call(
         conn,
         "SELECT pipeline.control_set_file_state(%s,%s,%s,%s,%s)",
@@ -364,10 +364,10 @@ def finish_stage(
 def write_lineage_edge(
     conn: Any,
     *,
-    child_run_id: str,
+    consumer_run_id: str,
     edge_type: str,
-    parent_run_id: str | None = None,
-    parent_file_id: str | None = None,
+    upstream_run_id: str | None = None,
+    source_file_id: str | None = None,
     source_ref: str | None = None,
     target_ref: str | None = None,
     record_count: int | None = None,
@@ -382,10 +382,10 @@ def write_lineage_edge(
         )
         """,
         (
-            child_run_id,
+            consumer_run_id,
             edge_type,
-            parent_run_id,
-            parent_file_id,
+            upstream_run_id,
+            source_file_id,
             source_ref,
             target_ref,
             record_count,

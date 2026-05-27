@@ -27,7 +27,7 @@ def start(
     kafka_topic: str | None = None,
     config_version_id=None,
     schema_version_id=None,
-    parents=None,
+    orchestrators=None,
     runtime_context=None,
 ) -> None:
     """Insert a new ``run_log`` row with ``status='running'``.
@@ -35,6 +35,11 @@ def start(
     Duplicate ``run_id`` is allowed only when the supplied identifying
     metadata matches the existing row.  This preserves idempotency for retries
     while surfacing accidental reuse across different pipeline types/files.
+
+    ``orchestrators``: JSONB array describing which run(s) scheduled this one
+    (e.g. ``[{"run_id": route_run_id, "edge_type": "orchestrates"}]``). This
+    is orchestration lineage, NOT data lineage — data parents belong in
+    ``pipeline.lineage_edge``.
     """
     try:
         control.start_run(
@@ -48,7 +53,7 @@ def start(
             kafka_topic=kafka_topic,
             config_version_id=config_version_id,
             schema_version_id=schema_version_id,
-            parents=parents,
+            orchestrators=orchestrators,
             runtime_context=runtime_context,
         )
     except Exception as exc:
@@ -108,7 +113,7 @@ def finalise(conn, run_id: str, *, commit: bool = True) -> None:
 
     Asserts:
       1. If ``record_count_published > 0``, at least one ``lineage_edge`` row
-         exists with ``child_run_id = run_id`` (no orphan published runs).
+         exists with ``consumer_run_id = run_id`` (no orphan published runs).
       2. No non-terminal ``run_stage_log`` rows exist for ``run_id`` — every
          opened stage must have been closed.
 
@@ -134,7 +139,7 @@ def finalise(conn, run_id: str, *, commit: bool = True) -> None:
         cur.execute(
             """
             SELECT COUNT(*) FROM pipeline.lineage_edge
-             WHERE child_run_id = %s
+             WHERE consumer_run_id = %s
             """,
             (run_id,),
         )

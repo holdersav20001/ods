@@ -70,14 +70,14 @@ def test_same_file_twice_yields_single_catalogue_row(pg_conn):
         cur.execute(
             """
             DELETE FROM pipeline.lineage_edge
-             WHERE child_run_id IN (
+             WHERE consumer_run_id IN (
                    SELECT run_id FROM pipeline.run_log
                     WHERE file_id IN (
                           SELECT file_id FROM pipeline.file_catalogue
                            WHERE file_md5=%s OR s3_raw_path=%s
                     )
              )
-                OR parent_file_id IN (
+                OR source_file_id IN (
                    SELECT file_id FROM pipeline.file_catalogue
                     WHERE file_md5=%s OR s3_raw_path=%s
                 )

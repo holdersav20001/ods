@@ -268,12 +268,12 @@ def _lineage_edges(limit: int = 200, domain: str = "", dataset: str = "") -> lis
         where = ("WHERE " + " AND ".join(filters)) if filters else ""
         params.append(limit)
         rows = _q(conn, f"""
-            SELECT le.lineage_edge_id, le.child_run_id, le.parent_run_id,
-                   le.parent_file_id, le.edge_type,
+            SELECT le.lineage_edge_id, le.consumer_run_id, le.upstream_run_id,
+                   le.source_file_id, le.edge_type,
                    le.source_ref, le.target_ref, le.record_count, le.created_at,
                    rl.domain, rl.dataset, rl.pipeline_type
             FROM pipeline.lineage_edge le
-            JOIN pipeline.run_log rl ON rl.run_id = le.child_run_id
+            JOIN pipeline.run_log rl ON rl.run_id = le.consumer_run_id
             {where}
             ORDER BY le.created_at DESC
             LIMIT %s
@@ -878,8 +878,8 @@ async function loadLineageEdges() {
       <td class="py-2 pr-4 mono text-slate-400">${truncate(e.source_ref,45)}</td>
       <td class="py-2 pr-4 mono text-slate-400">${truncate(e.target_ref,45)}</td>
       <td class="py-2 pr-4 text-right font-semibold text-slate-700">${fmt(e.record_count)}</td>
-      <td class="py-2 pr-4 mono">${e.parent_file_id
-        ? `<a href="http://localhost:8888/lineage/${e.parent_file_id}" target="_blank" class="text-indigo-500 hover:text-indigo-700" title="${e.parent_file_id}">${e.parent_file_id.slice(0,8)}…</a>`
+      <td class="py-2 pr-4 mono">${e.source_file_id
+        ? `<a href="http://localhost:8888/lineage/${e.source_file_id}" target="_blank" class="text-indigo-500 hover:text-indigo-700" title="${e.source_file_id}">${e.source_file_id.slice(0,8)}…</a>`
         : '—'}</td>
       <td class="py-2 text-slate-400 whitespace-nowrap">${fmtDt(e.created_at)}</td>
     </tr>`).join('');

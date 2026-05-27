@@ -1,4 +1,4 @@
-"""pipeline.file_catalogue and pipeline.file_state operations."""
+"""pipeline.file_catalogue and pipeline.file_processing_attempt operations."""
 from __future__ import annotations
 
 import ods_ingestion_control as control
@@ -68,7 +68,7 @@ def set_state(
     record_count: int | None = None,
     error_reason: str | None = None,
 ) -> None:
-    """Upsert ``pipeline.file_state`` for *s3_path*."""
+    """Upsert ``pipeline.file_processing_attempt`` for *s3_path*."""
     control.set_file_state(
         conn,
         s3_path=s3_path,
@@ -83,7 +83,7 @@ def get_state(conn, s3_path: str) -> str | None:
     """Return the current status string for *s3_path*, or ``None`` if not found."""
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT status FROM pipeline.file_state WHERE s3_path = %s",
+            "SELECT status FROM pipeline.file_processing_attempt WHERE s3_path = %s",
             (s3_path,),
         )
         row = cur.fetchone()

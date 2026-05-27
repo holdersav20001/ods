@@ -46,7 +46,7 @@ def run(
     dataset: str,
     s3_input_path: str,
     file_id: str | None = None,
-    parent_run_id: str | None = None,
+    upstream_run_id: str | None = None,
     airflow_dag_id: str | None = None,
     airflow_run_id: str | None = None,
 ) -> int:
@@ -60,7 +60,7 @@ def run(
             dataset=dataset,
             s3_input_path=s3_input_path,
             file_id=file_id,
-            parent_run_id=parent_run_id,
+            upstream_run_id=upstream_run_id,
             airflow_dag_id=airflow_dag_id,
             airflow_run_id=airflow_run_id,
         )
@@ -76,7 +76,7 @@ def _run(
     dataset: str,
     s3_input_path: str,
     file_id: str | None,
-    parent_run_id: str | None,
+    upstream_run_id: str | None,
     airflow_dag_id: str | None,
     airflow_run_id: str | None,
 ) -> int:
@@ -108,9 +108,9 @@ def _run(
             domain=domain,
             dataset=dataset,
             business_date=None,
-            parents=(
-                [{"run_id": parent_run_id, "edge_type": "orchestrates"}]
-                if parent_run_id else None
+            orchestrators=(
+                [{"run_id": upstream_run_id, "edge_type": "orchestrates"}]
+                if upstream_run_id else None
             ),
         )
         ods_pipeline.runs.update(
@@ -154,9 +154,9 @@ def _run(
         business_date=business_date,
         config_version_id=config_version_id,
         file_id=file_id,
-        parents=(
-            [{"run_id": parent_run_id, "edge_type": "orchestrates"}]
-            if parent_run_id else None
+        orchestrators=(
+            [{"run_id": upstream_run_id, "edge_type": "orchestrates"}]
+            if upstream_run_id else None
         ),
     )
 

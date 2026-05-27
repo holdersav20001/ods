@@ -10,7 +10,7 @@ Usage
         file_id = ods_pipeline.files.upsert(conn, domain="insurance", ...)
         ods_pipeline.runs.start(conn, run_id=run_id, ...)
         ods_pipeline.stages.write(conn, run_id=run_id, stage=ods_pipeline.Stage.RAW_READ, ...)
-        ods_pipeline.lineage.write_edge(conn, child_run_id=run_id, ...)
+        ods_pipeline.lineage.write_edge(conn, consumer_run_id=run_id, ...)
         ods_pipeline.runs.finish(conn, run_id=run_id, status="succeeded")
 
     ods_pipeline.events.produce("run_succeeded", run_id=run_id, ...)

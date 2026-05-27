@@ -99,7 +99,7 @@ async def lineage_api(file_id: str):
             placeholders = ",".join(["%s"] * len(run_ids))
             edges = _q(conn,
                 f"SELECT * FROM pipeline.lineage_edge "
-                f"WHERE child_run_id IN ({placeholders}) ORDER BY created_at",
+                f"WHERE consumer_run_id IN ({placeholders}) ORDER BY created_at",
                 run_ids)
 
         policy_count = _scalar(conn,

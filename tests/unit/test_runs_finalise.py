@@ -27,7 +27,7 @@ def run_id(pg_conn):
                business_date="2026-05-02")
     yield rid
     with pg_conn.cursor() as cur:
-        cur.execute("DELETE FROM pipeline.lineage_edge WHERE child_run_id=%s OR parent_run_id=%s",
+        cur.execute("DELETE FROM pipeline.lineage_edge WHERE consumer_run_id=%s OR upstream_run_id=%s",
                     (rid, rid))
         cur.execute("DELETE FROM pipeline.run_stage_log WHERE run_id=%s", (rid,))
         cur.execute("DELETE FROM pipeline.run_log WHERE run_id=%s", (rid,))
@@ -64,7 +64,7 @@ def test_finalise_passes_when_published_and_lineage_exists(pg_conn, run_id):
         cur.execute(
             """
             INSERT INTO pipeline.lineage_edge
-                (child_run_id, parent_run_id, edge_type, record_count)
+                (consumer_run_id, upstream_run_id, edge_type, record_count)
             VALUES (%s::uuid, NULL, 'curated_to_kafka', 42)
             """,
             (run_id,),

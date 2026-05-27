@@ -64,10 +64,10 @@ def test_drop_file_lands_in_postgres(pg_conn):
             "WHERE policy_id IN ('P100','P101')"
         )
         cur.execute(
-            "DELETE FROM pipeline.lineage_edge WHERE child_run_id IN ("
+            "DELETE FROM pipeline.lineage_edge WHERE consumer_run_id IN ("
             "  SELECT run_id FROM pipeline.run_log WHERE domain='insurance' "
             "  AND dataset='policies' AND business_date='2026-04-28') "
-            "OR parent_file_id IN ("
+            "OR source_file_id IN ("
             "  SELECT file_id FROM pipeline.file_catalogue WHERE domain='insurance' "
             "  AND dataset='policies' AND business_date='2026-04-28')"
         )
@@ -85,7 +85,7 @@ def test_drop_file_lands_in_postgres(pg_conn):
             "AND dataset='policies' AND business_date='2026-04-28'"
         )
         cur.execute(
-            "DELETE FROM pipeline.file_state "
+            "DELETE FROM pipeline.file_processing_attempt "
             "WHERE s3_path IN (%s, %s, %s)",
             (
                 "s3://ods-raw-local/insurance/policies/2026-04-28/policies_20260428.csv",

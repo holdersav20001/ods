@@ -8,7 +8,7 @@ cursor of this poll.
 The mechanism under test is:
 
   1. ``dag_ingest.init_run`` records a ``triggered_by_api_pull`` edge
-     in ``run_log.parents`` when the trigger conf carries
+     in ``run_log.orchestrators`` when the trigger conf carries
      ``triggered_by_run_id``.
   2. ``dag_api_pull._ingest_status_for_api_pull_run`` looks up the
      downstream parent run by JSONB containment on that edge — not by
@@ -36,7 +36,7 @@ DATASET = "api_pull_linkage_test"
 SOURCE_APPLICATION = "demo_api_test"
 
 
-def _insert_run_log(conn, *, run_id, file_id, parents, status="succeeded"):
+def _insert_run_log(conn, *, run_id, file_id, orchestrators, status="succeeded"):
     """Insert a synthetic s3_batch run_log row used as a stand-in for a
     dag_ingest parent run. Real dag_ingest goes through runs.start, but
     the linkage we're testing is purely about JSONB containment."""
@@ -45,13 +45,13 @@ def _insert_run_log(conn, *, run_id, file_id, parents, status="succeeded"):
             """
             INSERT INTO pipeline.run_log
                 (run_id, pipeline_type, domain, dataset, business_date,
-                 file_id, status, parents)
+                 file_id, status, orchestrators)
             VALUES (%s, 's3_batch', %s, %s, %s, %s, %s, %s::jsonb)
             ON CONFLICT (run_id) DO NOTHING
             """,
             (
                 run_id, DOMAIN, DATASET, "2026-05-02",
-                file_id, status, json.dumps(parents),
+                file_id, status, json.dumps(orchestrators),
             ),
         )
     conn.commit()
@@ -112,7 +112,7 @@ def test_lookup_finds_only_run_with_matching_triggered_by_edge(pg_conn, cleanup)
         pg_conn,
         run_id=older_dag_ingest_run,
         file_id=file_id,
-        parents=[{"run_id": str(uuid.uuid4()), "edge_type": "replay"}],
+        orchestrators=[{"run_id": str(uuid.uuid4()), "edge_type": "replay"}],
         status="failed",
     )
 
@@ -122,7 +122,7 @@ def test_lookup_finds_only_run_with_matching_triggered_by_edge(pg_conn, cleanup)
         pg_conn,
         run_id=triggered_dag_ingest_run,
         file_id=file_id,
-        parents=[{
+        orchestrators=[{
             "run_id": api_pull_run_id,
             "edge_type": "triggered_by_api_pull",
         }],
@@ -146,7 +146,7 @@ def test_unrelated_replay_does_not_leak_status(pg_conn, cleanup):
         pg_conn,
         run_id=str(uuid.uuid4()),
         file_id=file_id,
-        parents=[{
+        orchestrators=[{
             "run_id": other_api_pull_run_id,
             "edge_type": "triggered_by_api_pull",
         }],
@@ -180,14 +180,14 @@ def test_two_rows_with_same_edge_returns_none_when_no_expected_parent(
         pg_conn,
         run_id=str(uuid.uuid4()),
         file_id=file_id_a,
-        parents=[{"run_id": api_pull_run_id, "edge_type": "triggered_by_api_pull"}],
+        orchestrators=[{"run_id": api_pull_run_id, "edge_type": "triggered_by_api_pull"}],
         status="succeeded",
     )
     _insert_run_log(
         pg_conn,
         run_id=str(uuid.uuid4()),
         file_id=file_id_b,
-        parents=[{"run_id": api_pull_run_id, "edge_type": "triggered_by_api_pull"}],
+        orchestrators=[{"run_id": api_pull_run_id, "edge_type": "triggered_by_api_pull"}],
         status="failed",
     )
 
@@ -199,7 +199,7 @@ def test_two_rows_with_same_edge_returns_none_when_no_expected_parent(
 
 
 def test_exact_parent_run_id_match_disambiguates(pg_conn, cleanup):
-    """When dag_api_pull pre-mints the deterministic parent_run_id and
+    """When dag_api_pull pre-mints the deterministic upstream_run_id and
     passes it as expected_parent_run_id, the lookup is by PK so the
     presence of OTHER rows carrying the same edge cannot mislead it.
     """
@@ -211,12 +211,12 @@ def test_exact_parent_run_id_match_disambiguates(pg_conn, cleanup):
     _insert_file_catalogue(pg_conn, file_id=file_id_other, run_id=api_pull_run_id)
 
     # The dag_ingest run actually triggered by us — uses the
-    # deterministic parent_run_id.
+    # deterministic upstream_run_id.
     _insert_run_log(
         pg_conn,
         run_id=expected_parent,
         file_id=file_id_real,
-        parents=[{"run_id": api_pull_run_id, "edge_type": "triggered_by_api_pull"}],
+        orchestrators=[{"run_id": api_pull_run_id, "edge_type": "triggered_by_api_pull"}],
         status="succeeded",
     )
     # A spurious second row carrying the same edge but a DIFFERENT PK.
@@ -224,7 +224,7 @@ def test_exact_parent_run_id_match_disambiguates(pg_conn, cleanup):
         pg_conn,
         run_id=str(uuid.uuid4()),
         file_id=file_id_other,
-        parents=[{"run_id": api_pull_run_id, "edge_type": "triggered_by_api_pull"}],
+        orchestrators=[{"run_id": api_pull_run_id, "edge_type": "triggered_by_api_pull"}],
         status="failed",
     )
 
@@ -251,7 +251,7 @@ def test_exact_parent_run_id_rejects_pk_collision_without_edge(pg_conn, cleanup)
         pg_conn,
         run_id=expected_parent,
         file_id=file_id,
-        parents=[{"run_id": api_pull_run_id, "edge_type": "replay"}],
+        orchestrators=[{"run_id": api_pull_run_id, "edge_type": "replay"}],
         status="succeeded",
     )
 
@@ -307,7 +307,7 @@ def test_replay_cannot_promote_pending_cursor(pg_conn, cleanup):
         pg_conn,
         run_id=str(uuid.uuid4()),
         file_id=file_id,
-        parents=[{"run_id": str(uuid.uuid4()), "edge_type": "replay"}],
+        orchestrators=[{"run_id": str(uuid.uuid4()), "edge_type": "replay"}],
         status="succeeded",
     )
 

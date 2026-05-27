@@ -31,9 +31,9 @@ Optional fourth, only when Airflow owns the route:
 
 | Parent flavour | Column | Question it answers | Typical value |
 |---|---|---|---|
-| Orchestration parent | `run_log.parents[].run_id` | Who scheduled me? | `route_run_id` (or nothing) |
-| Data parent | `lineage_edge.parent_run_id` | Whose data did I read? | Previous task's `run_id` |
-| File parent | `lineage_edge.parent_file_id` | Which file did I consume? | `file_id` |
+| Orchestration parent | `run_log.orchestrators[].run_id` | Who scheduled me? | `route_run_id` (or nothing) |
+| Data parent | `lineage_edge.upstream_run_id` | Whose data did I read? | Previous task's `run_id` |
+| File parent | `lineage_edge.source_file_id` | Which file did I consume? | `file_id` |
 
 The same UUID can be both orchestration parent and data parent in a small route. They are still distinct concepts — record them in their own columns.
 
@@ -78,17 +78,17 @@ Print this. Pin it.
 | `file_catalogue` | `last_run_id` | `ingestion_run_id` (after ingestion), then `pg_write_run_id` (after load) |
 | `run_log` (ingestion row) | `run_id` | `ingestion_run_id` |
 | `run_log` (ingestion row) | `file_id` | `file_id` |
-| `run_log` (ingestion row) | `parents` | `[{"run_id": route_run_id, "edge_type": "orchestrates"}]` |
+| `run_log` (ingestion row) | `orchestrators` | `[{"run_id": route_run_id, "edge_type": "orchestrates"}]` |
 | `run_log` (load row) | `run_id` | `pg_write_run_id` |
 | `run_log` (load row) | `file_id` | `file_id` |
-| `run_log` (load row) | `parents` | `[{"run_id": route_run_id, "edge_type": "orchestrates"}]` |
+| `run_log` (load row) | `orchestrators` | `[{"run_id": route_run_id, "edge_type": "orchestrates"}]` |
 | `run_stage_log` | `run_id` | `ingestion_run_id` for ingestion stages, `pg_write_run_id` for load stages |
-| `lineage_edge` (raw→curated) | `child_run_id` | `ingestion_run_id` |
-| `lineage_edge` (raw→curated) | `parent_file_id` | `file_id` |
-| `lineage_edge` (raw→curated) | `parent_run_id` | NULL (file is the source) |
-| `lineage_edge` (curated→pg) | `child_run_id` | `pg_write_run_id` |
-| `lineage_edge` (curated→pg) | `parent_run_id` | `ingestion_run_id` (data parent) |
-| `lineage_edge` (curated→pg) | `parent_file_id` | `file_id` |
+| `lineage_edge` (raw→curated) | `consumer_run_id` | `ingestion_run_id` |
+| `lineage_edge` (raw→curated) | `source_file_id` | `file_id` |
+| `lineage_edge` (raw→curated) | `upstream_run_id` | NULL (file is the source) |
+| `lineage_edge` (curated→pg) | `consumer_run_id` | `pg_write_run_id` |
+| `lineage_edge` (curated→pg) | `upstream_run_id` | `ingestion_run_id` (data parent) |
+| `lineage_edge` (curated→pg) | `source_file_id` | `file_id` |
 | `reconciliation_log` (ingestion) | `run_id` | `ingestion_run_id` |
 | `reconciliation_log` (load) | `run_id` | `pg_write_run_id` |
 | target `ods.*` row `_ods_file_id` | — | `file_id` |
@@ -148,7 +148,7 @@ file_id = ods_pipeline.files.upsert(
 
 **What this does:** stamps a single `run_id` for the **whole DAG run** so every task below can record "I was scheduled by this DAG run." Purely a bookkeeping anchor — no data work happens here. Skip this step entirely if no orchestrator owns the end-to-end route.
 
-**Why bother?** Without it, you cannot answer "show me all stage activity for the 8am DAG run on 2026-05-21." With it, every child task carries `route_run_id` in its `parents[]` and you can pivot reports by orchestration run.
+**Why bother?** Without it, you cannot answer "show me all stage activity for the 8am DAG run on 2026-05-21." With it, every child task carries `route_run_id` in its `orchestrators[]` and you can pivot reports by orchestration run.
 
 `pipeline_type="s3_batch"` is the convention for "this row represents the orchestration of an S3 file batch route." Not a data pipeline — a wrapper run.
 
@@ -163,7 +163,7 @@ ods_pipeline.runs.start(
 
 `pipeline.run_log` after step 2:
 
-| run_id | pipeline_type | file_id | status | parents |
+| run_id | pipeline_type | file_id | status | orchestrators |
 |---|---|---|---|---|
 | `route_run_id` | s3_batch | `file_id` | running | [] |
 
@@ -173,7 +173,7 @@ ods_pipeline.runs.start(
 
 **Why allocate now, not earlier?** Restart-safety. If the DAG sat in the queue for 6 hours and was killed before ingestion started, no orphan `run_log` row exists for ingestion. Only runs that actually started have rows.
 
-**About `parents`:** records the orchestration link back to the DAG run. `edge_type="orchestrates"` means "DAG scheduled me," not "DAG produced my input data." (Data lineage lives in `lineage_edge`, not here.)
+**About `orchestrators`:** records the orchestration link back to the DAG run. `edge_type="orchestrates"` means "DAG scheduled me," not "DAG produced my input data." (Data lineage lives in `lineage_edge`, not here.)
 
 ```python
 ingestion_run_id = uuid4()
@@ -181,13 +181,13 @@ ods_pipeline.runs.start(
     conn, run_id=ingestion_run_id, pipeline_type="ingestion",
     domain="insurance", dataset="country_codes",
     business_date="2026-05-21", file_id=file_id,
-    parents=[{"run_id": route_run_id, "edge_type": "orchestrates"}],
+    orchestrators=[{"run_id": route_run_id, "edge_type": "orchestrates"}],
 )
 ```
 
 `pipeline.run_log` after step 3:
 
-| run_id | pipeline_type | file_id | status | parents |
+| run_id | pipeline_type | file_id | status | orchestrators |
 |---|---|---|---|---|
 | `route_run_id` | s3_batch | `file_id` | running | [] |
 | `ingestion_run_id` | ingestion | `file_id` | running | [{run_id: `route_run_id`, edge_type: orchestrates}] |
@@ -227,7 +227,7 @@ ods_pipeline.stages.finish(
 **What this does:** four wrap-up writes once curated Parquet exists on S3:
 
 1. **`file_catalogue.state = "curated"`** — tells the next task "data is ready in S3 curated; safe to consume."
-2. **`lineage_edge` (raw_to_curated)** — permanent record of what input was read and what output was produced by this ingestion run. `parent_file_id = file_id`, `parent_run_id = NULL` because the **file itself** is the data source — no upstream run produced it.
+2. **`lineage_edge` (raw_to_curated)** — permanent record of what input was read and what output was produced by this ingestion run. `source_file_id = file_id`, `upstream_run_id = NULL` because the **file itself** is the data source — no upstream run produced it.
 3. **`reconciliation_log` (t0_ingestion_count)** — row count check: input rows vs accounted-for rows. Catches silent data loss in ingestion.
 4. **`run_log.status = "succeeded"`** — terminal write that flips the ingestion run from `running` to `succeeded`. Only after this should the load task be allowed to start.
 
@@ -240,8 +240,8 @@ ods_pipeline.files.update_catalogue(
 
 ods_pipeline.lineage.write_edge(
     conn,
-    child_run_id=ingestion_run_id,   # I
-    parent_file_id=file_id,           # F  (file is the data source)
+    consumer_run_id=ingestion_run_id,   # I
+    source_file_id=file_id,           # F  (file is the data source)
     edge_type="raw_to_curated",
     source_ref="s3://.../raw/...csv",
     target_ref="s3://.../curated/.../",
@@ -271,7 +271,7 @@ ods_pipeline.runs.update(
 
 `pipeline.lineage_edge` after step 5:
 
-| child_run_id | parent_run_id | parent_file_id | edge_type | source_ref | target_ref | record_count |
+| consumer_run_id | upstream_run_id | source_file_id | edge_type | source_ref | target_ref | record_count |
 |---|---|---|---|---|---|---|
 | `ingestion_run_id` | NULL | `file_id` | raw_to_curated | s3://.../raw/...csv | s3://.../curated/.../ | 100 |
 
@@ -289,7 +289,7 @@ ods_pipeline.runs.update(
 
 ### Step 6 — Load task starts (receives `file_id` + `ingestion_run_id` via XCom)
 
-**What this does:** the load task allocates its **own** `pg_write_run_id` at the moment it starts. Inserts a `run_log` row for the direct-Postgres load. Records the orchestration parent in `parents`, but does **not** yet write the data-parent link — that lives in the lineage edge in step 7.
+**What this does:** the load task allocates its **own** `pg_write_run_id` at the moment it starts. Inserts a `run_log` row for the direct-Postgres load. Records the orchestration parent in `orchestrators`, but does **not** yet write the data-parent link — that lives in the lineage edge in step 7.
 
 **Why not reuse `ingestion_run_id`?** Different scope of work, different failure boundary. If the load crashes, ingestion's success/failure record must remain untouched. Each task owns its own run row.
 
@@ -299,7 +299,7 @@ ods_pipeline.runs.update(
 |---|---|---|
 | `file_id` | Landing task XCom | To stamp `_ods_file_id` on target rows + join control tables |
 | `ingestion_run_id` | Ingestion task XCom | To set as **data parent** in step 7 lineage edge |
-| `route_run_id` | DAG context | To set as orchestration parent in `run_log.parents` |
+| `route_run_id` | DAG context | To set as orchestration parent in `run_log.orchestrators` |
 
 ```python
 pg_write_run_id = uuid4()
@@ -307,13 +307,13 @@ ods_pipeline.runs.start(
     conn, run_id=pg_write_run_id, pipeline_type="direct_postgres",
     domain="insurance", dataset="country_codes",
     business_date="2026-05-21", file_id=file_id,
-    parents=[{"run_id": route_run_id, "edge_type": "orchestrates"}],
+    orchestrators=[{"run_id": route_run_id, "edge_type": "orchestrates"}],
 )
 ```
 
 `pipeline.run_log` after step 6:
 
-| run_id | pipeline_type | file_id | status | parents |
+| run_id | pipeline_type | file_id | status | orchestrators |
 |---|---|---|---|---|
 | `route_run_id` | s3_batch | `file_id` | running | [] |
 | `ingestion_run_id` | ingestion | `file_id` | succeeded | [{`route_run_id`, orchestrates}] |
@@ -324,12 +324,12 @@ ods_pipeline.runs.start(
 **What this does:** mirrors step 5 but for the load side. Five wrap-up writes:
 
 1. **`run_stage_log`** for `postgres_write` (start + finish) — same checkpoint pattern as ingestion stages.
-2. **`lineage_edge` (curated_to_postgres)** — here `parent_run_id = ingestion_run_id` because ingestion **produced the data** the load consumed. `parent_file_id = file_id` for traceability back to the original source file.
+2. **`lineage_edge` (curated_to_postgres)** — here `upstream_run_id = ingestion_run_id` because ingestion **produced the data** the load consumed. `source_file_id = file_id` for traceability back to the original source file.
 3. **`reconciliation_log` (direct_postgres_count)** — row count: rows accepted for load vs rows actually visible in target table for this `pg_write_run_id`.
 4. **`file_catalogue.state = "sunk"`** — terminal state for this route. Means "data reached the target table successfully."
 5. **`run_log.status = "succeeded"`** — closes the load run.
 
-**Key UUID rule for the lineage edge:** the orchestration parent (`route_run_id`) goes in `run_log.parents`. The **data parent** (`ingestion_run_id`) goes in `lineage_edge.parent_run_id`. Different columns because they answer different questions.
+**Key UUID rule for the lineage edge:** the orchestration parent (`route_run_id`) goes in `run_log.orchestrators`. The **data parent** (`ingestion_run_id`) goes in `lineage_edge.upstream_run_id`. Different columns because they answer different questions.
 
 ```python
 # stage evidence
@@ -348,9 +348,9 @@ ods_pipeline.stages.finish(
 # data parent is ingestion run (it produced the curated input)
 ods_pipeline.lineage.write_edge(
     conn,
-    child_run_id=pg_write_run_id,    # P
-    parent_run_id=ingestion_run_id,  # I  (data parent)
-    parent_file_id=file_id,           # F
+    consumer_run_id=pg_write_run_id,    # P
+    upstream_run_id=ingestion_run_id,  # I  (data parent)
+    source_file_id=file_id,           # F
     edge_type="curated_to_postgres",
     source_ref="s3://.../curated/.../",
     target_ref="jdbc:postgresql://.../ods.insurance_country_code",
@@ -377,7 +377,7 @@ ods_pipeline.runs.update(
 
 `pipeline.lineage_edge` after step 7:
 
-| child_run_id | parent_run_id | parent_file_id | edge_type | record_count |
+| consumer_run_id | upstream_run_id | source_file_id | edge_type | record_count |
 |---|---|---|---|---|
 | `ingestion_run_id` | NULL | `file_id` | raw_to_curated | 100 |
 | `pg_write_run_id` | `ingestion_run_id` | `file_id` | curated_to_postgres | 100 |
@@ -452,14 +452,14 @@ Never pre-allocate a `run_id` for work that has not started.
 For gold rows built from multiple sources:
 
 - `_ods_run_id = P` (the load run that wrote the target row) — always correct.
-- `_ods_file_id` is **not** enough. Write **one `lineage_edge` row per input file**, all with the same `child_run_id = P`.
+- `_ods_file_id` is **not** enough. Write **one `lineage_edge` row per input file**, all with the same `consumer_run_id = P`.
 - To walk back to all source files:
 
 ```sql
 SELECT le.*
 FROM ods.gold_table t
 JOIN pipeline.lineage_edge le
-  ON le.child_run_id = t._ods_run_id::uuid
+  ON le.consumer_run_id = t._ods_run_id::uuid
 WHERE t.business_key = 'xyz';
 ```
 
@@ -485,9 +485,9 @@ WHERE file_id = '<file_id>' ORDER BY started_at;
 Lineage chain complete:
 
 ```sql
-SELECT edge_type, child_run_id, parent_run_id, parent_file_id
+SELECT edge_type, consumer_run_id, upstream_run_id, source_file_id
 FROM pipeline.lineage_edge
-WHERE parent_file_id = '<file_id>' OR child_run_id IN (
+WHERE source_file_id = '<file_id>' OR consumer_run_id IN (
   SELECT run_id FROM pipeline.run_log WHERE file_id = '<file_id>'
 )
 ORDER BY edge_type;
@@ -515,8 +515,8 @@ WHERE t.country_code = 'GB';
 |---|---|
 | One `run_id` per task per attempt. | Restart-safe, no future allocations. |
 | `file_id` is sticky. Carries through every table. | Single source-of-truth for the file. |
-| Orchestration parent → `run_log.parents`. Data parent → `lineage_edge.parent_run_id`. | They are different questions. |
-| Lineage `raw_to_curated`: `parent_file_id` set, `parent_run_id` NULL. | File is the data source. |
+| Orchestration parent → `run_log.orchestrators`. Data parent → `lineage_edge.upstream_run_id`. | They are different questions. |
+| Lineage `raw_to_curated`: `source_file_id` set, `upstream_run_id` NULL. | File is the data source. |
 | Lineage `curated_to_postgres`: both set. | Data came from upstream run that produced curated. |
 | `_ods_run_id` on target = load run (`P`), never ingestion (`I`). | Tells you which run wrote that specific row. |
 | Write lineage **after** the data is produced, not before. | Otherwise lineage lies on failure. |
@@ -538,9 +538,9 @@ One edge = one arrow on a data-flow diagram.
 ```text
 pipeline.lineage_edge
   lineage_edge_id    bigint  PK         auto-generated
-  child_run_id       uuid    NOT NULL   the run that DID the work (consumer/writer)
-  parent_run_id      uuid    NULL       the run whose output was consumed (upstream producer)
-  parent_file_id     uuid    NULL       the source file consumed
+  consumer_run_id       uuid    NOT NULL   the run that DID the work (consumer/writer)
+  upstream_run_id      uuid    NULL       the run whose output was consumed (upstream producer)
+  source_file_id     uuid    NULL       the source file consumed
   edge_type          text    NOT NULL   what kind of movement (raw_to_curated, curated_to_postgres, ...)
   source_ref         text    NULL       where data was read FROM (S3 URI, topic, table)
   target_ref         text    NULL       where data was written TO
@@ -550,7 +550,7 @@ pipeline.lineage_edge
 
 Rule from helper code (`ods_pipeline.lineage.write_edge`):
 
-> Either `parent_run_id` **or** `parent_file_id` (or both) must be supplied.
+> Either `upstream_run_id` **or** `source_file_id` (or both) must be supplied.
 
 Without at least one parent, the edge cannot be traced backwards.
 
@@ -559,7 +559,7 @@ Without at least one parent, the edge cannot be traced backwards.
 Always read an edge as one sentence:
 
 ```
-child_run_id  did  edge_type  ,  reading from  source_ref  (parent_run_id / parent_file_id)  ,  writing to  target_ref  ,  moving record_count rows.
+consumer_run_id  did  edge_type  ,  reading from  source_ref  (upstream_run_id / source_file_id)  ,  writing to  target_ref  ,  moving record_count rows.
 ```
 
 ### A1.4 Worked example — single file, two edges
@@ -577,9 +577,9 @@ pg_write_run_id    = CCCCCCCC-CCCC-CCCC-CCCC-CCCCCCCCCCCC
 ```python
 ods_pipeline.lineage.write_edge(
     conn,
-    child_run_id=ingestion_run_id,
-    parent_file_id=file_id,           # data source = the source file itself
-    parent_run_id=None,               # no upstream RUN produced the raw file
+    consumer_run_id=ingestion_run_id,
+    source_file_id=file_id,           # data source = the source file itself
+    upstream_run_id=None,               # no upstream RUN produced the raw file
     edge_type="raw_to_curated",
     source_ref="s3://ods-raw/insurance/country_codes/date=20260521/country_codes_20260521.csv",
     target_ref="s3://ods-curated/insurance/country_codes/date=20260521/",
@@ -589,7 +589,7 @@ ods_pipeline.lineage.write_edge(
 
 Row stored:
 
-| lineage_edge_id | child_run_id | parent_run_id | parent_file_id | edge_type | source_ref | target_ref | record_count |
+| lineage_edge_id | consumer_run_id | upstream_run_id | source_file_id | edge_type | source_ref | target_ref | record_count |
 |---|---|---|---|---|---|---|---|
 | 1 | `ingestion_run_id` | NULL | `file_id` | raw_to_curated | s3://.../raw/...csv | s3://.../curated/.../ | 100 |
 
@@ -600,9 +600,9 @@ Read as: *"The ingestion run consumed source file `file_id` and produced curated
 ```python
 ods_pipeline.lineage.write_edge(
     conn,
-    child_run_id=pg_write_run_id,
-    parent_run_id=ingestion_run_id,   # data source = ingestion run's output
-    parent_file_id=file_id,           # keep the file link for direct file→target queries
+    consumer_run_id=pg_write_run_id,
+    upstream_run_id=ingestion_run_id,   # data source = ingestion run's output
+    source_file_id=file_id,           # keep the file link for direct file→target queries
     edge_type="curated_to_postgres",
     source_ref="s3://ods-curated/insurance/country_codes/date=20260521/",
     target_ref="jdbc:postgresql://.../ods.insurance_country_code",
@@ -612,7 +612,7 @@ ods_pipeline.lineage.write_edge(
 
 Row stored:
 
-| lineage_edge_id | child_run_id | parent_run_id | parent_file_id | edge_type | source_ref | target_ref | record_count |
+| lineage_edge_id | consumer_run_id | upstream_run_id | source_file_id | edge_type | source_ref | target_ref | record_count |
 |---|---|---|---|---|---|---|---|
 | 2 | `pg_write_run_id` | `ingestion_run_id` | `file_id` | curated_to_postgres | s3://.../curated/.../ | jdbc://.../ods.insurance_country_code | 100 |
 
@@ -627,7 +627,7 @@ You could in theory write one giant edge "raw file → Postgres table." Don't. T
 | Per-run accountability | Each run owns the edge for *its* work; failure of one run does not corrupt the other's lineage. |
 | Stage-level row counts | You see ingestion moved 100 and load moved 100. If counts diverge, you know which stage lost rows. |
 | Restart safety | Re-running the load does not rewrite the ingestion edge. |
-| Multi-source support | Section 8: multiple inputs to one load run = multiple edges with the same `child_run_id`. |
+| Multi-source support | Section 8: multiple inputs to one load run = multiple edges with the same `consumer_run_id`. |
 
 ### A1.6 Walking the lineage chain — backwards from the target row
 
@@ -641,18 +641,18 @@ WHERE country_code = 'GB';
 -- _ods_file_id = file_id, _ods_run_id = pg_write_run_id
 
 -- 2. Find every input that load run consumed.
-SELECT edge_type, parent_run_id, parent_file_id, source_ref, record_count
+SELECT edge_type, upstream_run_id, source_file_id, source_ref, record_count
 FROM pipeline.lineage_edge
-WHERE child_run_id = '<pg_write_run_id>';
+WHERE consumer_run_id = '<pg_write_run_id>';
 -- returns: curated_to_postgres, parent_run=ingestion_run_id, parent_file=file_id, s3://.../curated/...
 
--- 3. For each upstream parent_run_id, find what IT consumed.
-SELECT edge_type, parent_run_id, parent_file_id, source_ref
+-- 3. For each upstream upstream_run_id, find what IT consumed.
+SELECT edge_type, upstream_run_id, source_file_id, source_ref
 FROM pipeline.lineage_edge
-WHERE child_run_id = '<ingestion_run_id>';
+WHERE consumer_run_id = '<ingestion_run_id>';
 -- returns: raw_to_curated, parent_run=NULL, parent_file=file_id, s3://.../raw/...csv
 
--- 4. Stop when parent_run_id is NULL (you have reached a source file).
+-- 4. Stop when upstream_run_id is NULL (you have reached a source file).
 ```
 
 Result: full chain `s3://raw/...csv → ingestion_run_id → s3://curated/... → pg_write_run_id → ods.insurance_country_code`.
@@ -675,11 +675,11 @@ Every arrow = one `lineage_edge` row. Every box = either a `file_catalogue` row,
 
 | Mistake | What goes wrong | Symptom |
 |---|---|---|
-| Set `parent_run_id = route_run_id` on `raw_to_curated`. | Data parent ≠ orchestration parent. Lineage now claims DAG run "produced" the raw file. | Lineage walker thinks raw file came from a DAG run, can't reach the source. |
+| Set `upstream_run_id = route_run_id` on `raw_to_curated`. | Data parent ≠ orchestration parent. Lineage now claims DAG run "produced" the raw file. | Lineage walker thinks raw file came from a DAG run, can't reach the source. |
 | Write the edge **before** the data exists. | If the work fails after the edge is written, lineage lies. | Edge present, but `target_ref` location is empty or missing. |
-| Omit `parent_file_id` on `raw_to_curated`. | Can't join back to `file_catalogue` for file-level queries. | `WHERE parent_file_id = '<file>'` returns nothing. |
-| Reuse ingestion's `run_id` as the load's `child_run_id`. | Two different units of work conflated; target row `_ods_run_id` points to ingestion, not load. | Can't tell which run wrote which target rows. |
-| Multi-source gold writes only one edge. | Only one parent file recorded; the rest are silently lost. | `lineage_edge` query for `child_run_id = <gold_run>` returns fewer parents than inputs actually consumed. |
+| Omit `source_file_id` on `raw_to_curated`. | Can't join back to `file_catalogue` for file-level queries. | `WHERE source_file_id = '<file>'` returns nothing. |
+| Reuse ingestion's `run_id` as the load's `consumer_run_id`. | Two different units of work conflated; target row `_ods_run_id` points to ingestion, not load. | Can't tell which run wrote which target rows. |
+| Multi-source gold writes only one edge. | Only one parent file recorded; the rest are silently lost. | `lineage_edge` query for `consumer_run_id = <gold_run>` returns fewer orchestrators than inputs actually consumed. |
 
 ### A1.9 Rules for `edge_type`
 
@@ -700,7 +700,7 @@ Two places use `edge_type`. **Do not confuse them:**
 | Location | Purpose | Records data movement? |
 |---|---|---|
 | `pipeline.lineage_edge.edge_type` | Real data lineage — one row per data movement. | **Yes.** Producer/consumer relationship between runs/files. |
-| `pipeline.run_log.parents[].edge_type` | Relationship metadata — why this run exists. | **No.** Orchestration, trigger, or replay link only. |
+| `pipeline.run_log.orchestrators[].edge_type` | Relationship metadata — why this run exists. | **No.** Orchestration, trigger, or replay link only. |
 
 ### A2.1 Lineage edge types (`pipeline.lineage_edge`)
 
@@ -715,12 +715,12 @@ Every value below comes from grepping the current codebase (`glue/jobs/`, `airfl
 | `api_to_kafka` | `airflow/dags/dag_api_pull.py` | API endpoint + cursor window | Kafka topic | API-pull poller pushed records straight to Kafka. |
 | `api_to_archive` | `airflow/dags/dag_api_pull.py` | API endpoint + cursor window | S3 archive URI (JSONL snapshot) | API-pull poller snapshotted the raw response for replay/audit. |
 | `silver_to_gold` | Multi-source gold jobs (see `control-table-writes-direct-postgres.md` §Multi-Source) | S3 silver URI | S3 gold URI / Postgres target | Gold builder consumed multiple silver inputs; one edge per input. |
-| `replay` | `airflow/dags/dag_ingest.py`, recovery runbooks | Same as original failed run | Same as original failed run | New run is a replay of a previously failed run. `parent_run_id = <original failed run>`. |
+| `replay` | `airflow/dags/dag_ingest.py`, recovery runbooks | Same as original failed run | Same as original failed run | New run is a replay of a previously failed run. `upstream_run_id = <original failed run>`. |
 | `message_correlation` | Control-plane sequence (event-driven path) | `_ods_source_event_id` | downstream artifact | Links a downstream artifact back to the originating Kafka event. |
 
-### A2.2 Run-log parent edge types (`pipeline.run_log.parents[]`)
+### A2.2 Run-log parent edge types (`pipeline.run_log.orchestrators[]`)
 
-These are **not** lineage edges. They live in the JSONB `parents` column of `run_log` and describe **why** a run was started.
+These are **not** lineage edges. They live in the JSONB `orchestrators` column of `run_log` and describe **why** a run was started.
 
 | `edge_type` | Meaning | Example use |
 |---|---|---|
@@ -738,9 +738,9 @@ These are **not** lineage edges. They live in the JSONB `parents` column of `run
 | Where | Meaning |
 |---|---|
 | `lineage_edge.edge_type='raw_to_canonical'` | Canonicalize job moved data from raw S3 to canonical S3. **Actual data movement.** |
-| `run_log.parents[].edge_type='raw_to_canonical'` | This run was triggered by / depends on a canonicalize run. **Just a relationship marker.** |
+| `run_log.orchestrators[].edge_type='raw_to_canonical'` | This run was triggered by / depends on a canonicalize run. **Just a relationship marker.** |
 
-Rule of thumb: if you're inserting into `lineage_edge`, you are recording **data flow**. If you're putting a value into `run_log.parents`, you are recording **why this run started**.
+Rule of thumb: if you're inserting into `lineage_edge`, you are recording **data flow**. If you're putting a value into `run_log.orchestrators`, you are recording **why this run started**.
 
 ### A2.4 When to invent a new `edge_type`
 

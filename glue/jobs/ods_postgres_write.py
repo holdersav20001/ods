@@ -228,7 +228,7 @@ def _postgres_count_for_run(conn, target: str, run_id: str) -> int:
 
 def run(*, run_id: str, domain: str, dataset: str, s3_input_path: str,
         file_id: str | None = None,
-        parent_run_id: str | None = None,
+        upstream_run_id: str | None = None,
         airflow_dag_id: str | None = None,
         airflow_run_id: str | None = None) -> int:
     conn = ods_pipeline.connect()
@@ -265,8 +265,8 @@ def run(*, run_id: str, domain: str, dataset: str, s3_input_path: str,
             dataset=dataset,
             business_date=None,
             file_id=file_id,
-            parents=[{"run_id": parent_run_id, "edge_type": "orchestrates"}]
-            if parent_run_id else None,
+            orchestrators=[{"run_id": upstream_run_id, "edge_type": "orchestrates"}]
+            if upstream_run_id else None,
         )
         ods_pipeline.stages.start(
             conn,
@@ -437,15 +437,15 @@ def run(*, run_id: str, domain: str, dataset: str, s3_input_path: str,
             }, sort_keys=True),
         )
 
-        # parent_file_id alone is sufficient to anchor lineage; we
-        # intentionally do NOT pass parent_run_id here because the
+        # source_file_id alone is sufficient to anchor lineage; we
+        # intentionally do NOT pass upstream_run_id here because the
         # orchestration run_id (when present) is already linked via
-        # run_log.parents and lineage_edge.parent_run_id has an FK to
+        # run_log.orchestrators and lineage_edge.upstream_run_id has an FK to
         # run_log.run_id which the standalone job cannot guarantee.
         ods_pipeline.lineage.write_edge(
             conn,
-            child_run_id=run_id,
-            parent_file_id=file_id,
+            consumer_run_id=run_id,
+            source_file_id=file_id,
             edge_type="curated_to_postgres",
             source_ref=s3_input_path,
             target_ref=f"jdbc:postgresql://.../{target}",
@@ -513,7 +513,7 @@ def _parse_args(argv=None):
                         help="curated parquet path, e.g. "
                              "s3://ods-curated-local/<domain>/<ds>/date=...")
     parser.add_argument("--file_id", default=None)
-    parser.add_argument("--parent_run_id", default=None)
+    parser.add_argument("--upstream_run_id", default=None)
     parser.add_argument("--airflow_dag_id", default=None)
     parser.add_argument("--airflow_run_id", default=None)
     return parser.parse_args(argv)
@@ -527,7 +527,7 @@ if __name__ == "__main__":
         dataset=args.dataset,
         s3_input_path=args.s3_input_path,
         file_id=args.file_id,
-        parent_run_id=args.parent_run_id,
+        upstream_run_id=args.upstream_run_id,
         airflow_dag_id=args.airflow_dag_id,
         airflow_run_id=args.airflow_run_id,
     ))

@@ -43,8 +43,8 @@ def finalise_success(
     # 1. Lineage first — so "succeeded" later implies the edge exists.
     ods_pipeline.lineage.write_edge(
         conn,
-        child_run_id=run_id,
-        parent_file_id=file_id,
+        consumer_run_id=run_id,
+        source_file_id=file_id,
         edge_type="raw_to_curated",
         source_ref=s3_input_path,
         target_ref=curated_uri,

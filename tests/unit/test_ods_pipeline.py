@@ -185,22 +185,22 @@ class TestRunsUpdate:
 class TestLineageWriteEdge:
     def test_raises_when_both_parents_none(self):
         conn, _ = _mock_conn()
-        with pytest.raises(ValueError, match="parent_run_id or parent_file_id"):
+        with pytest.raises(ValueError, match="upstream_run_id or source_file_id"):
             lineage.write_edge(
                 conn,
-                child_run_id="run-abc",
+                consumer_run_id="run-abc",
                 edge_type="raw_to_curated",
-                parent_run_id=None,
-                parent_file_id=None,
+                upstream_run_id=None,
+                source_file_id=None,
             )
 
     def test_succeeds_with_parent_run_id(self):
         conn, cursor = _mock_conn()
         lineage.write_edge(
             conn,
-            child_run_id="run-child",
+            consumer_run_id="run-child",
             edge_type="raw_to_curated",
-            parent_run_id="run-parent",
+            upstream_run_id="run-parent",
         )
         conn.commit.assert_called_once()
 
@@ -208,9 +208,9 @@ class TestLineageWriteEdge:
         conn, cursor = _mock_conn()
         lineage.write_edge(
             conn,
-            child_run_id="run-child",
+            consumer_run_id="run-child",
             edge_type="curated_to_kafka",
-            parent_file_id="file-uuid",
+            source_file_id="file-uuid",
         )
         conn.commit.assert_called_once()
 
@@ -218,10 +218,10 @@ class TestLineageWriteEdge:
         conn, cursor = _mock_conn()
         lineage.write_edge(
             conn,
-            child_run_id="run-child",
+            consumer_run_id="run-child",
             edge_type="raw_to_curated",
-            parent_run_id="run-parent",
-            parent_file_id="file-uuid",
+            upstream_run_id="run-parent",
+            source_file_id="file-uuid",
         )
         conn.commit.assert_called_once()
 

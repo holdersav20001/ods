@@ -62,7 +62,7 @@ Usage
         file_id = ods_pipeline.files.upsert(conn, domain="insurance", ...)
         ods_pipeline.runs.start(conn, run_id=run_id, ...)
         ods_pipeline.stages.write(conn, run_id=run_id, stage=ods_pipeline.Stage.RAW_READ, ...)
-        ods_pipeline.lineage.write_edge(conn, child_run_id=run_id, ...)
+        ods_pipeline.lineage.write_edge(conn, consumer_run_id=run_id, ...)
         ods_pipeline.runs.finish(conn, run_id=run_id, status="succeeded")
 
     ods_pipeline.events.produce("run_succeeded", run_id=run_id, ...)
@@ -927,7 +927,7 @@ def _write_pg(payload: dict) -> None:
 ### `ods_pipeline\files.py`
 
 ```python
-"""pipeline.file_catalogue and pipeline.file_state operations."""
+"""pipeline.file_catalogue and pipeline.file_processing_attempt operations."""
 from __future__ import annotations
 
 import ods_ingestion_control as control
@@ -997,7 +997,7 @@ def set_state(
     record_count: int | None = None,
     error_reason: str | None = None,
 ) -> None:
-    """Upsert ``pipeline.file_state`` for *s3_path*."""
+    """Upsert ``pipeline.file_processing_attempt`` for *s3_path*."""
     control.set_file_state(
         conn,
         s3_path=s3_path,
@@ -1012,7 +1012,7 @@ def get_state(conn, s3_path: str) -> str | None:
     """Return the current status string for *s3_path*, or ``None`` if not found."""
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT status FROM pipeline.file_state WHERE s3_path = %s",
+            "SELECT status FROM pipeline.file_processing_attempt WHERE s3_path = %s",
             (s3_path,),
         )
         row = cur.fetchone()
@@ -1539,7 +1539,7 @@ two-layer match below:
 
   1. A replay of the same ``file_id`` with a different api_pull poll
      would match a "latest by file_id" lookup. Fixed by requiring the
-     ``triggered_by_api_pull`` edge in ``run_log.parents``.
+     ``triggered_by_api_pull`` edge in ``run_log.orchestrators``.
   2. TriggerDagRunOperator retries, manual re-triggers, or bugs could
      produce TWO rows that both carry the ``triggered_by_api_pull``
      edge for the same ``api_pull_run_id``. A "latest by edge" lookup
@@ -1591,7 +1591,7 @@ def ingest_status_for_api_pull_run(
 
       * If ``expected_parent_run_id`` is supplied, look up by PK and
         verify the ``triggered_by_api_pull`` edge is present in
-        ``run_log.parents``. Returns the status iff both match.
+        ``run_log.orchestrators``. Returns the status iff both match.
       * Otherwise, fall back to JSONB containment on the edge alone.
         If MORE THAN ONE row matches, return ``None`` â€” the lookup is
         ambiguous and the caller (finalise_watermark) MUST NOT promote
@@ -1612,7 +1612,7 @@ def ingest_status_for_api_pull_run(
                   FROM pipeline.run_log
                  WHERE run_id = %s::uuid
                    AND pipeline_type = 's3_batch'
-                   AND parents @> %s::jsonb
+                   AND orchestrators @> %s::jsonb
                 """,
                 (expected_parent_run_id, needle),
             )
@@ -1626,7 +1626,7 @@ def ingest_status_for_api_pull_run(
             SELECT status
               FROM pipeline.run_log
              WHERE pipeline_type = 's3_batch'
-               AND parents @> %s::jsonb
+               AND orchestrators @> %s::jsonb
              ORDER BY started_at DESC NULLS LAST, run_id::text DESC
              LIMIT 2
             """,
@@ -2707,33 +2707,33 @@ import ods_ingestion_control as control
 def write_edge(
     conn,
     *,
-    child_run_id: str,
+    consumer_run_id: str,
     edge_type: str,
-    parent_run_id: str | None = None,
-    parent_file_id: str | None = None,
+    upstream_run_id: str | None = None,
+    source_file_id: str | None = None,
     source_ref: str | None = None,
     target_ref: str | None = None,
     record_count: int | None = None,
 ) -> None:
     """Insert one row into ``pipeline.lineage_edge``.
 
-    Either ``parent_run_id`` or ``parent_file_id`` (or both) should be supplied.
+    Either ``upstream_run_id`` or ``source_file_id`` (or both) should be supplied.
 
     Common *edge_type* values (use these constants in callers):
       * ``"raw_to_curated"``   â€” S3 raw â†’ S3 curated (written by ingestion job)
       * ``"curated_to_kafka"`` â€” S3 curated â†’ Kafka topic (written by publish job)
       * ``"curated_to_postgres"`` â€” S3 curated â†’ Postgres table
     """
-    if parent_run_id is None and parent_file_id is None:
+    if upstream_run_id is None and source_file_id is None:
         raise ValueError(
-            "write_edge requires at least one of parent_run_id or parent_file_id"
+            "write_edge requires at least one of upstream_run_id or source_file_id"
         )
     control.write_lineage_edge(
         conn,
-        child_run_id=child_run_id,
+        consumer_run_id=consumer_run_id,
         edge_type=edge_type,
-        parent_run_id=parent_run_id,
-        parent_file_id=parent_file_id,
+        upstream_run_id=upstream_run_id,
+        source_file_id=source_file_id,
         source_ref=source_ref,
         target_ref=target_ref,
         record_count=record_count,
@@ -2823,7 +2823,7 @@ def correlate(
 
     if pattern_type == PatternType.FILE:
         # Legacy: file pattern allows correlation by run_id as a secondary key.
-        ctx_run = context.get("_ods_run_id") or context.get("run_id") or context.get("parent_run_id")
+        ctx_run = context.get("_ods_run_id") or context.get("run_id") or context.get("upstream_run_id")
         msg_run = message.get("_ods_run_id")
         if ctx_value and msg_value and str(ctx_value) == str(msg_value):
             return True
@@ -2877,7 +2877,7 @@ def start_run(
     business_date: str | None = None,
     kafka_topic: str | None = None,
     expected_count: int | None = None,
-    parents: list[dict[str, Any]] | None = None,
+    orchestrators: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Start a message/API run and open the receive stage.
 
@@ -2893,7 +2893,7 @@ def start_run(
         source_application=source_application,
         correlation=correlation,
     )
-    parent_payload = list(parents or [])
+    parent_payload = list(orchestrators or [])
     parent_payload.append({
         "edge_type": "message_correlation",
         "source_application": source_application,
@@ -2907,7 +2907,7 @@ def start_run(
         dataset=dataset,
         business_date=business_date,
         kafka_topic=kafka_topic,
-        parents=parent_payload,
+        orchestrators=parent_payload,
     )
     stages.start(
         conn,
@@ -3454,7 +3454,7 @@ ALLOWED_RUN_FIELDS: frozenset[str] = frozenset({
     "kafka_offset_end",
     "config_version_id",
     "schema_version_id",
-    "parents",
+    "orchestrators",
     "runtime_context",
     "error_summary",
     "file_id",
@@ -3769,7 +3769,7 @@ if __name__ == "__main__":
 
 Operators inspect S3 DLQ records and replay specific envelopes back through
 the canonical pipeline. Replay creates a new ``run_log`` row linked via
-``lineage_edge`` (``edge_type='replay'``, ``parent_run_id=<original failed
+``lineage_edge`` (``edge_type='replay'``, ``upstream_run_id=<original failed
 run>``) so the original evidence is preserved.
 
 Designed to be unit-testable: side-effects (S3, Kafka, Postgres) are passed
@@ -3907,10 +3907,10 @@ class _DlqOps:
                    domain=domain or "unknown",
                    dataset=dataset or "unknown",
                    business_date=envelope.get("_ods_business_date"),
-                   parents=[original_run] if original_run else None)
+                   orchestrators=[original_run] if original_run else None)
         if original_run:
-            lineage.write_edge(self._pg, child_run_id=replay_run_id,
-                               parent_run_id=original_run,
+            lineage.write_edge(self._pg, consumer_run_id=replay_run_id,
+                               upstream_run_id=original_run,
                                edge_type="replay",
                                source_ref=s3_uri,
                                target_ref=f"kafka://{target_topic}",
@@ -4923,7 +4923,7 @@ def start(
     kafka_topic: str | None = None,
     config_version_id=None,
     schema_version_id=None,
-    parents=None,
+    orchestrators=None,
     runtime_context=None,
 ) -> None:
     """Insert a new ``run_log`` row with ``status='running'``.
@@ -4944,7 +4944,7 @@ def start(
             kafka_topic=kafka_topic,
             config_version_id=config_version_id,
             schema_version_id=schema_version_id,
-            parents=parents,
+            orchestrators=orchestrators,
             runtime_context=runtime_context,
         )
     except Exception as exc:
@@ -5004,7 +5004,7 @@ def finalise(conn, run_id: str, *, commit: bool = True) -> None:
 
     Asserts:
       1. If ``record_count_published > 0``, at least one ``lineage_edge`` row
-         exists with ``child_run_id = run_id`` (no orphan published runs).
+         exists with ``consumer_run_id = run_id`` (no orphan published runs).
       2. No non-terminal ``run_stage_log`` rows exist for ``run_id`` â€” every
          opened stage must have been closed.
 
@@ -5030,7 +5030,7 @@ def finalise(conn, run_id: str, *, commit: bool = True) -> None:
         cur.execute(
             """
             SELECT COUNT(*) FROM pipeline.lineage_edge
-             WHERE child_run_id = %s
+             WHERE consumer_run_id = %s
             """,
             (run_id,),
         )

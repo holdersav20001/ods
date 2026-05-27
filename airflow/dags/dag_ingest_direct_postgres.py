@@ -84,7 +84,7 @@ def init_run() -> dict:
     if missing:
         raise RuntimeError(f"dag_run.conf missing keys: {missing}")
 
-    parent_run_id = conf.get("parent_run_id") or str(uuid.uuid4())
+    upstream_run_id = conf.get("upstream_run_id") or str(uuid.uuid4())
     ingest_run_id = conf.get("ingest_run_id") or str(uuid.uuid4())
     pg_write_run_id = conf.get("pg_write_run_id") or str(uuid.uuid4())
 
@@ -128,7 +128,7 @@ def init_run() -> dict:
 
         ods_pipeline.runs.start(
             conn,
-            run_id=parent_run_id,
+            run_id=upstream_run_id,
             pipeline_type="s3_batch",
             domain=conf["domain"],
             dataset=conf["dataset"],
@@ -145,7 +145,7 @@ def init_run() -> dict:
             business_date=conf["business_date"],
             file_id=conf["file_id"],
             config_version_id=config_version_id,
-            parents=[{"run_id": parent_run_id, "edge_type": "orchestrates"}],
+            orchestrators=[{"run_id": upstream_run_id, "edge_type": "orchestrates"}],
         )
         ods_pipeline.runs.start(
             conn,
@@ -156,14 +156,14 @@ def init_run() -> dict:
             business_date=conf["business_date"],
             file_id=conf["file_id"],
             config_version_id=config_version_id,
-            parents=[{"run_id": parent_run_id, "edge_type": "orchestrates"}],
+            orchestrators=[{"run_id": upstream_run_id, "edge_type": "orchestrates"}],
         )
 
         ods_pipeline.lineage.write_edge(
             conn,
-            child_run_id=ingest_run_id,
-            parent_run_id=parent_run_id,
-            parent_file_id=conf["file_id"],
+            consumer_run_id=ingest_run_id,
+            upstream_run_id=upstream_run_id,
+            source_file_id=conf["file_id"],
             edge_type="raw_to_curated",
         )
     finally:
@@ -171,7 +171,7 @@ def init_run() -> dict:
 
     ods_pipeline.events.produce(
         "run_started",
-        run_id=parent_run_id,
+        run_id=upstream_run_id,
         domain=conf["domain"],
         dataset=conf["dataset"],
         business_date=conf["business_date"],
@@ -180,8 +180,8 @@ def init_run() -> dict:
 
     return {
         **conf,
-        "run_id": parent_run_id,
-        "parent_run_id": parent_run_id,
+        "run_id": upstream_run_id,
+        "upstream_run_id": upstream_run_id,
         "ingest_run_id": ingest_run_id,
         "pg_write_run_id": pg_write_run_id,
         "s3_raw_path": s3_raw_path,
@@ -288,7 +288,7 @@ with DAG(
             "--dataset {{ ti.xcom_pull(task_ids='init_run')['dataset'] }} "
             "--s3_input_path {{ ti.xcom_pull(task_ids='init_run')['s3_raw_path'] }} "
             "--file_id {{ ti.xcom_pull(task_ids='init_run')['file_id'] }} "
-            "--parent_run_id {{ ti.xcom_pull(task_ids='init_run')['parent_run_id'] }} "
+            "--upstream_run_id {{ ti.xcom_pull(task_ids='init_run')['upstream_run_id'] }} "
             "--airflow_dag_id {{ dag.dag_id }} "
             "--airflow_run_id {{ run_id }}"
         ),
@@ -320,7 +320,7 @@ with DAG(
             "--dataset {{ ti.xcom_pull(task_ids='init_run')['dataset'] }} "
             "--s3_input_path {{ ti.xcom_pull(task_ids='init_run')['s3_curated_path'] }} "
             "--file_id {{ ti.xcom_pull(task_ids='init_run')['file_id'] }} "
-            "--parent_run_id {{ ti.xcom_pull(task_ids='init_run')['parent_run_id'] }} "
+            "--upstream_run_id {{ ti.xcom_pull(task_ids='init_run')['upstream_run_id'] }} "
             "--airflow_dag_id {{ dag.dag_id }} "
             "--airflow_run_id {{ run_id }}"
         ),

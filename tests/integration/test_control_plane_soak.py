@@ -40,7 +40,7 @@ def cleanup(pg_conn):
             )
             cur.execute(
                 "DELETE FROM pipeline.lineage_edge "
-                "WHERE child_run_id IN (SELECT run_id FROM pipeline.run_log "
+                "WHERE consumer_run_id IN (SELECT run_id FROM pipeline.run_log "
                 "                        WHERE domain=%s AND dataset=%s)",
                 (DOMAIN, DATASET),
             )
@@ -99,8 +99,8 @@ def _drive_one_run(
     )
     ods_pipeline.lineage.write_edge(
         pg_conn,
-        child_run_id=run_id,
-        parent_file_id=file_id,
+        consumer_run_id=run_id,
+        source_file_id=file_id,
         edge_type="raw_to_curated",
         source_ref=s3_path,
         target_ref=f"s3://curated/{DATASET}/{iteration:03d}/",
@@ -177,7 +177,7 @@ def test_control_plane_soak_holds_state_across_many_runs(pg_conn, cleanup):
     with pg_conn.cursor() as cur:
         cur.execute(
             "SELECT COUNT(*) FROM pipeline.lineage_edge "
-            "WHERE child_run_id::text = ANY(%s)", (run_ids,),
+            "WHERE consumer_run_id::text = ANY(%s)", (run_ids,),
         )
         assert cur.fetchone()[0] == ITERATIONS
 

@@ -250,7 +250,7 @@ def test_risk_canonicalize_job_writes_t1_recon(pg):
         "--transform_yaml_path", "/home/glue_user/patterns/insurance/risk.yaml",
         "--offset_ranges", '{"0":{"start":0,"end":3}}',
         "--file_id", file_id,
-        "--parent_run_id", raw_run_id,
+        "--upstream_run_id", raw_run_id,
         "--business_date", "2026-05-01",
     ]
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)

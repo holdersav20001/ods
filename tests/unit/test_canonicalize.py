@@ -63,12 +63,12 @@ def test_canonicalize_context_filter_prefers_file_id():
     assert matches_context(
         {"_ods_file_id": "file-1", "_ods_run_id": "raw-run-2"},
         file_id="file-1",
-        parent_run_id="raw-run-1",
+        upstream_run_id="raw-run-1",
     )
     assert not matches_context(
         {"_ods_file_id": "file-2", "_ods_run_id": "raw-run-2"},
         file_id="file-1",
-        parent_run_id="raw-run-1",
+        upstream_run_id="raw-run-1",
     )
 
 
@@ -76,5 +76,5 @@ def test_canonicalize_context_filter_allows_run_id_when_file_absent():
     assert matches_context(
         {"_ods_run_id": "raw-run-1"},
         file_id=None,
-        parent_run_id="raw-run-1",
+        upstream_run_id="raw-run-1",
     )

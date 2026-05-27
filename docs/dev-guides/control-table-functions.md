@@ -33,7 +33,7 @@ with psycopg2.connect(dsn) as conn:
 
 The package only calls `SELECT pipeline.control_*`. The functions own the table
 mutation logic for `pipeline.run_log`, `pipeline.run_stage_log`,
-`pipeline.file_catalogue`, `pipeline.file_state`, `pipeline.lineage_edge`,
+`pipeline.file_catalogue`, `pipeline.file_processing_attempt`, `pipeline.lineage_edge`,
 `pipeline.reconciliation_log`, and `pipeline.run_events`.
 
 Grant projects `EXECUTE` on the functions rather than broad write access to the

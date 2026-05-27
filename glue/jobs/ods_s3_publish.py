@@ -193,7 +193,7 @@ def _write_dlq(spark, failing_df, domain: str, dataset: str,
 
 def run(run_id: str, domain: str, dataset: str, s3_input_path: str,
         file_id: str | None = None,
-        parent_run_id: str | None = None,
+        upstream_run_id: str | None = None,
         airflow_dag_id: str | None = None,
         airflow_run_id: str | None = None) -> int:
     """Top-level entry: guarantees run_log.status='failed' on any unhandled error."""
@@ -201,7 +201,7 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str,
     try:
         return _run_impl(conn, run_id, domain, dataset, s3_input_path,
                          file_id=file_id,
-                         parent_run_id=parent_run_id,
+                         upstream_run_id=upstream_run_id,
                          airflow_dag_id=airflow_dag_id,
                          airflow_run_id=airflow_run_id)
     except Exception as exc:
@@ -219,7 +219,7 @@ def run(run_id: str, domain: str, dataset: str, s3_input_path: str,
 
 def _run_impl(conn, run_id: str, domain: str, dataset: str, s3_input_path: str,
               file_id: str | None = None,
-              parent_run_id: str | None = None,
+              upstream_run_id: str | None = None,
               airflow_dag_id: str | None = None,
               airflow_run_id: str | None = None) -> int:
     """Execute the publish pipeline. Returns process exit code."""
@@ -273,8 +273,8 @@ def _run_impl(conn, run_id: str, domain: str, dataset: str, s3_input_path: str,
         file_id=file_id,
         kafka_topic=target_topic,
         config_version_id=config_version,
-        parents=[{"run_id": parent_run_id, "edge_type": "orchestrates"}]
-        if parent_run_id else None,
+        orchestrators=[{"run_id": upstream_run_id, "edge_type": "orchestrates"}]
+        if upstream_run_id else None,
     )
     ods_pipeline.files.set_state(conn, s3_input_path, run_id, "processing")
 
@@ -611,8 +611,8 @@ def _run_impl(conn, run_id: str, domain: str, dataset: str, s3_input_path: str,
     if t0_passed and _file_id:
         ods_pipeline.lineage.write_edge(
             conn,
-            child_run_id=run_id,
-            parent_file_id=_file_id,
+            consumer_run_id=run_id,
+            source_file_id=_file_id,
             edge_type="curated_to_kafka",
             source_ref=s3_input_path,
             target_ref=f"kafka://{target_topic}",
@@ -669,7 +669,7 @@ def _parse_args(argv=None):
     parser.add_argument("--file_id", required=False, default=None,
                         help="UUID from file_catalogue — explicit lineage contract. "
                              "When provided, skips date-scoped catalogue lookup.")
-    parser.add_argument("--parent_run_id", default=None,
+    parser.add_argument("--upstream_run_id", default=None,
                         help="Optional s3_batch parent run id for run hierarchy")
     parser.add_argument("--airflow_dag_id", default=None,
                         help="Airflow DAG id for CloudWatch/Airflow correlation")
@@ -687,7 +687,7 @@ if __name__ == "__main__":
             dataset=args.dataset,
             s3_input_path=args.s3_input_path,
             file_id=args.file_id,
-            parent_run_id=args.parent_run_id,
+            upstream_run_id=args.upstream_run_id,
             airflow_dag_id=args.airflow_dag_id,
             airflow_run_id=args.airflow_run_id,
         )

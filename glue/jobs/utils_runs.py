@@ -16,7 +16,7 @@ def upsert_run_header(
     kafka_topic=None,
     config_version_id=None,
     schema_version_id=None,
-    parents=None,
+    orchestrators=None,
 ) -> None:
     import psycopg2
 
@@ -34,7 +34,7 @@ def upsert_run_header(
             kafka_topic=kafka_topic,
             config_version_id=config_version_id,
             schema_version_id=schema_version_id,
-            parents=parents,
+            orchestrators=orchestrators,
         )
 
 
