@@ -414,6 +414,7 @@ def _glue_env_args() -> list[str]:
     base += [
         "-v", f"{REPO_ROOT}/glue/jobs:/home/glue_user/workspace/jobs",
         "-v", f"{REPO_ROOT}/ods_pipeline:/home/glue_user/ods_pipeline",
+        "-v", f"{REPO_ROOT}/ods_ingestion_control:/home/glue_user/ods_ingestion_control",
     ]
     return base
 

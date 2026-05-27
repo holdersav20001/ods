@@ -197,6 +197,7 @@ def _glue_env_args() -> list[str]:
         "-e", "ODS_SOURCE_APPLICATION=sftp",
         "-v", f"{REPO_ROOT}/glue/jobs:/home/glue_user/workspace/jobs",
         "-v", f"{REPO_ROOT}/ods_pipeline:/home/glue_user/ods_pipeline",
+        "-v", f"{REPO_ROOT}/ods_ingestion_control:/home/glue_user/ods_ingestion_control",
         "-v", f"{REPO_ROOT}/patterns:/home/glue_user/workspace/jobs/patterns",
     ]
 

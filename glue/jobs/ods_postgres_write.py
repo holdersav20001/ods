@@ -472,14 +472,9 @@ def run(*, run_id: str, domain: str, dataset: str, s3_input_path: str,
         )
 
         if file_id:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "UPDATE pipeline.file_catalogue "
-                    "SET state='sunk', state_updated_at=NOW(), last_run_id=%s "
-                    "WHERE file_id=%s",
-                    (run_id, file_id),
-                )
-            conn.commit()
+            ods_pipeline.files.update_catalogue(
+                conn, file_id, state="sunk", last_run_id=run_id,
+            )
 
         ods_pipeline.runs.update(
             conn, run_id,

@@ -54,6 +54,7 @@ def run_ingestion_job(run_id, s3_path, domain="insurance", dataset="policies"):
         "-e", "ENV=local",
         "-v", f"{os.getcwd()}/glue/jobs:/home/glue_user/workspace/jobs",
         "-v", f"{os.getcwd()}/ods_pipeline:/home/glue_user/ods_pipeline",
+        "-v", f"{os.getcwd()}/ods_ingestion_control:/home/glue_user/ods_ingestion_control",
         "ods-glue:local", "spark-submit",
         "--py-files",
         "/home/glue_user/workspace/jobs/utils.py,"
@@ -89,6 +90,7 @@ def run_publish_job(run_id, s3_path, domain="insurance", dataset="policies"):
         "-e", "ENV=local",
         "-v", f"{os.getcwd()}/glue/jobs:/home/glue_user/workspace/jobs",
         "-v", f"{os.getcwd()}/ods_pipeline:/home/glue_user/ods_pipeline",
+        "-v", f"{os.getcwd()}/ods_ingestion_control:/home/glue_user/ods_ingestion_control",
         "ods-glue:local", "spark-submit",
         "--py-files",
         "/home/glue_user/workspace/jobs/utils.py,"

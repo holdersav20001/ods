@@ -48,6 +48,10 @@ ODS_PIPELINE_PATH = os.environ.get(
     "ODS_PIPELINE_PATH",
     "/c/Users/Holde/development/aviva ODS/ods_pipeline",
 )
+ODS_INGESTION_CONTROL_PATH = os.environ.get(
+    "ODS_INGESTION_CONTROL_PATH",
+    "/c/Users/Holde/development/aviva ODS/ods_ingestion_control",
+)
 PATTERNS_PATH = os.environ.get(
     "PATTERNS_PATH",
     "/c/Users/Holde/development/aviva ODS/patterns",
@@ -502,18 +506,15 @@ def _run_statuses(conn, run_ids: list[str]) -> dict[str, str]:
 
 def _close_child_if_running(conn, run_id: str, *, status: str, reason: str) -> None:
     with conn.cursor() as cur:
-        cur.execute(
-            """
-            UPDATE pipeline.run_log
-               SET status=%s,
-                   error_summary=COALESCE(error_summary, %s),
-                   ended_at=COALESCE(ended_at, NOW())
-             WHERE run_id=%s
-               AND status='running'
-            """,
-            (status, reason, run_id),
+        cur.execute("SELECT error_summary, status FROM pipeline.run_log WHERE run_id=%s", (run_id,))
+        row = cur.fetchone()
+    if row and row[1] == "running":
+        ods_pipeline.runs.update(
+            conn,
+            run_id,
+            status=status,
+            error_summary=row[0] or reason,
         )
-    conn.commit()
 
 
 @task(trigger_rule=TriggerRule.ALL_DONE)
@@ -597,29 +598,15 @@ def finalise(ctx: dict) -> None:
             final_status = parent_status
         else:
             ods_pipeline.runs.update(conn, ctx["run_id"], status="succeeded")
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    UPDATE pipeline.file_catalogue
-                       SET state='sunk', state_updated_at=NOW(), last_run_id=%s
-                     WHERE file_id=%s
-                    """,
-                    (sink_run_id, ctx["file_id"]),
-                )
-            conn.commit()
+            ods_pipeline.files.update_catalogue(
+                conn, ctx["file_id"], state="sunk", last_run_id=sink_run_id,
+            )
             final_status = "succeeded"
 
         if final_status == "failed":
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    UPDATE pipeline.file_catalogue
-                       SET state='failed', state_updated_at=NOW(), last_run_id=%s
-                     WHERE file_id=%s
-                    """,
-                    (ctx["run_id"], ctx["file_id"]),
-                )
-            conn.commit()
+            ods_pipeline.files.update_catalogue(
+                conn, ctx["file_id"], state="failed", last_run_id=ctx["run_id"],
+            )
     finally:
         conn.close()
 
@@ -645,6 +632,11 @@ with DAG(
     _glue_mounts = [
         Mount(source=GLUE_JOBS_PATH, target="/home/glue_user/workspace/jobs", type="bind"),
         Mount(source=ODS_PIPELINE_PATH, target="/home/glue_user/ods_pipeline", type="bind"),
+        Mount(
+            source=ODS_INGESTION_CONTROL_PATH,
+            target="/home/glue_user/ods_ingestion_control",
+            type="bind",
+        ),
     ]
     _canonicalize_mounts = _glue_mounts + [
         Mount(source=PATTERNS_PATH, target="/home/glue_user/patterns", type="bind"),

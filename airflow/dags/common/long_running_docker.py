@@ -22,13 +22,25 @@ Public API: :func:`make_long_running_docker_operator`.
 """
 from __future__ import annotations
 
-import json
 import logging
 import os
+import sys
 import threading
 import time
 import uuid
 from typing import Any, Optional
+
+# Ensure ods_pipeline is importable both locally and when Airflow task runners
+# import helpers through a single DAG file subdir.
+_COMMON_DIR = os.path.dirname(__file__)
+for _root in (
+    os.path.abspath(os.path.join(_COMMON_DIR, "..", "..")),
+    os.path.abspath(os.path.join(_COMMON_DIR, "..", "..", "..")),
+):
+    if _root not in sys.path:
+        sys.path.insert(0, _root)
+
+import ods_pipeline
 
 # Airflow / docker SDK imports are deferred to runtime so unit tests can
 # instantiate the class without an Airflow runtime present.
@@ -80,30 +92,22 @@ def _write_heartbeat_row(
     # produced invalid JSON when ``task_id`` / ``container_id`` contained
     # quotes or backslashes — the INSERT then failed under jsonb parsing.
     # Build via ``json.dumps`` and bind separately.
-    metrics_json = json.dumps({
+    metrics = {
         "task_id": task_id,
         "container_id": container_id or "unknown",
-    })
+    }
     try:
         with conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    INSERT INTO pipeline.run_stage_log
-                        (run_id, stage, status, event_type, attempt_number,
-                         started_at, ended_at,
-                         metrics)
-                    VALUES (%s, %s, %s, %s, %s, NOW(), NOW(), %s)
-                    """,
-                    (
-                        run_id,
-                        stage,
-                        "running",
-                        "stage_heartbeat",
-                        1,
-                        metrics_json,
-                    ),
-                )
+            ods_pipeline.stages.write(
+                conn,
+                run_id=run_id,
+                stage=stage,
+                status="running",
+                event_type=ods_pipeline.StageEvent.HEARTBEAT,
+                attempt_number=1,
+                metrics=metrics,
+                commit=False,
+            )
     except Exception:
         if owns_conn:
             try:

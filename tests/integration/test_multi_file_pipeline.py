@@ -42,6 +42,7 @@ GLUE_COMMON = [
     "-e", "ENV=local",
     "-v", f"{os.getcwd()}/glue/jobs:/home/glue_user/workspace/jobs",
     "-v", f"{os.getcwd()}/ods_pipeline:/home/glue_user/ods_pipeline",
+    "-v", f"{os.getcwd()}/ods_ingestion_control:/home/glue_user/ods_ingestion_control",
 ]
 
 PY_FILES = (

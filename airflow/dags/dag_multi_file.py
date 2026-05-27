@@ -41,6 +41,10 @@ ODS_PIPELINE_PATH = os.environ.get(
     "ODS_PIPELINE_PATH",
     "/c/Users/Holde/development/aviva ODS/ods_pipeline",
 )
+ODS_INGESTION_CONTROL_PATH = os.environ.get(
+    "ODS_INGESTION_CONTROL_PATH",
+    "/c/Users/Holde/development/aviva ODS/ods_ingestion_control",
+)
 GLUE_IMAGE = os.environ.get("GLUE_IMAGE", "ods-glue:local")
 GLUE_ENV = {
     "AWS_ACCESS_KEY_ID":      "test",
@@ -176,14 +180,9 @@ def finalise(ctx: dict) -> None:
     conn = psycopg2.connect(PG_DSN)
     try:
         ods_pipeline.runs.update(conn, ctx["run_id"], status="succeeded")
-        with conn.cursor() as cur:
-            cur.execute(
-                "UPDATE pipeline.file_catalogue "
-                "SET state='staged', state_updated_at=NOW(), last_run_id=%s "
-                "WHERE file_id=%s",
-                (ctx["run_id"], ctx["file_id"]),
-            )
-        conn.commit()
+        ods_pipeline.files.update_catalogue(
+            conn, ctx["file_id"], state="staged", last_run_id=ctx["run_id"],
+        )
     finally:
         conn.close()
 
@@ -223,6 +222,11 @@ with DAG(
         mounts=[
             Mount(source=GLUE_JOBS_PATH,    target="/home/glue_user/workspace/jobs", type="bind"),
             Mount(source=ODS_PIPELINE_PATH, target="/home/glue_user/ods_pipeline",   type="bind"),
+            Mount(
+                source=ODS_INGESTION_CONTROL_PATH,
+                target="/home/glue_user/ods_ingestion_control",
+                type="bind",
+            ),
         ],
     )
 
@@ -257,6 +261,11 @@ with DAG(
         mounts=[
             Mount(source=GLUE_JOBS_PATH,    target="/home/glue_user/workspace/jobs", type="bind"),
             Mount(source=ODS_PIPELINE_PATH, target="/home/glue_user/ods_pipeline",   type="bind"),
+            Mount(
+                source=ODS_INGESTION_CONTROL_PATH,
+                target="/home/glue_user/ods_ingestion_control",
+                type="bind",
+            ),
         ],
     )
 

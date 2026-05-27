@@ -227,6 +227,7 @@ def test_risk_canonicalize_job_writes_t1_recon(pg):
         "-e", "ENV=local",
         "-v", f"{ROOT / 'glue' / 'jobs'}:/home/glue_user/workspace/jobs",
         "-v", f"{ROOT / 'ods_pipeline'}:/home/glue_user/ods_pipeline",
+        "-v", f"{ROOT / 'ods_ingestion_control'}:/home/glue_user/ods_ingestion_control",
         "-v", f"{ROOT / 'patterns'}:/home/glue_user/patterns",
         "ods-glue:local",
         "spark-submit",

@@ -2,10 +2,21 @@
 from __future__ import annotations
 
 import os
+import sys
 import time
 from typing import Optional
 
 import requests
+
+# Ensure ods_pipeline is importable both locally and when Airflow task runners
+# import helpers through a single DAG file subdir.
+_COMMON_DIR = os.path.dirname(__file__)
+for _root in (
+    os.path.abspath(os.path.join(_COMMON_DIR, "..", "..")),
+    os.path.abspath(os.path.join(_COMMON_DIR, "..", "..", "..")),
+):
+    if _root not in sys.path:
+        sys.path.insert(0, _root)
 
 from ods_pipeline.offsets import normalise_offset_map, partitions_consumed
 

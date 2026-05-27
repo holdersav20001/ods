@@ -9,10 +9,23 @@ earlier rows.
 from __future__ import annotations
 
 import os
+import sys
 
 import psycopg2
 import psycopg2.extras
 from psycopg2 import sql
+
+# Add likely roots so ods_pipeline is importable both during full DAG parsing
+# and when Airflow LocalExecutor loads only this DAG file by subdir.
+_DAG_DIR = os.path.dirname(__file__)
+for _root in (
+    os.path.abspath(os.path.join(_DAG_DIR, "..")),
+    os.path.abspath(os.path.join(_DAG_DIR, "..", "..")),
+):
+    if _root not in sys.path:
+        sys.path.insert(0, _root)
+
+import ods_pipeline
 
 try:
     import pendulum
@@ -91,31 +104,20 @@ def _insert_recon(
     status,
     detail,
 ):
-    pct = (abs(discrepancy) / max(int(source_count or 0), 1)) * 100
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            INSERT INTO pipeline.reconciliation_log (
-                check_type, run_id, domain, dataset, business_date,
-                source_count, kafka_count, postgres_count,
-                discrepancy_count, discrepancy_pct, status, detail
-            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-            """,
-            (
-                check_type,
-                run_id,
-                domain,
-                dataset,
-                business_date,
-                source_count,
-                kafka_count,
-                postgres_count,
-                discrepancy,
-                round(pct, 4),
-                status,
-                detail,
-            ),
-        )
+    ods_pipeline.reconciliation.write_check(
+        conn,
+        check_type=check_type,
+        run_id=run_id,
+        domain=domain,
+        dataset=dataset,
+        business_date=business_date,
+        source_count=source_count,
+        kafka_count=kafka_count,
+        postgres_count=postgres_count,
+        status=status,
+        detail=detail,
+        commit=False,
+    )
 
 
 def _status(discrepancy: int, source_count: int | None, tol_rec, tol_pct) -> str:

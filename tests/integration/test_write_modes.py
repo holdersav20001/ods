@@ -43,6 +43,7 @@ GLUE_COMMON = [
      ["-v", f"{os.getcwd()}/glue/jobs:/home/glue_user/workspace/jobs"]) + [
     "-v", f"{os.getcwd()}/airflow/dags/common:/home/glue_user/airflow/dags/common",
     "-v", f"{os.getcwd()}/ods_pipeline:/home/glue_user/ods_pipeline",
+    "-v", f"{os.getcwd()}/ods_ingestion_control:/home/glue_user/ods_ingestion_control",
 ]
 
 SPARK = [
