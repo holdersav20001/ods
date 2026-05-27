@@ -186,3 +186,60 @@ def test_start_run_allows_null_business_date(pg_conn, isolated_run):
     assert business_date is None
 
 
+def test_start_and_update_run_runtime_context(pg_conn, isolated_run):
+    rid = isolated_run
+    ods_pipeline.runs.start(
+        pg_conn,
+        run_id=rid,
+        pipeline_type='direct_postgres',
+        domain='insurance',
+        dataset='policies',
+        business_date='2026-04-28',
+        runtime_context={
+            'platform': 'glue',
+            'glue_job_name': 'ods_postgres_write',
+            'glue_job_run_id': 'jr_initial',
+        },
+    )
+    ods_pipeline.runs.update(
+        pg_conn,
+        rid,
+        runtime_context={
+            'platform': 'glue',
+            'glue_job_name': 'ods_postgres_write',
+            'glue_job_run_id': 'jr_initial',
+            'spark_app_id': 'application_123',
+        },
+    )
+    with pg_conn.cursor() as cur:
+        cur.execute("SELECT runtime_context FROM pipeline.run_log WHERE run_id=%s", (rid,))
+        (runtime_context,) = cur.fetchone()
+    assert runtime_context['glue_job_run_id'] == 'jr_initial'
+    assert runtime_context['spark_app_id'] == 'application_123'
+
+
+def test_start_run_runtime_context_is_not_identity_metadata(pg_conn, isolated_run):
+    rid = isolated_run
+    kwargs = dict(
+        run_id=rid,
+        pipeline_type='direct_postgres',
+        domain='insurance',
+        dataset='policies',
+        business_date='2026-04-28',
+    )
+    ods_pipeline.runs.start(
+        pg_conn,
+        **kwargs,
+        runtime_context={'glue_job_run_id': 'jr_initial'},
+    )
+    ods_pipeline.runs.start(
+        pg_conn,
+        **kwargs,
+        runtime_context={'glue_job_run_id': 'jr_retry'},
+    )
+    with pg_conn.cursor() as cur:
+        cur.execute("SELECT runtime_context FROM pipeline.run_log WHERE run_id=%s", (rid,))
+        (runtime_context,) = cur.fetchone()
+    assert runtime_context['glue_job_run_id'] == 'jr_initial'
+
+

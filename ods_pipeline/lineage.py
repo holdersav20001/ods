@@ -1,6 +1,8 @@
 """pipeline.lineage_edge operations."""
 from __future__ import annotations
 
+import ods_ingestion_control as control
+
 
 def write_edge(
     conn,
@@ -26,21 +28,13 @@ def write_edge(
         raise ValueError(
             "write_edge requires at least one of parent_run_id or parent_file_id"
         )
-    try:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                INSERT INTO pipeline.lineage_edge
-                    (child_run_id, parent_run_id, parent_file_id,
-                     edge_type, source_ref, target_ref, record_count)
-                VALUES (%s,%s,%s, %s,%s,%s,%s)
-                """,
-                (
-                    child_run_id, parent_run_id, parent_file_id,
-                    edge_type, source_ref, target_ref, record_count,
-                ),
-            )
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
+    control.write_lineage_edge(
+        conn,
+        child_run_id=child_run_id,
+        edge_type=edge_type,
+        parent_run_id=parent_run_id,
+        parent_file_id=parent_file_id,
+        source_ref=source_ref,
+        target_ref=target_ref,
+        record_count=record_count,
+    )

@@ -156,14 +156,18 @@ class TestRunsUpdate:
         runs.update(conn, "run-123", status="succeeded")
         execute_call = cursor.execute.call_args
         sql = str(execute_call[0][0])
-        assert "ended_at" in sql
+        params = execute_call[0][1]
+        assert "pipeline.control_patch_run" in sql
+        assert params[1].adapted["status"] == "succeeded"
 
     def test_non_terminal_status_no_ended_at(self):
         conn, cursor = _mock_conn()
         runs.update(conn, "run-123", record_count_source=5)
         execute_call = cursor.execute.call_args
         sql = str(execute_call[0][0])
-        assert "ended_at" not in sql
+        params = execute_call[0][1]
+        assert "pipeline.control_patch_run" in sql
+        assert "status" not in params[1].adapted
 
     def test_all_allowed_fields_accepted(self):
         conn, cursor = _mock_conn()
@@ -228,62 +232,65 @@ class TestLineageWriteEdge:
 
 class TestReconciliationWriteCheck:
     def _capture_discrepancy(self, **kwargs):
-        """Call write_check and return the discrepancy_count arg passed to execute."""
+        """Call write_check and return count args passed to the DB function."""
         conn, cursor = _mock_conn()
         reconciliation.write_check(conn, **kwargs)
-        # The execute call passes a tuple of values; discrepancy is at index 10
         args_tuple = cursor.execute.call_args[0][1]
-        discrepancy = args_tuple[10]
-        pct = args_tuple[11]
-        return discrepancy, pct
+        return args_tuple[5], args_tuple[6], args_tuple[7]
 
     def test_source_kafka_discrepancy_zero(self):
-        disc, pct = self._capture_discrepancy(
+        source_count, kafka_count, postgres_count = self._capture_discrepancy(
             check_type="t0", run_id="r1", domain="ins", dataset="pol",
             business_date="2026-04-28",
             source_count=100, kafka_count=100,
             status="ok",
         )
-        assert disc == 0
-        assert pct == 0.0
+        assert source_count == 100
+        assert kafka_count == 100
+        assert postgres_count is None
 
     def test_source_kafka_discrepancy_negative(self):
-        disc, pct = self._capture_discrepancy(
+        source_count, kafka_count, postgres_count = self._capture_discrepancy(
             check_type="t0", run_id="r1", domain="ins", dataset="pol",
             business_date="2026-04-28",
             source_count=10, kafka_count=9,
             status="failed",
         )
-        assert disc == -1
-        assert pct == round(100.0 * -1 / 10, 4)
+        assert source_count == 10
+        assert kafka_count == 9
+        assert postgres_count is None
 
     def test_source_kafka_discrepancy_positive(self):
-        disc, pct = self._capture_discrepancy(
+        source_count, kafka_count, postgres_count = self._capture_discrepancy(
             check_type="t0", run_id="r1", domain="ins", dataset="pol",
             business_date="2026-04-28",
             source_count=10, kafka_count=12,
             status="failed",
         )
-        assert disc == 2
-        assert pct == round(100.0 * 2 / 10, 4)
+        assert source_count == 10
+        assert kafka_count == 12
+        assert postgres_count is None
 
     def test_kafka_postgres_discrepancy(self):
-        disc, pct = self._capture_discrepancy(
+        source_count, kafka_count, postgres_count = self._capture_discrepancy(
             check_type="t1", run_id="r1", domain="ins", dataset="pol",
             business_date="2026-04-28",
             kafka_count=50, postgres_count=48,
             status="failed",
         )
-        assert disc == -2   # postgres_count - kafka_count
+        assert source_count is None
+        assert kafka_count == 50
+        assert postgres_count == 48
 
     def test_no_counts_gives_none_discrepancy(self):
-        disc, pct = self._capture_discrepancy(
+        source_count, kafka_count, postgres_count = self._capture_discrepancy(
             check_type="t0", run_id="r1", domain="ins", dataset="pol",
             business_date="2026-04-28",
             status="ok",
         )
-        assert disc is None
-        assert pct is None
+        assert source_count is None
+        assert kafka_count is None
+        assert postgres_count is None
 
     def test_commits_on_success(self):
         conn, cursor = _mock_conn()

@@ -125,6 +125,7 @@ ALLOWED_RUN_FIELDS: frozenset[str] = frozenset({
     "config_version_id",
     "schema_version_id",
     "parents",
+    "runtime_context",
     "error_summary",
     "file_id",
     "business_date",

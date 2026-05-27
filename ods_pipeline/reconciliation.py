@@ -7,6 +7,8 @@ from typing import Any
 
 from psycopg2 import sql
 
+import ods_ingestion_control as control
+
 
 def write_check(
     conn,
@@ -47,31 +49,22 @@ def write_check(
     if discrepancy is not None and source_count:
         pct = round(100.0 * discrepancy / source_count, 4)
 
-    try:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                INSERT INTO pipeline.reconciliation_log
-                    (check_type, run_id, domain, dataset, business_date,
-                     window_start, window_end,
-                     source_count, kafka_count, postgres_count,
-                     discrepancy_count, discrepancy_pct, status, detail)
-                VALUES (%s,%s,%s,%s,%s, %s,%s, %s,%s,%s, %s,%s,%s,%s)
-                """,
-                (
-                    check_type, run_id, domain, dataset,
-                    None if business_date is None else str(business_date),
-                    window_start, window_end,
-                    source_count, kafka_count, postgres_count,
-                    discrepancy, pct, status, detail,
-                ),
-            )
-        if commit:
-            conn.commit()
-    except Exception:
-        if commit:
-            conn.rollback()
-        raise
+    control.write_reconciliation_check(
+        conn,
+        check_type=check_type,
+        run_id=run_id,
+        domain=domain,
+        dataset=dataset,
+        business_date=None if business_date is None else str(business_date),
+        source_count=source_count,
+        kafka_count=kafka_count,
+        postgres_count=postgres_count,
+        status=status,
+        detail=detail,
+        window_start=window_start,
+        window_end=window_end,
+        commit=commit,
+    )
 
 
 # Default dual-sink table pairs per dataset.

@@ -6,6 +6,7 @@ import json
 import os
 import sys
 
+import ods_ingestion_control as control
 from ods_pipeline._db import build_dsn
 
 TOPIC = "ods.pipeline.run-events"
@@ -161,31 +162,30 @@ def _write_pg(payload: dict) -> None:
                 except Exception:
                     pass  # stages remain None — non-fatal
 
-            cur.execute(
-                """
-                INSERT INTO pipeline.run_events
-                    (run_id, event_type, pipeline_type, domain, dataset, business_date,
-                     status, record_count_source, record_count_dq_pass,
-                     record_count_dq_fail, record_count_published,
-                     kafka_topic, kafka_offset_end, error_summary, occurred_at,
-                     file_id, s3_raw_path, s3_curated_path, file_md5,
-                     kafka_offset_start, stages)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                ON CONFLICT DO NOTHING
-                """,
-                (
-                    payload["run_id"],       payload["event_type"],
-                    payload["pipeline_type"], payload["domain"],
-                    payload["dataset"],       payload["business_date"],
-                    payload["status"],        payload["record_count_source"],
-                    payload["record_count_dq_pass"], payload["record_count_dq_fail"],
-                    payload["record_count_published"], payload["kafka_topic"],
-                    payload["kafka_offset_end"], payload["error_summary"],
-                    payload["occurred_at"],
-                    payload.get("file_id"),        payload.get("s3_raw_path"),
-                    payload.get("s3_curated_path"), payload.get("file_md5"),
-                    payload.get("kafka_offset_start"), stages_json,
-                ),
+            control.record_run_event(
+                conn,
+                run_id=payload["run_id"],
+                event_type=payload["event_type"],
+                pipeline_type=payload["pipeline_type"],
+                domain=payload["domain"],
+                dataset=payload["dataset"],
+                business_date=payload["business_date"],
+                status=payload["status"],
+                record_count_source=payload["record_count_source"],
+                record_count_dq_pass=payload["record_count_dq_pass"],
+                record_count_dq_fail=payload["record_count_dq_fail"],
+                record_count_published=payload["record_count_published"],
+                kafka_topic=payload["kafka_topic"],
+                kafka_offset_end=payload["kafka_offset_end"],
+                error_summary=payload["error_summary"],
+                occurred_at=payload["occurred_at"],
+                file_id=payload.get("file_id"),
+                s3_raw_path=payload.get("s3_raw_path"),
+                s3_curated_path=payload.get("s3_curated_path"),
+                file_md5=payload.get("file_md5"),
+                kafka_offset_start=payload.get("kafka_offset_start"),
+                stages=stages_json,
+                commit=False,
             )
     except Exception as exc:
         print(f"[ods_pipeline.events] WARNING: PG write failed: {exc}", file=sys.stderr)
