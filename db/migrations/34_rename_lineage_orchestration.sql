@@ -309,6 +309,8 @@ BEGIN
            ended_at = CASE
                WHEN p_fields ? 'ended_at'
                    THEN (p_fields->>'ended_at')::timestamp
+               WHEN p_fields->>'status' IN ('succeeded', 'failed', 'partial')
+                   THEN COALESCE(ended_at, NOW())
                ELSE ended_at
            END
      WHERE run_id = p_run_id;

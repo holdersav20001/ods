@@ -38,13 +38,14 @@ def test_glue_job_log_has_config_snapshot(conn):
     )
     assert cur.fetchone() is not None
 
-def test_file_state_status_constraint(conn):
+def test_file_processing_attempt_status_constraint(conn):
     cur = conn.cursor()
     cur.execute(
         "SELECT check_clause FROM information_schema.check_constraints cc "
         "JOIN information_schema.constraint_column_usage ccu "
         "ON cc.constraint_name = ccu.constraint_name "
-        "WHERE ccu.table_schema='pipeline' AND ccu.table_name='file_state' "
+        "WHERE ccu.table_schema='pipeline' "
+        "AND ccu.table_name='file_processing_attempt' "
         "AND ccu.column_name='status'"
     )
     row = cur.fetchone()
