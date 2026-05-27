@@ -1,0 +1,90 @@
+<mxfile host="app.diagrams.net" modified="2026-05-21T00:00:00.000Z" agent="Codex" version="24.7.17">
+  <diagram id="medallion-file-routes-process" name="Medallion File Routes Process">
+    <mxGraphModel dx="1600" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1000" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="title" value="File Routes - Medallion Process" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=26;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="20" width="600" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="subtitle" value="S3 keeps immutable history. Postgres is a merged latest/current serving projection." style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=14;fontColor=#475569;" vertex="1" parent="1">
+          <mxGeometry x="42" y="60" width="850" height="30" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="source-band" value="Landing and routing" style="swimlane;html=1;rounded=0;startSize=30;fillColor=#F8FAFC;strokeColor=#CBD5E1;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="110" width="300" height="690" as="geometry"/>
+        </mxCell>
+        <mxCell id="raw-band" value="Raw / Bronze" style="swimlane;html=1;rounded=0;startSize=30;fillColor=#FFF7ED;strokeColor=#EA580C;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="370" y="110" width="300" height="690" as="geometry"/>
+        </mxCell>
+        <mxCell id="silver-band" value="Silver" style="swimlane;html=1;rounded=0;startSize=30;fillColor=#F8FAFC;strokeColor=#64748B;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="700" y="110" width="390" height="690" as="geometry"/>
+        </mxCell>
+        <mxCell id="gold-band" value="Gold" style="swimlane;html=1;rounded=0;startSize=30;fillColor=#FFFBEB;strokeColor=#D97706;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1120" y="110" width="390" height="690" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="drop" value="Producer drops file&#xa;SFTP / upload folder" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#FFFFFF;strokeColor=#64748B;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="80" y="170" width="220" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="scan" value="dag_drop_to_raw&#xa;match filename_pattern&#xa;route by delivery" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#E0F2FE;strokeColor=#0284C7;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="80" y="285" width="220" height="85" as="geometry"/>
+        </mxCell>
+        <mxCell id="config" value="dataset.yaml + components&#xa;source, contract, quality, transform, delivery, reconciliation" style="shape=datastore;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=14;fillColor=#FFFBEB;strokeColor=#D97706;" vertex="1" parent="1">
+          <mxGeometry x="80" y="420" width="220" height="90" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="raw-s3" value="S3 raw object&#xa;immutable original bytes&#xa;partitioned by dataset/date/file" style="shape=cylinder3d;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#FED7AA;strokeColor=#EA580C;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="410" y="175" width="220" height="95" as="geometry"/>
+        </mxCell>
+        <mxCell id="catalogue" value="file_catalogue&#xa;file_id, md5, raw path, business_date" style="shape=datastore;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=14;fillColor=#FFEDD5;strokeColor=#EA580C;" vertex="1" parent="1">
+          <mxGeometry x="410" y="325" width="220" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="ingestion" value="Glue ods_ingestion&#xa;schema validation + DQ&#xa;hard blocks to DLQ" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#FFFFFF;strokeColor=#EA580C;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="410" y="465" width="220" height="90" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="decision" value="Incoming file already canonical?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#334155;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="825" y="165" width="140" height="110" as="geometry"/>
+        </mxCell>
+        <mxCell id="identity" value="Canonical route&#xa;identity transform&#xa;standard columns already present" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#F8FAFC;strokeColor=#64748B;" vertex="1" parent="1">
+          <mxGeometry x="750" y="330" width="280" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="transform" value="Non-canonical route&#xa;apply transform.yaml&#xa;source fields to canonical contract" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#F8FAFC;strokeColor=#64748B;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="750" y="450" width="280" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="silver" value="S3 silver canonical Parquet&#xa;validated rows + ODS metadata&#xa;append-only per run/file" style="shape=cylinder3d;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#E2E8F0;strokeColor=#64748B;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="750" y="610" width="280" height="95" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="history" value="S3 gold history&#xa;full time-series / replayable facts&#xa;keeps every run version" style="shape=cylinder3d;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#FEF3C7;strokeColor=#D97706;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1170" y="170" width="290" height="95" as="geometry"/>
+        </mxCell>
+        <mxCell id="current" value="Gold current projection&#xa;latest record per business key&#xa;dedupe by key + effective timestamp/run" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#FFFFFF;strokeColor=#D97706;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1170" y="335" width="290" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="postgres" value="Postgres serving table&#xa;merged latest only&#xa;upsert / stage-and-merge" style="shape=cylinder3d;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#DCFCE7;strokeColor=#16A34A;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1170" y="500" width="290" height="95" as="geometry"/>
+        </mxCell>
+        <mxCell id="recon" value="Reconciliation evidence&#xa;t0_ingestion_count&#xa;gold_current_to_postgres_count" style="shape=datastore;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=14;fillColor=#FFFBEB;strokeColor=#D97706;" vertex="1" parent="1">
+          <mxGeometry x="1170" y="665" width="290" height="85" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=2;strokeColor=#334155;" edge="1" parent="1" source="drop" target="scan"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e2" value="config selects route" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1;strokeColor=#D97706;dashed=1;" edge="1" parent="1" source="config" target="scan"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e3" value="copy bytes" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=2;strokeColor=#EA580C;" edge="1" parent="1" source="scan" target="raw-s3"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e4" value="register" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1;strokeColor=#EA580C;dashed=1;" edge="1" parent="1" source="scan" target="catalogue"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=2;strokeColor=#EA580C;" edge="1" parent="1" source="raw-s3" target="ingestion"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=2;strokeColor=#334155;" edge="1" parent="1" source="ingestion" target="decision"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e7" value="yes" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=2;strokeColor=#64748B;" edge="1" parent="1" source="decision" target="identity"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e8" value="no" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=2;strokeColor=#64748B;" edge="1" parent="1" source="decision" target="transform"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e9" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=2;strokeColor=#64748B;" edge="1" parent="1" source="identity" target="silver"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e10" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=2;strokeColor=#64748B;" edge="1" parent="1" source="transform" target="silver"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e11" value="append every run" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=2;strokeColor=#D97706;" edge="1" parent="1" source="silver" target="history"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e12" value="compute latest" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=2;strokeColor=#D97706;" edge="1" parent="1" source="history" target="current"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e13" value="merge current only" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=2;strokeColor=#16A34A;" edge="1" parent="1" source="current" target="postgres"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e14" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1;strokeColor=#D97706;dashed=1;" edge="1" parent="1" source="postgres" target="recon"><mxGeometry relative="1" as="geometry"/></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

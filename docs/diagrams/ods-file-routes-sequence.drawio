@@ -1,0 +1,56 @@
+<mxfile host="app.diagrams.net" modified="2026-05-21T00:00:00.000Z" agent="Codex" version="24.7.17">
+  <diagram id="file-routes-sequence" name="File Routes Sequence">
+    <mxGraphModel dx="1600" dy="1100" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="title" value="ODS File Routes - Sequence" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=26;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="20" width="520" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="subtitle" value="One SFTP discovery DAG fans out into either file_pipeline or direct_postgres processing." style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=14;fontColor=#475569;" vertex="1" parent="1">
+          <mxGeometry x="42" y="60" width="800" height="30" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="h-source" value="Producer / SFTP" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#F8FAFC;strokeColor=#64748B;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="110" width="150" height="50" as="geometry"/></mxCell>
+        <mxCell id="h-drop" value="dag_drop_to_raw" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#E0F2FE;strokeColor=#0284C7;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="230" y="110" width="150" height="50" as="geometry"/></mxCell>
+        <mxCell id="h-control" value="Postgres control" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#FFFBEB;strokeColor=#D97706;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="420" y="110" width="150" height="50" as="geometry"/></mxCell>
+        <mxCell id="h-s3" value="S3 raw / curated" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#F8FAFC;strokeColor=#64748B;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="610" y="110" width="150" height="50" as="geometry"/></mxCell>
+        <mxCell id="h-airflow" value="Route DAG" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#F1F5F9;strokeColor=#64748B;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="800" y="110" width="150" height="50" as="geometry"/></mxCell>
+        <mxCell id="h-glue" value="Glue jobs" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#FFFFFF;strokeColor=#334155;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="990" y="110" width="150" height="50" as="geometry"/></mxCell>
+        <mxCell id="h-kafka" value="Kafka / Connect" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#EFF6FF;strokeColor=#2563EB;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="1180" y="110" width="150" height="50" as="geometry"/></mxCell>
+        <mxCell id="h-postgres" value="ODS Postgres" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#F0FDF4;strokeColor=#16A34A;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="1370" y="110" width="150" height="50" as="geometry"/></mxCell>
+
+        <mxCell id="l1" style="shape=line;html=1;strokeColor=#CBD5E1;dashed=1;" vertex="1" parent="1"><mxGeometry x="115" y="160" width="1" height="850" as="geometry"/></mxCell>
+        <mxCell id="l2" style="shape=line;html=1;strokeColor=#CBD5E1;dashed=1;" vertex="1" parent="1"><mxGeometry x="305" y="160" width="1" height="850" as="geometry"/></mxCell>
+        <mxCell id="l3" style="shape=line;html=1;strokeColor=#CBD5E1;dashed=1;" vertex="1" parent="1"><mxGeometry x="495" y="160" width="1" height="850" as="geometry"/></mxCell>
+        <mxCell id="l4" style="shape=line;html=1;strokeColor=#CBD5E1;dashed=1;" vertex="1" parent="1"><mxGeometry x="685" y="160" width="1" height="850" as="geometry"/></mxCell>
+        <mxCell id="l5" style="shape=line;html=1;strokeColor=#CBD5E1;dashed=1;" vertex="1" parent="1"><mxGeometry x="875" y="160" width="1" height="850" as="geometry"/></mxCell>
+        <mxCell id="l6" style="shape=line;html=1;strokeColor=#CBD5E1;dashed=1;" vertex="1" parent="1"><mxGeometry x="1065" y="160" width="1" height="850" as="geometry"/></mxCell>
+        <mxCell id="l7" style="shape=line;html=1;strokeColor=#CBD5E1;dashed=1;" vertex="1" parent="1"><mxGeometry x="1255" y="160" width="1" height="850" as="geometry"/></mxCell>
+        <mxCell id="l8" style="shape=line;html=1;strokeColor=#CBD5E1;dashed=1;" vertex="1" parent="1"><mxGeometry x="1445" y="160" width="1" height="850" as="geometry"/></mxCell>
+
+        <mxCell id="note1" value="Discovery and registration" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#F8FAFC;strokeColor=#CBD5E1;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="190" width="1480" height="35" as="geometry"/></mxCell>
+        <mxCell id="m1" value="drop file in /upload" style="endArrow=block;html=1;rounded=0;strokeWidth=2;strokeColor=#334155;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="115" y="255" as="sourcePoint"/><mxPoint x="305" y="255" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="m2" value="query active s3_batch configs by delivery" style="endArrow=block;html=1;rounded=0;strokeWidth=2;strokeColor=#D97706;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="305" y="300" as="sourcePoint"/><mxPoint x="495" y="300" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="m3" value="match filename_pattern, hash bytes" style="endArrow=block;html=1;rounded=0;strokeWidth=2;strokeColor=#334155;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="305" y="345" as="sourcePoint"/><mxPoint x="115" y="345" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="m4" value="put raw object" style="endArrow=block;html=1;rounded=0;strokeWidth=2;strokeColor=#334155;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="305" y="390" as="sourcePoint"/><mxPoint x="685" y="390" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="m5" value="insert file_catalogue(state=received)" style="endArrow=block;html=1;rounded=0;strokeWidth=2;strokeColor=#D97706;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="305" y="435" as="sourcePoint"/><mxPoint x="495" y="435" as="targetPoint"/></mxGeometry></mxCell>
+
+        <mxCell id="alt1" value="alt delivery = file_pipeline" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#DBEAFE;strokeColor=#2563EB;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="485" width="1480" height="35" as="geometry"/></mxCell>
+        <mxCell id="fp1" value="trigger dag_ingest(conf=file_id, domain, dataset, business_date)" style="endArrow=block;html=1;rounded=0;strokeWidth=2;strokeColor=#2563EB;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="305" y="545" as="sourcePoint"/><mxPoint x="875" y="545" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="fp2" value="init_run: create s3_batch parent + ingestion + publish + optional canonicalize runs" style="endArrow=block;html=1;rounded=0;strokeWidth=2;strokeColor=#D97706;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="875" y="590" as="sourcePoint"/><mxPoint x="495" y="590" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="fp3" value="spark-submit ods_ingestion.py" style="endArrow=block;html=1;rounded=0;strokeWidth=2;strokeColor=#2563EB;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="875" y="635" as="sourcePoint"/><mxPoint x="1065" y="635" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="fp4" value="read raw, write curated, DLQ failures, t0_ingestion_count" style="endArrow=block;html=1;rounded=0;strokeWidth=2;strokeColor=#334155;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="1065" y="680" as="sourcePoint"/><mxPoint x="685" y="680" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="fp5" value="spark-submit ods_s3_publish.py" style="endArrow=block;html=1;rounded=0;strokeWidth=2;strokeColor=#2563EB;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="875" y="725" as="sourcePoint"/><mxPoint x="1065" y="725" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="fp6" value="publish Avro, write t0_publish_count" style="endArrow=block;html=1;rounded=0;strokeWidth=2;strokeColor=#2563EB;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="1065" y="770" as="sourcePoint"/><mxPoint x="1255" y="770" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="fp7" value="Connect sinks consume target/canonical topic" style="endArrow=block;html=1;rounded=0;strokeWidth=2;strokeColor=#2563EB;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="1255" y="815" as="sourcePoint"/><mxPoint x="1445" y="815" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="fp8" value="wait_sinks observes offsets; finalise closes run statuses" style="endArrow=block;html=1;rounded=0;strokeWidth=2;strokeColor=#D97706;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="875" y="860" as="sourcePoint"/><mxPoint x="495" y="860" as="targetPoint"/></mxGeometry></mxCell>
+
+        <mxCell id="alt2" value="alt delivery = direct_postgres" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#DCFCE7;strokeColor=#16A34A;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="905" width="1480" height="35" as="geometry"/></mxCell>
+        <mxCell id="dp1" value="trigger dag_ingest_direct_postgres(conf=file_id, domain, dataset, business_date)" style="endArrow=block;html=1;rounded=0;strokeWidth=2;strokeColor=#16A34A;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="305" y="960" as="sourcePoint"/><mxPoint x="875" y="960" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="dp2" value="init_run: create parent + ingestion + direct_postgres child runs" style="endArrow=block;html=1;rounded=0;strokeWidth=2;strokeColor=#D97706;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="875" y="1005" as="sourcePoint"/><mxPoint x="495" y="1005" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="dp3" value="ods_ingestion writes curated; ods_postgres_write writes target and direct_postgres_count" style="endArrow=block;html=1;rounded=0;strokeWidth=2;strokeColor=#16A34A;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="1065" y="1050" as="sourcePoint"/><mxPoint x="1445" y="1050" as="targetPoint"/></mxGeometry></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
