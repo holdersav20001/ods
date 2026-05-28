@@ -1,156 +1,132 @@
-<mxfile host="app.diagrams.net" modified="2026-05-01T00:00:00.000Z" agent="Codex" version="24.7.17" type="device">
-  <diagram id="file-based-reconciliation" name="File Based Reconciliation">
-    <mxGraphModel dx="1600" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0">
+<mxfile host="Claude">
+  <diagram id="recon-checkpoints" name="File Path — Recon Checkpoints">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="820" math="0" shadow="0">
       <root>
         <mxCell id="0"/>
         <mxCell id="1" parent="0"/>
-        <mxCell id="title_file" value="File Based Pattern: reconciliation by _ods_file_id" style="text;html=1;strokeColor=none;fillColor=none;fontSize=24;fontStyle=1;align=left;verticalAlign=middle;" vertex="1" parent="1">
-          <mxGeometry x="60" y="30" width="760" height="40" as="geometry"/>
+
+        <mxCell id="R-title" value="File Ingestion — Reconciliation Checkpoints" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=15;fontStyle=1;fontColor=#1F5C8B;" vertex="1" parent="1">
+          <mxGeometry x="0" y="20" width="1700" height="36" as="geometry"/>
         </mxCell>
-        <mxCell id="subtitle_file" value="Business reconciliation follows the file ID. Kafka offsets are captured for operational observability and replay diagnostics." style="text;html=1;strokeColor=none;fillColor=none;fontSize=14;align=left;verticalAlign=middle;fontColor=#4B5563;" vertex="1" parent="1">
-          <mxGeometry x="60" y="70" width="1050" height="30" as="geometry"/>
+        <mxCell id="R-sub" value="Three checks fire sequentially; all write to pipeline.reconciliation_log via ods_pipeline.reconciliation.write_check()" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=11;fontStyle=2;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="0" y="56" width="1700" height="22" as="geometry"/>
         </mxCell>
 
-        <mxCell id="file_source" value="Source file&#xa;policies_20260428.csv" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#E0F2FE;strokeColor=#0284C7;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="60" y="170" width="190" height="80" as="geometry"/>
-        </mxCell>
-        <mxCell id="drop_to_raw" value="dag_drop_to_raw&#xa;register file" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#F0FDF4;strokeColor=#16A34A;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="310" y="170" width="190" height="80" as="geometry"/>
-        </mxCell>
-        <mxCell id="file_catalogue" value="pipeline.file_catalogue&#xa;file_id, md5, paths, state" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#FEF3C7;strokeColor=#D97706;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="310" y="290" width="190" height="80" as="geometry"/>
-        </mxCell>
-        <mxCell id="s3_raw" value="S3 raw&#xa;original file" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#E0F2FE;strokeColor=#0284C7;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="560" y="170" width="190" height="80" as="geometry"/>
-        </mxCell>
-        <mxCell id="ingestion" value="Glue ingestion&#xa;read, DQ, enrich ODS fields" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#F0FDF4;strokeColor=#16A34A;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="810" y="170" width="210" height="80" as="geometry"/>
-        </mxCell>
-        <mxCell id="curated" value="S3 curated parquet&#xa;passing records only" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#E0F2FE;strokeColor=#0284C7;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="1080" y="170" width="210" height="80" as="geometry"/>
-        </mxCell>
-        <mxCell id="publish" value="Publish to Kafka&#xa;records carry _ods_file_id" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#F0FDF4;strokeColor=#16A34A;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="60" y="480" width="210" height="80" as="geometry"/>
-        </mxCell>
-        <mxCell id="kafka_topic" value="Kafka topic&#xa;business messages + ODS metadata" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#E0E7FF;strokeColor=#4F46E5;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="330" y="480" width="230" height="80" as="geometry"/>
-        </mxCell>
-        <mxCell id="jdbc_sink" value="JDBC sink&#xa;consumer lag / offsets observed" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#F0FDF4;strokeColor=#16A34A;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="620" y="480" width="210" height="80" as="geometry"/>
-        </mxCell>
-        <mxCell id="history" value="Policy history / audit&#xa;all rows by _ods_file_id" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#FEF3C7;strokeColor=#D97706;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="890" y="480" width="230" height="80" as="geometry"/>
-        </mxCell>
-        <mxCell id="current" value="Policy current state&#xa;latest row per business key" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#FEF3C7;strokeColor=#D97706;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="1180" y="480" width="230" height="80" as="geometry"/>
+        <!-- PIPELINE ROW (y=130) -->
+
+        <!-- Stage 1: Glue Ingestion -->
+        <mxCell id="R-s3r"   value="S3 Raw&#10;s3://ods-raw-{env}/" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#FFE0B2;strokeColor=#E65100;" vertex="1" parent="1"><mxGeometry x="60"  y="120" width="150" height="60" as="geometry"/></mxCell>
+        <mxCell id="R-glue"  value="Glue Spark&#10;stage_ingest&#10;RAW_READ · DQ · CURATED_WRITE" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#BBDEFB;strokeColor=#1565C0;" vertex="1" parent="1"><mxGeometry x="270" y="110" width="180" height="80" as="geometry"/></mxCell>
+        <mxCell id="R-s3c"   value="S3 Curated&#10;s3://ods-curated-{env}/" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#C8E6C9;strokeColor=#2E7D32;" vertex="1" parent="1"><mxGeometry x="510" y="120" width="150" height="60" as="geometry"/></mxCell>
+
+        <!-- Recon 1 -->
+        <mxCell id="R-c1" value="① t0_input_count&#10;source_count vs 0 discrepancy check&#10;status: ok / failed" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#FFF8E1;strokeColor=#F57F17;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="480" y="270" width="210" height="65" as="geometry"/></mxCell>
+        <mxCell id="R-c1-a" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#F57F17;strokeWidth=2;" edge="1" source="R-glue" target="R-c1" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- Stage 2: Publish -->
+        <mxCell id="R-pub"   value="stage_publish&#10;ods_s3_publish.py&#10;OffsetTracker" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#E1BEE7;strokeColor=#6A1B9A;" vertex="1" parent="1"><mxGeometry x="730" y="110" width="180" height="80" as="geometry"/></mxCell>
+        <mxCell id="R-kfr"   value="Kafka Raw Topic&#10;{domain}.{dataset}.raw" style="shape=parallelogram;whiteSpace=wrap;html=1;fontSize=10;fillColor=#E1BEE7;strokeColor=#6A1B9A;" vertex="1" parent="1"><mxGeometry x="970" y="120" width="170" height="60" as="geometry"/></mxCell>
+
+        <!-- Recon 2 -->
+        <mxCell id="R-c2" value="② t0_publish_count&#10;kafka_count = offset_end − offset_start&#10;discrepancy = kafka_count − source_count&#10;status: ok / failed" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#FFF8E1;strokeColor=#F57F17;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="900" y="270" width="240" height="75" as="geometry"/></mxCell>
+        <mxCell id="R-c2-a" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#F57F17;strokeWidth=2;" edge="1" source="R-pub" target="R-c2" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- Stage 3: Canonical + Sinks -->
+        <mxCell id="R-kfc"   value="Kafka Canonical Topic&#10;{domain}.{dataset}" style="shape=parallelogram;whiteSpace=wrap;html=1;fontSize=10;fillColor=#E1BEE7;strokeColor=#6A1B9A;" vertex="1" parent="1"><mxGeometry x="1210" y="100" width="170" height="60" as="geometry"/></mxCell>
+        <mxCell id="R-sinks" value="JDBC Sink&#10;current → ods.*&#10;history → ods.*_history" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#E0F2F1;strokeColor=#00695C;" vertex="1" parent="1"><mxGeometry x="1450" y="105" width="170" height="70" as="geometry"/></mxCell>
+
+        <!-- Recon 3 -->
+        <mxCell id="R-c3" value="③ dual_sink_parity&#10;current_count vs history_count by run_id&#10;delta = history_count − current_count&#10;status: ok / pending / failed" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#FFF8E1;strokeColor=#F57F17;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="1390" y="270" width="260" height="75" as="geometry"/></mxCell>
+        <mxCell id="R-c3-a" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#F57F17;strokeWidth=2;" edge="1" source="R-sinks" target="R-c3" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- pipeline flow arrows -->
+        <mxCell id="Ra1" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="R-s3r"  target="R-glue"  parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="Ra2" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="R-glue" target="R-s3c"   parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="Ra3" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="R-s3c"  target="R-pub"   parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="Ra4" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="R-pub"  target="R-kfr"   parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="Ra5" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="R-kfr"  target="R-kfc"   parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="Ra6" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="R-kfc"  target="R-sinks" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- pipeline.reconciliation_log -->
+        <mxCell id="R-log" value="pipeline.reconciliation_log&#10;check_type · run_id · domain · dataset · business_date&#10;source_count · kafka_count · postgres_count&#10;discrepancy_count · discrepancy_pct · status · detail" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#FFF3E0;strokeColor=#E65100;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="630" y="530" width="400" height="80" as="geometry"/>
         </mxCell>
 
-        <mxCell id="control_plane" value="Control plane tables&#xa;run_log, run_stage_log, reconciliation_log, lineage_edge" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#F5F3FF;strokeColor=#7C3AED;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="790" y="300" width="360" height="80" as="geometry"/>
-        </mxCell>
+        <!-- check → log arrows -->
+        <mxCell id="Rb1" value="INSERT" style="edgeStyle=orthogonalEdgeStyle;fontSize=9;strokeColor=#F57F17;" edge="1" source="R-c1" target="R-log" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="Rb2" value="INSERT" style="edgeStyle=orthogonalEdgeStyle;fontSize=9;strokeColor=#F57F17;" edge="1" source="R-c2" target="R-log" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="Rb3" value="INSERT" style="edgeStyle=orthogonalEdgeStyle;fontSize=9;strokeColor=#F57F17;" edge="1" source="R-c3" target="R-log" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
 
-        <mxCell id="file_edge_1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;endArrow=block;" edge="1" parent="1" source="file_source" target="drop_to_raw"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="file_edge_2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;endArrow=block;" edge="1" parent="1" source="drop_to_raw" target="s3_raw"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="file_edge_3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;endArrow=block;" edge="1" parent="1" source="s3_raw" target="ingestion"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="file_edge_4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;endArrow=block;" edge="1" parent="1" source="ingestion" target="curated"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="file_edge_5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;endArrow=block;" edge="1" parent="1" source="curated" target="publish"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1185" y="430"/><mxPoint x="165" y="430"/></Array></mxGeometry></mxCell>
-        <mxCell id="file_edge_6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;endArrow=block;" edge="1" parent="1" source="publish" target="kafka_topic"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="file_edge_7" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;endArrow=block;" edge="1" parent="1" source="kafka_topic" target="jdbc_sink"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="file_edge_8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;endArrow=block;" edge="1" parent="1" source="jdbc_sink" target="history"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="file_edge_9" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;endArrow=block;" edge="1" parent="1" source="history" target="current"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="file_edge_catalogue" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1;dashed=1;endArrow=block;" edge="1" parent="1" source="drop_to_raw" target="file_catalogue"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="file_edge_control" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1;dashed=1;endArrow=block;" edge="1" parent="1" source="ingestion" target="control_plane"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="file_edge_control2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1;dashed=1;endArrow=block;" edge="1" parent="1" source="publish" target="control_plane"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <!-- optional deep check note -->
+        <mxCell id="R-extra" value="④ compare_history_vs_current (on demand)&#10;Row-level value diff using row_number() window function&#10;Detects mismatches between current-state and latest history row per business key" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#F3E5F5;strokeColor=#7B1FA2;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="630" y="660" width="400" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="Rb4" value="INSERT" style="edgeStyle=orthogonalEdgeStyle;fontSize=9;strokeColor=#7B1FA2;dashed=1;" edge="1" source="R-extra" target="R-log" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
 
-        <mxCell id="r0" value="R0&#xa;Source count - DQ failures = curated rows" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#FEE2E2;strokeColor=#DC2626;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="930" y="80" width="130" height="130" as="geometry"/>
-        </mxCell>
-        <mxCell id="r1" value="R1&#xa;Published count by _ods_file_id" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#FEE2E2;strokeColor=#DC2626;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="185" y="590" width="130" height="130" as="geometry"/>
-        </mxCell>
-        <mxCell id="r2" value="R2&#xa;History rows by _ods_file_id" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#FEE2E2;strokeColor=#DC2626;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="930" y="590" width="130" height="130" as="geometry"/>
-        </mxCell>
-        <mxCell id="r3" value="R3&#xa;Current = latest history state" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#FEE2E2;strokeColor=#DC2626;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="1240" y="590" width="130" height="130" as="geometry"/>
-        </mxCell>
-        <mxCell id="offset_note_file" value="Offsets captured per partition for operations: lag, debugging, replay. Not the product-facing reconciliation key." style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#F9FAFB;strokeColor=#6B7280;fontColor=#374151;" vertex="1" parent="1">
-          <mxGeometry x="60" y="760" width="600" height="70" as="geometry"/>
-        </mxCell>
       </root>
     </mxGraphModel>
   </diagram>
-  <diagram id="message-based-reconciliation" name="Event API Message Reconciliation">
-    <mxGraphModel dx="1600" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0">
+
+  <diagram id="recon-check-types" name="Check Types Reference">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="900" math="0" shadow="0">
       <root>
         <mxCell id="0"/>
         <mxCell id="1" parent="0"/>
-        <mxCell id="title_msg" value="Event / API Pattern: reconciliation by source message, request, batch, or window" style="text;html=1;strokeColor=none;fillColor=none;fontSize=24;fontStyle=1;align=left;verticalAlign=middle;" vertex="1" parent="1">
-          <mxGeometry x="60" y="30" width="1150" height="40" as="geometry"/>
+
+        <mxCell id="CT-title" value="Reconciliation — Check Types Reference" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=15;fontStyle=1;fontColor=#1F5C8B;" vertex="1" parent="1">
+          <mxGeometry x="0" y="20" width="1700" height="36" as="geometry"/>
         </mxCell>
-        <mxCell id="subtitle_msg" value="Message-level traceability is retained, while dashboard reconciliation normally happens per request, batch, or time window." style="text;html=1;strokeColor=none;fillColor=none;fontSize=14;align=left;verticalAlign=middle;fontColor=#4B5563;" vertex="1" parent="1">
-          <mxGeometry x="60" y="70" width="1150" height="30" as="geometry"/>
+        <mxCell id="CT-sub" value="All checks call ods_pipeline.reconciliation.write_check(conn, check_type, run_id, domain, dataset, ...)" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=11;fontStyle=2;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="0" y="56" width="1700" height="22" as="geometry"/>
         </mxCell>
 
-        <mxCell id="source_msg" value="Source app&#xa;event stream or API client" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#E0F2FE;strokeColor=#0284C7;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="60" y="170" width="210" height="80" as="geometry"/>
-        </mxCell>
-        <mxCell id="landing_msg" value="Landing / API gateway&#xa;assign source correlation key" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#F0FDF4;strokeColor=#16A34A;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="330" y="170" width="230" height="80" as="geometry"/>
-        </mxCell>
-        <mxCell id="raw_topic_msg" value="Raw Kafka / landing topic&#xa;message value contains ODS metadata" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#E0E7FF;strokeColor=#4F46E5;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="620" y="170" width="250" height="80" as="geometry"/>
-        </mxCell>
-        <mxCell id="validate_msg" value="Validate / canonicalize&#xa;bad records to DLQ" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#F0FDF4;strokeColor=#16A34A;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="930" y="170" width="230" height="80" as="geometry"/>
-        </mxCell>
-        <mxCell id="canonical_msg" value="Canonical Kafka topic&#xa;preserve source correlation key" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#E0E7FF;strokeColor=#4F46E5;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="1220" y="170" width="250" height="80" as="geometry"/>
+        <!-- Column headers -->
+        <mxCell id="CT-h1" value="Check Type" style="text;html=1;strokeColor=#BDBDBD;fillColor=#F5F5F5;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=11;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="60"   y="100" width="200" height="35" as="geometry"/></mxCell>
+        <mxCell id="CT-h2" value="What it measures" style="text;html=1;strokeColor=#BDBDBD;fillColor=#F5F5F5;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=11;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="260"  y="100" width="280" height="35" as="geometry"/></mxCell>
+        <mxCell id="CT-h3" value="Formula" style="text;html=1;strokeColor=#BDBDBD;fillColor=#F5F5F5;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=11;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="540"  y="100" width="280" height="35" as="geometry"/></mxCell>
+        <mxCell id="CT-h4" value="Status values" style="text;html=1;strokeColor=#BDBDBD;fillColor=#F5F5F5;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=11;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="820"  y="100" width="180" height="35" as="geometry"/></mxCell>
+        <mxCell id="CT-h5" value="When triggered" style="text;html=1;strokeColor=#BDBDBD;fillColor=#F5F5F5;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=11;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="1000" y="100" width="220" height="35" as="geometry"/></mxCell>
+        <mxCell id="CT-h6" value="Module" style="text;html=1;strokeColor=#BDBDBD;fillColor=#F5F5F5;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=11;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="1220" y="100" width="280" height="35" as="geometry"/></mxCell>
+
+        <!-- Row 1: t0_input_count -->
+        <mxCell id="CT-r1c1" value="t0_input_count" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#FFF8E1;strokeColor=#F57F17;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="60"   y="155" width="200" height="70" as="geometry"/></mxCell>
+        <mxCell id="CT-r1c2" value="Records read from S3 Raw vs expected — confirms no records lost before writing S3 Curated" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#FFFDE7;strokeColor=#F57F17;" vertex="1" parent="1"><mxGeometry x="260"  y="155" width="280" height="70" as="geometry"/></mxCell>
+        <mxCell id="CT-r1c3" value="source_count = rows in raw&#10;discrepancy = 0 expected" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#FFFDE7;strokeColor=#F57F17;" vertex="1" parent="1"><mxGeometry x="540"  y="155" width="280" height="70" as="geometry"/></mxCell>
+        <mxCell id="CT-r1c4" value="ok · failed" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#FFFDE7;strokeColor=#F57F17;" vertex="1" parent="1"><mxGeometry x="820"  y="155" width="180" height="70" as="geometry"/></mxCell>
+        <mxCell id="CT-r1c5" value="finalise_success() in Glue stage_ingest" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#FFFDE7;strokeColor=#F57F17;" vertex="1" parent="1"><mxGeometry x="1000" y="155" width="220" height="70" as="geometry"/></mxCell>
+        <mxCell id="CT-r1c6" value="glue/jobs/ingestion/finalising.py&#10;→ ods_pipeline.reconciliation.write_check()" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#FFFDE7;strokeColor=#F57F17;" vertex="1" parent="1"><mxGeometry x="1220" y="155" width="280" height="70" as="geometry"/></mxCell>
+
+        <!-- Row 2: t0_publish_count -->
+        <mxCell id="CT-r2c1" value="t0_publish_count" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#FFF8E1;strokeColor=#F57F17;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="60"   y="245" width="200" height="70" as="geometry"/></mxCell>
+        <mxCell id="CT-r2c2" value="Records published to Kafka vs source count — confirms no messages dropped during produce" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#FFFDE7;strokeColor=#F57F17;" vertex="1" parent="1"><mxGeometry x="260"  y="245" width="280" height="70" as="geometry"/></mxCell>
+        <mxCell id="CT-r2c3" value="kafka_count = offset_end − offset_start&#10;discrepancy = kafka_count − source_count" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#FFFDE7;strokeColor=#F57F17;" vertex="1" parent="1"><mxGeometry x="540"  y="245" width="280" height="70" as="geometry"/></mxCell>
+        <mxCell id="CT-r2c4" value="ok · failed" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#FFFDE7;strokeColor=#F57F17;" vertex="1" parent="1"><mxGeometry x="820"  y="245" width="180" height="70" as="geometry"/></mxCell>
+        <mxCell id="CT-r2c5" value="t0_check_publish() after stage_publish completes" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#FFFDE7;strokeColor=#F57F17;" vertex="1" parent="1"><mxGeometry x="1000" y="245" width="220" height="70" as="geometry"/></mxCell>
+        <mxCell id="CT-r2c6" value="airflow/dags/common/recon.py&#10;→ ods_pipeline.reconciliation.write_check()" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#FFFDE7;strokeColor=#F57F17;" vertex="1" parent="1"><mxGeometry x="1220" y="245" width="280" height="70" as="geometry"/></mxCell>
+
+        <!-- Row 3: dual_sink_parity -->
+        <mxCell id="CT-r3c1" value="dual_sink_parity" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#FFF8E1;strokeColor=#F57F17;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="60"   y="335" width="200" height="80" as="geometry"/></mxCell>
+        <mxCell id="CT-r3c2" value="Row counts in current (upsert) vs history (append) JDBC sink tables — detects history connector lag" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#FFFDE7;strokeColor=#F57F17;" vertex="1" parent="1"><mxGeometry x="260"  y="335" width="280" height="80" as="geometry"/></mxCell>
+        <mxCell id="CT-r3c3" value="current_count = SELECT COUNT(*) FROM ods.* WHERE _ods_run_id = ?&#10;history_count = same on *_history&#10;delta = history_count − current_count" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#FFFDE7;strokeColor=#F57F17;" vertex="1" parent="1"><mxGeometry x="540"  y="335" width="280" height="80" as="geometry"/></mxCell>
+        <mxCell id="CT-r3c4" value="ok (delta=0)&#10;pending (either count=0)&#10;failed (both non-zero, delta≠0)" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#FFFDE7;strokeColor=#F57F17;" vertex="1" parent="1"><mxGeometry x="820"  y="335" width="180" height="80" as="geometry"/></mxCell>
+        <mxCell id="CT-r3c5" value="check_dual_sink_parity() after wait_sinks" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#FFFDE7;strokeColor=#F57F17;" vertex="1" parent="1"><mxGeometry x="1000" y="335" width="220" height="80" as="geometry"/></mxCell>
+        <mxCell id="CT-r3c6" value="ods_pipeline/reconciliation.py&#10;check_dual_sink_parity()" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#FFFDE7;strokeColor=#F57F17;" vertex="1" parent="1"><mxGeometry x="1220" y="335" width="280" height="80" as="geometry"/></mxCell>
+
+        <!-- Row 4: compare_history_vs_current -->
+        <mxCell id="CT-r4c1" value="current_history_row_value&#10;(on demand)" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#F3E5F5;strokeColor=#7B1FA2;fontStyle=1;dashed=1;" vertex="1" parent="1"><mxGeometry x="60"   y="435" width="200" height="80" as="geometry"/></mxCell>
+        <mxCell id="CT-r4c2" value="Field-level value comparison between current-state and latest history row per business key (IS DISTINCT FROM)" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#FCE4EC;strokeColor=#7B1FA2;dashed=1;" vertex="1" parent="1"><mxGeometry x="260"  y="435" width="280" height="80" as="geometry"/></mxCell>
+        <mxCell id="CT-r4c3" value="row_number() OVER (PARTITION BY key ORDER BY _ods_ingested_at DESC) = 1&#10;JOIN on key columns&#10;WHERE col IS DISTINCT FROM" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#FCE4EC;strokeColor=#7B1FA2;dashed=1;" vertex="1" parent="1"><mxGeometry x="540"  y="435" width="280" height="80" as="geometry"/></mxCell>
+        <mxCell id="CT-r4c4" value="ok · failed" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#FCE4EC;strokeColor=#7B1FA2;dashed=1;" vertex="1" parent="1"><mxGeometry x="820"  y="435" width="180" height="80" as="geometry"/></mxCell>
+        <mxCell id="CT-r4c5" value="On-demand — call explicitly for deep audit" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#FCE4EC;strokeColor=#7B1FA2;dashed=1;" vertex="1" parent="1"><mxGeometry x="1000" y="435" width="220" height="80" as="geometry"/></mxCell>
+        <mxCell id="CT-r4c6" value="ods_pipeline/reconciliation.py&#10;compare_history_vs_current()" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#FCE4EC;strokeColor=#7B1FA2;dashed=1;" vertex="1" parent="1"><mxGeometry x="1220" y="435" width="280" height="80" as="geometry"/></mxCell>
+
+        <!-- Note: DUAL_SINK_TABLES registry -->
+        <mxCell id="CT-reg" value="DUAL_SINK_TABLES registry (ods_pipeline/reconciliation.py)&#10;Maps dataset → (current_table, history_table, run_id_column)&#10;Currently: policies → (ods.insurance_policy, ods.insurance_policy_history, _ods_run_id)&#10;Add new datasets by extending this dict." style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#E3F2FD;strokeColor=#1565C0;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="60" y="560" width="820" height="75" as="geometry"/>
         </mxCell>
 
-        <mxCell id="sink_msg" value="JDBC sink&#xa;connector lag / offsets observed" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#F0FDF4;strokeColor=#16A34A;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="180" y="480" width="230" height="80" as="geometry"/>
-        </mxCell>
-        <mxCell id="history_msg" value="History / audit table&#xa;rows by source correlation key" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#FEF3C7;strokeColor=#D97706;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="490" y="480" width="250" height="80" as="geometry"/>
-        </mxCell>
-        <mxCell id="current_msg" value="Current state table&#xa;latest row per business key" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#FEF3C7;strokeColor=#D97706;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="820" y="480" width="250" height="80" as="geometry"/>
-        </mxCell>
-        <mxCell id="control_msg" value="Control plane tables&#xa;run_log, stage_log, recon_log, lineage_edge" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#F5F3FF;strokeColor=#7C3AED;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="1150" y="480" width="300" height="80" as="geometry"/>
-        </mxCell>
-
-        <mxCell id="msg_edge_1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;endArrow=block;" edge="1" parent="1" source="source_msg" target="landing_msg"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="msg_edge_2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;endArrow=block;" edge="1" parent="1" source="landing_msg" target="raw_topic_msg"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="msg_edge_3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;endArrow=block;" edge="1" parent="1" source="raw_topic_msg" target="validate_msg"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="msg_edge_4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;endArrow=block;" edge="1" parent="1" source="validate_msg" target="canonical_msg"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="msg_edge_5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;endArrow=block;" edge="1" parent="1" source="canonical_msg" target="sink_msg"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1345" y="430"/><mxPoint x="295" y="430"/></Array></mxGeometry></mxCell>
-        <mxCell id="msg_edge_6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;endArrow=block;" edge="1" parent="1" source="sink_msg" target="history_msg"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="msg_edge_7" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;endArrow=block;" edge="1" parent="1" source="history_msg" target="current_msg"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="msg_edge_control_1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1;dashed=1;endArrow=block;" edge="1" parent="1" source="landing_msg" target="control_msg"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="445" y="360"/><mxPoint x="1300" y="360"/></Array></mxGeometry></mxCell>
-        <mxCell id="msg_edge_control_2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1;dashed=1;endArrow=block;" edge="1" parent="1" source="validate_msg" target="control_msg"><mxGeometry relative="1" as="geometry"/></mxCell>
-
-        <mxCell id="mr0" value="M0&#xa;Accepted messages / batch count" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#FEE2E2;strokeColor=#DC2626;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="390" y="290" width="130" height="130" as="geometry"/>
-        </mxCell>
-        <mxCell id="mr1" value="M1&#xa;Consumed - DLQ = canonical published" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#FEE2E2;strokeColor=#DC2626;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="980" y="290" width="130" height="130" as="geometry"/>
-        </mxCell>
-        <mxCell id="mr2" value="M2&#xa;History rows by batch/window/key" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#FEE2E2;strokeColor=#DC2626;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="550" y="590" width="130" height="130" as="geometry"/>
-        </mxCell>
-        <mxCell id="mr3" value="M3&#xa;Current = latest history state" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#FEE2E2;strokeColor=#DC2626;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="880" y="590" width="130" height="130" as="geometry"/>
-        </mxCell>
-
-        <mxCell id="msg_note_1" value="Product decision: reconcile each message, each request/batch, or each time window? Recommended: batch/window for dashboards, message ID for traceability." style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#F9FAFB;strokeColor=#6B7280;fontColor=#374151;" vertex="1" parent="1">
-          <mxGeometry x="60" y="760" width="720" height="70" as="geometry"/>
-        </mxCell>
-        <mxCell id="msg_note_2" value="Offsets remain important for operations: connector lag, bounded replay, and investigation. They are not the main business reconciliation key." style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#F9FAFB;strokeColor=#6B7280;fontColor=#374151;" vertex="1" parent="1">
-          <mxGeometry x="840" y="760" width="620" height="70" as="geometry"/>
-        </mxCell>
       </root>
     </mxGraphModel>
   </diagram>
+
 </mxfile>

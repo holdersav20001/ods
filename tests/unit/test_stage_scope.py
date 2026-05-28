@@ -34,6 +34,8 @@ class _FakeCursor:
     def fetchone(self):
         # Drive ``next_attempt_number`` and the ``finish`` lookup queries
         # via a deterministic small fake.
+        if "pipeline.control_start_stage" in self._last_sql:
+            return (self._owner.next_attempt_value,)
         if "MAX(attempt_number)" in self._last_sql:
             return (self._owner.next_attempt_value,)
         if "FOR UPDATE SKIP LOCKED" in self._last_sql:
@@ -72,13 +74,28 @@ _INSERT_SPARK_APP_ID_IDX = 13
 
 
 def _stages_inserted(conn: _FakeConn) -> list[str]:
-    """Return the ``status`` column from every INSERT we did."""
+    """Return the ``status`` column from every stage DB-function call."""
     out: list[str] = []
     for sql, params in conn.statements:
-        if "INSERT INTO pipeline.run_stage_log" in sql:
+        if "pipeline.control_start_stage" in sql:
+            out.append("running")
+        elif (
+            "pipeline.control_finish_stage" in sql
+            or "pipeline.control_write_stage_event" in sql
+        ):
             assert params is not None
             out.append(params[_INSERT_STATUS_IDX])
     return out
+
+
+def _stage_event_calls(conn: _FakeConn) -> list[tuple[str, object]]:
+    return [
+        (sql, params)
+        for sql, params in conn.statements
+        if "pipeline.control_start_stage" in sql
+        or "pipeline.control_finish_stage" in sql
+        or "pipeline.control_write_stage_event" in sql
+    ]
 
 
 def test_next_attempt_number_returns_one_when_no_rows() -> None:
@@ -119,16 +136,17 @@ def test_stage_scope_preserves_runtime_correlation_fields() -> None:
     ):
         pass
 
-    stage_rows = [
-        params
-        for sql, params in conn.statements
-        if "INSERT INTO pipeline.run_stage_log" in sql
-    ]
+    stage_rows = _stage_event_calls(conn)
     assert len(stage_rows) == 2
-    for params in stage_rows:
-        assert params[_INSERT_AIRFLOW_DAG_ID_IDX] == "dag_ingest"
-        assert params[_INSERT_AIRFLOW_RUN_ID_IDX] == "manual__2026-05-20T10:00:00+00:00"
-        assert params[_INSERT_SPARK_APP_ID_IDX] == "local-123"
+    for sql, params in stage_rows:
+        if "pipeline.control_start_stage" in sql:
+            assert params[6] == "dag_ingest"
+            assert params[7] == "manual__2026-05-20T10:00:00+00:00"
+            assert params[8] == "local-123"
+        else:
+            assert params[_INSERT_AIRFLOW_DAG_ID_IDX] == "dag_ingest"
+            assert params[_INSERT_AIRFLOW_RUN_ID_IDX] == "manual__2026-05-20T10:00:00+00:00"
+            assert params[_INSERT_SPARK_APP_ID_IDX] == "local-123"
 
 
 def test_stage_scope_failure_writes_started_then_failed_and_reraises() -> None:
@@ -146,7 +164,7 @@ def test_stage_scope_failure_writes_started_then_failed_and_reraises() -> None:
     # Exception body should land on the failure row's ``error`` column.
     failure_stmt = next(
         s for s in conn.statements
-        if "INSERT INTO pipeline.run_stage_log" in s[0]
+        if "pipeline.control_finish_stage" in s[0]
         and s[1] is not None
         and s[1][_INSERT_STATUS_IDX] == "failed"
     )
@@ -163,7 +181,7 @@ def test_stage_scope_truncates_long_error_messages() -> None:
             raise RuntimeError(long_msg)
     failure_stmt = next(
         s for s in conn.statements
-        if "INSERT INTO pipeline.run_stage_log" in s[0]
+        if "pipeline.control_finish_stage" in s[0]
         and s[1] is not None
         and s[1][_INSERT_STATUS_IDX] == "failed"
     )
@@ -209,7 +227,7 @@ def test_stage_scope_skip_writes_started_then_skipped() -> None:
     # event_type must be stage_skipped, not stage_completed.
     skip_stmt = next(
         s for s in conn.statements
-        if "INSERT INTO pipeline.run_stage_log" in s[0]
+        if "pipeline.control_finish_stage" in s[0]
         and s[1] is not None
         and s[1][_INSERT_STATUS_IDX] == "skipped"
     )
@@ -219,19 +237,18 @@ def test_stage_scope_skip_writes_started_then_skipped() -> None:
 
 def test_stage_scope_skip_reason_lands_in_metrics() -> None:
     """``skip_reason`` should be folded into metrics so the dashboard can show it."""
-    import json
     conn = _FakeConn()
     with stages.stage_scope(conn, run_id="rid", stage="raw_poll") as s:
         s.skip("upstream_etag_unchanged")
     skip_stmt = next(
         s for s in conn.statements
-        if "INSERT INTO pipeline.run_stage_log" in s[0]
+        if "pipeline.control_finish_stage" in s[0]
         and s[1] is not None
         and s[1][_INSERT_STATUS_IDX] == "skipped"
     )
     metrics_json = skip_stmt[1][9]      # metrics is param index 9 in stages.write
     assert metrics_json is not None
-    payload = json.loads(metrics_json)
+    payload = metrics_json.adapted
     assert payload["skip_reason"] == "upstream_etag_unchanged"
 
 
@@ -252,7 +269,7 @@ def test_stage_scope_skip_without_reason_omits_metrics() -> None:
         s.skip()
     skip_stmt = next(
         s for s in conn.statements
-        if "INSERT INTO pipeline.run_stage_log" in s[0]
+        if "pipeline.control_finish_stage" in s[0]
         and s[1] is not None
         and s[1][_INSERT_STATUS_IDX] == "skipped"
     )
@@ -262,7 +279,6 @@ def test_stage_scope_skip_without_reason_omits_metrics() -> None:
 
 def test_stage_scope_skip_preserves_caller_metrics() -> None:
     """If caller set metrics via set_result-like path or scope kw, skip must merge."""
-    import json
     conn = _FakeConn()
     with stages.stage_scope(
         conn, run_id="rid", stage="raw_poll",
@@ -273,11 +289,11 @@ def test_stage_scope_skip_preserves_caller_metrics() -> None:
     # metrics land on the stage_skipped row.
     skip_stmt = next(
         s for s in conn.statements
-        if "INSERT INTO pipeline.run_stage_log" in s[0]
+        if "pipeline.control_finish_stage" in s[0]
         and s[1] is not None
         and s[1][_INSERT_STATUS_IDX] == "skipped"
     )
-    payload = json.loads(skip_stmt[1][9])
+    payload = skip_stmt[1][9].adapted
     assert payload == {"skip_reason": "no_changes"}
 
 
@@ -290,7 +306,7 @@ def test_stage_scope_warn_writes_warned_with_reason_in_error() -> None:
     assert statuses == ["running", "warned"]
     warn_stmt = next(
         s for s in conn.statements
-        if "INSERT INTO pipeline.run_stage_log" in s[0]
+        if "pipeline.control_finish_stage" in s[0]
         and s[1] is not None
         and s[1][_INSERT_STATUS_IDX] == "warned"
     )
@@ -315,18 +331,12 @@ def test_stage_scope_uses_next_attempt_number_for_retries() -> None:
     conn.next_attempt_value = 3     # MAX existing = 2 → COALESCE+1 = 3
     captured: dict = {}
 
-    real_write = stages.write
-
-    def spy_write(c, **kwargs):
-        if kwargs.get("event_type") == "stage_started":
-            captured["attempt"] = kwargs.get("attempt_number")
-        return real_write(c, **kwargs)
-
-    stages.write = spy_write    # type: ignore[assignment]
-    try:
-        with stages.stage_scope(conn, run_id="rid", stage="kafka_publish") as s:
-            s.set_result(record_count_out=1)
-    finally:
-        stages.write = real_write   # type: ignore[assignment]
+    with stages.stage_scope(conn, run_id="rid", stage="kafka_publish") as s:
+        s.set_result(record_count_out=1)
+    finish_call = next(
+        s for s in conn.statements
+        if "pipeline.control_finish_stage" in s[0]
+    )
+    captured["attempt"] = finish_call[1][4]
 
     assert captured["attempt"] == 3

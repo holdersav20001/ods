@@ -1,0 +1,11 @@
+schema_id: insurance.policies
+schema_version: 1
+data_classification: Internal
+key_fields:
+  - policy_id
+schema_def:
+  fields:
+    - {name: policy_id, type: string, nullable: false, source_name: policy_id}
+    - {name: status, type: string, nullable: false, source_name: status}
+    - {name: premium, type: 'decimal(10,2)', nullable: true, source_name: premium}
+    - {name: effective_date, type: date, nullable: true, source_name: effective_date}

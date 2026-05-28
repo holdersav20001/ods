@@ -7,6 +7,8 @@ from typing import Any
 
 from psycopg2 import sql
 
+import ods_ingestion_control as control
+
 
 def write_check(
     conn,
@@ -17,7 +19,7 @@ def write_check(
     dataset: str,
     business_date: str,
     source_count: int | None = None,
-    kafka_count: int | None = None,
+    accounted_count: int | None = None,
     postgres_count: int | None = None,
     status: str,
     detail: str | None = None,
@@ -28,50 +30,41 @@ def write_check(
     """Insert a row into ``pipeline.reconciliation_log``.
 
     Computes ``discrepancy_count`` and ``discrepancy_pct`` automatically:
-      * If *source_count* and *kafka_count* both supplied:
-        ``discrepancy = kafka_count - source_count``
-      * If *kafka_count* and *postgres_count* both supplied:
-        ``discrepancy = postgres_count - kafka_count``
+      * If *source_count* and *accounted_count* both supplied:
+        ``discrepancy = accounted_count - source_count``
+      * If *accounted_count* and *postgres_count* both supplied:
+        ``discrepancy = postgres_count - accounted_count``
 
     ``commit``: when True (default), the helper commits its own transaction.
     When False, the caller owns the surrounding tx (used by atomic
     ``record_result`` flow — B4).
     """
     discrepancy: int | None = None
-    if source_count is not None and kafka_count is not None:
-        discrepancy = (kafka_count or 0) - (source_count or 0)
-    elif kafka_count is not None and postgres_count is not None:
-        discrepancy = (postgres_count or 0) - (kafka_count or 0)
+    if source_count is not None and accounted_count is not None:
+        discrepancy = (accounted_count or 0) - (source_count or 0)
+    elif accounted_count is not None and postgres_count is not None:
+        discrepancy = (postgres_count or 0) - (accounted_count or 0)
 
     pct: float | None = None
     if discrepancy is not None and source_count:
         pct = round(100.0 * discrepancy / source_count, 4)
 
-    try:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                INSERT INTO pipeline.reconciliation_log
-                    (check_type, run_id, domain, dataset, business_date,
-                     window_start, window_end,
-                     source_count, kafka_count, postgres_count,
-                     discrepancy_count, discrepancy_pct, status, detail)
-                VALUES (%s,%s,%s,%s,%s, %s,%s, %s,%s,%s, %s,%s,%s,%s)
-                """,
-                (
-                    check_type, run_id, domain, dataset,
-                    None if business_date is None else str(business_date),
-                    window_start, window_end,
-                    source_count, kafka_count, postgres_count,
-                    discrepancy, pct, status, detail,
-                ),
-            )
-        if commit:
-            conn.commit()
-    except Exception:
-        if commit:
-            conn.rollback()
-        raise
+    control.write_reconciliation_check(
+        conn,
+        check_type=check_type,
+        run_id=run_id,
+        domain=domain,
+        dataset=dataset,
+        business_date=None if business_date is None else str(business_date),
+        source_count=source_count,
+        accounted_count=accounted_count,
+        postgres_count=postgres_count,
+        status=status,
+        detail=detail,
+        window_start=window_start,
+        window_end=window_end,
+        commit=commit,
+    )
 
 
 # Default dual-sink table pairs per dataset.

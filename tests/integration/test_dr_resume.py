@@ -1,6 +1,6 @@
 """Disaster recovery test: simulate a crashed run mid-pipeline, restart the
 pipeline by clearing only the failed run_log row, and verify the file is
-re-processed cleanly to a final 'sunk' state with rows in postgres.
+re-processed cleanly to a final 'loaded' state with rows in postgres.
 """
 from __future__ import annotations
 
@@ -58,10 +58,10 @@ def test_failed_run_resumes_cleanly(pg_conn):
     with pg_conn.cursor() as cur:
         cur.execute("DELETE FROM ods.insurance_policy WHERE policy_id='DR1'")
         cur.execute(
-            "DELETE FROM pipeline.lineage_edge WHERE child_run_id IN ("
+            "DELETE FROM pipeline.lineage_edge WHERE consumer_run_id IN ("
             "  SELECT run_id FROM pipeline.run_log WHERE domain='insurance' "
             "  AND dataset='policies' AND business_date='2026-04-20') "
-            "OR parent_file_id IN ("
+            "OR source_file_id IN ("
             "  SELECT file_id FROM pipeline.file_catalogue WHERE domain='insurance' "
             "  AND dataset='policies' AND business_date='2026-04-20')"
         )
@@ -79,7 +79,7 @@ def test_failed_run_resumes_cleanly(pg_conn):
             "AND dataset='policies' AND business_date='2026-04-20'"
         )
         cur.execute(
-            "DELETE FROM pipeline.file_state "
+            "DELETE FROM pipeline.file_processing_attempt "
             "WHERE s3_path IN (%s, %s)",
             (
                 "s3://ods-raw-local/insurance/policies/2026-04-20/policies_20260420.csv",
@@ -104,7 +104,7 @@ def test_failed_run_resumes_cleanly(pg_conn):
             INSERT INTO pipeline.run_log
                 (run_id, pipeline_type, domain, dataset, business_date, file_id,
                  status, error_summary)
-            VALUES (%s, 's3_batch','insurance','policies','2026-04-20', %s,
+            VALUES (%s, 'orchestration','insurance','policies','2026-04-20', %s,
                     'failed', 'simulated crash mid-publish')
         """, (fake_run_id, fake_file_id))
     pg_conn.commit()

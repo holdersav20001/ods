@@ -1,35 +1,26 @@
 # glue/jobs/utils_state.py
-"""File-state control-plane writes (pipeline.file_state)."""
+"""File-state control-plane writes (pipeline.file_processing_attempt)."""
+
+from utils_bootstrap import *  # noqa: F401,F403  ensure ods_pipeline on sys.path
+
+import ods_pipeline
 
 
 def set_file_state(conn, s3_path: str, run_id: str, status: str, **extra) -> None:
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            INSERT INTO pipeline.file_state (s3_path, run_id, status, record_count, error_reason)
-            VALUES (%s, %s, %s, %s, %s)
-            ON CONFLICT (s3_path) DO UPDATE
-              SET run_id=EXCLUDED.run_id,
-                  status=EXCLUDED.status,
-                  record_count=EXCLUDED.record_count,
-                  error_reason=EXCLUDED.error_reason,
-                  updated_at=NOW()
-            """,
-            (
-                s3_path,
-                run_id,
-                status,
-                extra.get("record_count"),
-                extra.get("error_reason"),
-            ),
-        )
-    conn.commit()
+    ods_pipeline.files.set_state(
+        conn,
+        s3_path,
+        run_id,
+        status,
+        record_count=extra.get("record_count"),
+        error_reason=extra.get("error_reason"),
+    )
 
 
 def get_file_state(conn, s3_path: str) -> str | None:
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT status FROM pipeline.file_state WHERE s3_path = %s",
+            "SELECT status FROM pipeline.file_processing_attempt WHERE s3_path = %s",
             (s3_path,),
         )
         row = cur.fetchone()

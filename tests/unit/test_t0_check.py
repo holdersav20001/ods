@@ -27,7 +27,7 @@ def test_t0_pass(pg_conn, cleanup_recon):
                            kafka_offset_start=100, kafka_offset_end=110)
     assert res.passed is True
     assert res.discrepancy == 0
-    assert res.kafka_count == 10
+    assert res.accounted_count == 10
     with pg_conn.cursor() as cur:
         cur.execute("SELECT status FROM pipeline.reconciliation_log WHERE run_id=%s AND check_type='t0_publish_count'", (rid,))
         (s,) = cur.fetchone()

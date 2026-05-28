@@ -220,7 +220,7 @@ SELECT stage, event_type, status, record_count_in, record_count_out, error
 ```
 
 ```sql
-SELECT check_type, status, source_count, kafka_count, postgres_count, detail
+SELECT check_type, status, source_count, accounted_count, postgres_count, detail
   FROM pipeline.reconciliation_log
  WHERE domain = '<domain>'
    AND dataset = '<dataset>'

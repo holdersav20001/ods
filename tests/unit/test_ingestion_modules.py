@@ -182,13 +182,12 @@ def test_mark_completed_updates_file_catalogue_and_file_state() -> None:
     )
 
     assert any(
-        "UPDATE pipeline.file_catalogue" in sql
-        and "source_row_count=COALESCE" in sql
-        and params == (10, "run-1", "s3://raw/policies.csv")
+        "pipeline.control_update_file_catalogue" in sql
+        and params == (None, "s3://raw/policies.csv", None, None, 10, "run-1")
         for sql, params in conn.statements
     )
     assert any(
-        "INSERT INTO pipeline.file_state" in sql
+        "pipeline.control_set_file_state" in sql
         and params == ("s3://raw/policies.csv", "run-1", "completed", 7, None)
         for sql, params in conn.statements
     )
@@ -206,13 +205,12 @@ def test_mark_failed_updates_file_catalogue_and_file_state() -> None:
     )
 
     assert any(
-        "UPDATE pipeline.file_catalogue" in sql
-        and "state='failed'" in sql
-        and params == (10, "run-1", "s3://raw/policies.csv")
+        "pipeline.control_update_file_catalogue" in sql
+        and params == (None, "s3://raw/policies.csv", "failed", None, 10, "run-1")
         for sql, params in conn.statements
     )
     assert any(
-        "INSERT INTO pipeline.file_state" in sql
+        "pipeline.control_set_file_state" in sql
         and params == ("s3://raw/policies.csv", "run-1", "failed", None, "bad file")
         for sql, params in conn.statements
     )

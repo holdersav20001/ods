@@ -40,11 +40,11 @@ def _clean_for_bd(pg_conn, bd: str) -> None:
         cur.execute(
             """
             DELETE FROM pipeline.lineage_edge
-             WHERE child_run_id IN (
+             WHERE consumer_run_id IN (
                    SELECT run_id FROM pipeline.run_log
                     WHERE business_date=%s
              )
-                OR parent_file_id IN (
+                OR source_file_id IN (
                    SELECT file_id FROM pipeline.file_catalogue
                     WHERE business_date=%s
              )
@@ -60,11 +60,11 @@ def _clean_for_bd(pg_conn, bd: str) -> None:
         cur.execute("DELETE FROM pipeline.reconciliation_log WHERE business_date=%s", (bd,))
         cur.execute("DELETE FROM pipeline.run_log WHERE business_date=%s", (bd,))
         cur.execute(
-            "DELETE FROM pipeline.file_state WHERE s3_path LIKE %s",
+            "DELETE FROM pipeline.file_processing_attempt WHERE s3_path LIKE %s",
             (f"%/{bd}/%",),
         )
         cur.execute(
-            "DELETE FROM pipeline.file_state WHERE s3_path LIKE %s",
+            "DELETE FROM pipeline.file_processing_attempt WHERE s3_path LIKE %s",
             (f"%/date={bd}/%",),
         )
         cur.execute("DELETE FROM pipeline.file_catalogue WHERE business_date=%s", (bd,))

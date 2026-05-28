@@ -205,18 +205,18 @@ def _dataset_config(stub_url: str, mode: str = "ok") -> dict:
     }
 
 
-def _insert_run_log(conn, *, run_id, file_id, parents, status):
+def _insert_run_log(conn, *, run_id, file_id, orchestrators, status):
     with conn.cursor() as cur:
         cur.execute(
             """
             INSERT INTO pipeline.run_log
                 (run_id, pipeline_type, domain, dataset, business_date,
-                 file_id, status, parents)
-            VALUES (%s, 's3_batch', %s, %s, %s, %s, %s, %s::jsonb)
+                 file_id, status, orchestrators)
+            VALUES (%s, 'orchestration', %s, %s, %s, %s, %s, %s::jsonb)
             ON CONFLICT (run_id) DO NOTHING
             """,
             (run_id, DOMAIN, DATASET, "2026-05-02",
-             file_id, status, json.dumps(parents)),
+             file_id, status, json.dumps(orchestrators)),
         )
     conn.commit()
 
@@ -332,7 +332,7 @@ def test_archive_ok_downstream_failed_clears_pending(stub_url, s3_client,
         pg_conn,
         run_id=str(uuid.uuid4()),
         file_id=file_id,
-        parents=[{"run_id": api_pull_run_id, "edge_type": "triggered_by_api_pull"}],
+        orchestrators=[{"run_id": api_pull_run_id, "edge_type": "triggered_by_api_pull"}],
         status="failed",
     )
 
@@ -390,7 +390,7 @@ def test_archive_ok_downstream_succeeded_promotes(stub_url, s3_client,
         pg_conn,
         run_id=str(uuid.uuid4()),
         file_id=file_id,
-        parents=[{"run_id": api_pull_run_id, "edge_type": "triggered_by_api_pull"}],
+        orchestrators=[{"run_id": api_pull_run_id, "edge_type": "triggered_by_api_pull"}],
         status="succeeded",
     )
 

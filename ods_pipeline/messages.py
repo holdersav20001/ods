@@ -78,7 +78,7 @@ def correlate(
 
     if pattern_type == PatternType.FILE:
         # Legacy: file pattern allows correlation by run_id as a secondary key.
-        ctx_run = context.get("_ods_run_id") or context.get("run_id") or context.get("parent_run_id")
+        ctx_run = context.get("_ods_run_id") or context.get("run_id") or context.get("upstream_run_id")
         msg_run = message.get("_ods_run_id")
         if ctx_value and msg_value and str(ctx_value) == str(msg_value):
             return True
@@ -132,7 +132,7 @@ def start_run(
     business_date: str | None = None,
     kafka_topic: str | None = None,
     expected_count: int | None = None,
-    parents: list[dict[str, Any]] | None = None,
+    orchestrators: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Start a message/API run and open the receive stage.
 
@@ -148,7 +148,7 @@ def start_run(
         source_application=source_application,
         correlation=correlation,
     )
-    parent_payload = list(parents or [])
+    parent_payload = list(orchestrators or [])
     parent_payload.append({
         "edge_type": "message_correlation",
         "source_application": source_application,
@@ -162,7 +162,7 @@ def start_run(
         dataset=dataset,
         business_date=business_date,
         kafka_topic=kafka_topic,
-        parents=parent_payload,
+        orchestrators=parent_payload,
     )
     stages.start(
         conn,
@@ -277,7 +277,7 @@ def record_result(
         dataset=dataset,
         business_date=business_date,
         source_count=accepted_count,
-        kafka_count=published_count,
+        accounted_count=published_count,
         status="ok" if ok else "failed",
         detail=json.dumps(detail, sort_keys=True),
         commit=True,
@@ -301,7 +301,7 @@ def record_result(
         status=status,
         record_count_source=source_count,
         record_count_dq_fail=validation_fail_count + dlq_count,
-        record_count_published=published_count,
+        record_count_target=published_count,
         kafka_topic=kafka_topic,
         error_summary=None if ok else "message/API reconciliation failed",
     )

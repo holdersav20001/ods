@@ -104,7 +104,7 @@ class _RunsOps:
                   FROM pipeline.run_log
                  WHERE file_id = %s::uuid
                  ORDER BY CASE pipeline_type
-                            WHEN 's3_batch' THEN 0
+                            WHEN 'orchestration' THEN 0
                             WHEN 'file' THEN 1
                             WHEN 'ingestion' THEN 2
                             WHEN 'publish_raw' THEN 3

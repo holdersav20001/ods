@@ -207,7 +207,7 @@ def clean_state(pg_conn):
             )
             cur.execute(
                 "DELETE FROM pipeline.lineage_edge "
-                "WHERE child_run_id IN (SELECT run_id FROM pipeline.run_log "
+                "WHERE consumer_run_id IN (SELECT run_id FROM pipeline.run_log "
                 "                        WHERE domain=%s AND dataset IN (%s, %s))",
                 (DOMAIN, APPEND_DATASET, UPSERT_DATASET),
             )
@@ -226,7 +226,7 @@ def clean_state(pg_conn):
                 (DOMAIN, APPEND_DATASET, UPSERT_DATASET),
             )
             cur.execute(
-                "DELETE FROM pipeline.file_state "
+                "DELETE FROM pipeline.file_processing_attempt "
                 "WHERE s3_path LIKE %s OR s3_path LIKE %s",
                 (
                     f"s3://{RAW_BUCKET}/{DOMAIN}/{APPEND_DATASET}/%",
@@ -259,10 +259,11 @@ def _glue_env_args() -> list[str]:
         "-e", "ODS_SOURCE_APPLICATION=sftp",
         "-v", f"{REPO_ROOT}/glue/jobs:/home/glue_user/workspace/jobs",
         "-v", f"{REPO_ROOT}/ods_pipeline:/home/glue_user/ods_pipeline",
+        "-v", f"{REPO_ROOT}/ods_ingestion_control:/home/glue_user/ods_ingestion_control",
     ]
 
 
-def _run_ingestion(*, run_id, file_id, s3_input_path, parent_run_id, dataset):
+def _run_ingestion(*, run_id, file_id, s3_input_path, upstream_run_id, dataset):
     cmd = [
         "docker", "run", "--rm", "--network", NETWORK,
         *_glue_env_args(),
@@ -282,12 +283,12 @@ def _run_ingestion(*, run_id, file_id, s3_input_path, parent_run_id, dataset):
         "--dataset", dataset,
         "--s3_input_path", s3_input_path,
         "--file_id", file_id,
-        "--parent_run_id", parent_run_id,
+        "--upstream_run_id", upstream_run_id,
     ]
     return subprocess.run(cmd, capture_output=True, text=True, timeout=420)
 
 
-def _run_postgres_write(*, run_id, file_id, curated_path, parent_run_id, dataset):
+def _run_postgres_write(*, run_id, file_id, curated_path, upstream_run_id, dataset):
     cmd = [
         "docker", "run", "--rm", "--network", NETWORK,
         *_glue_env_args(),
@@ -308,7 +309,7 @@ def _run_postgres_write(*, run_id, file_id, curated_path, parent_run_id, dataset
         "--dataset", dataset,
         "--s3_input_path", curated_path,
         "--file_id", file_id,
-        "--parent_run_id", parent_run_id,
+        "--upstream_run_id", upstream_run_id,
     ]
     return subprocess.run(cmd, capture_output=True, text=True, timeout=600)
 
@@ -368,13 +369,13 @@ def _drive_one_run(s3_client, pg_conn, *, dataset, csv, prefix, bd_yyyymmdd):
 
     r1 = _run_ingestion(
         run_id=ingest_run, file_id=file_id, s3_input_path=raw,
-        parent_run_id=parent, dataset=dataset,
+        upstream_run_id=parent, dataset=dataset,
     )
     assert r1.returncode == 0, r1.stderr[-2000:]
     r2 = _run_postgres_write(
         run_id=pg_run, file_id=file_id,
         curated_path=_curated_path(dataset, iso),
-        parent_run_id=parent, dataset=dataset,
+        upstream_run_id=parent, dataset=dataset,
     )
     assert r2.returncode == 0, (
         f"postgres_write failed.\nSTDOUT:\n{r2.stdout[-3000:]}\n"

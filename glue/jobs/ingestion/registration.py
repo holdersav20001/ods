@@ -17,6 +17,7 @@ from typing import Any
 
 import boto3
 
+import ods_ingestion_control as control
 import ods_pipeline
 
 
@@ -75,18 +76,9 @@ def register(
     md5, size = head_md5(s3_input_path, s3_client=s3_client)
 
     if file_id:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                UPDATE pipeline.file_catalogue
-                   SET state='ingesting',
-                       last_run_id=%s,
-                       state_updated_at=NOW()
-                 WHERE file_id=%s
-                """,
-                (run_id, file_id),
-            )
-        conn.commit()
+        ods_pipeline.files.update_catalogue(
+            conn, file_id, state="ingesting", last_run_id=run_id,
+        )
         return file_id, md5, size
 
     new_file_id = ods_pipeline.files.upsert(
@@ -109,18 +101,9 @@ def already_completed(conn, s3_input_path: str) -> bool:
 
 
 def mark_curated(conn, *, file_id: str, curated_uri: str) -> None:
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            UPDATE pipeline.file_catalogue
-               SET s3_curated_path=%s,
-                   state='curated',
-                   state_updated_at=NOW()
-             WHERE file_id=%s
-            """,
-            (curated_uri, file_id),
-        )
-    conn.commit()
+    ods_pipeline.files.update_catalogue(
+        conn, file_id, s3_curated_path=curated_uri, state="curated",
+    )
 
 
 def mark_failed(
@@ -131,19 +114,13 @@ def mark_failed(
     reason: str,
     source_row_count: int | None = None,
 ) -> None:
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            UPDATE pipeline.file_catalogue
-               SET state='failed',
-                   source_row_count=COALESCE(%s, source_row_count),
-                   last_run_id=%s,
-                   state_updated_at=NOW()
-             WHERE s3_raw_path=%s
-            """,
-            (source_row_count, run_id, s3_input_path),
-        )
-    conn.commit()
+    control.update_file_catalogue(
+        conn,
+        s3_raw_path=s3_input_path,
+        state="failed",
+        source_row_count=source_row_count,
+        last_run_id=run_id,
+    )
     ods_pipeline.files.set_state(
         conn, s3_input_path, run_id, "failed", error_reason=reason,
     )
@@ -157,18 +134,12 @@ def mark_completed(
     record_count: int,
     source_row_count: int | None = None,
 ) -> None:
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            UPDATE pipeline.file_catalogue
-               SET source_row_count=COALESCE(%s, source_row_count),
-                   last_run_id=%s,
-                   state_updated_at=NOW()
-             WHERE s3_raw_path=%s
-            """,
-            (source_row_count, run_id, s3_input_path),
-        )
-    conn.commit()
+    control.update_file_catalogue(
+        conn,
+        s3_raw_path=s3_input_path,
+        source_row_count=source_row_count,
+        last_run_id=run_id,
+    )
     ods_pipeline.files.set_state(
         conn, s3_input_path, run_id, "completed", record_count=record_count,
     )

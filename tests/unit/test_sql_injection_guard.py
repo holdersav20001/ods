@@ -95,14 +95,9 @@ def test_runs_update_accepts_whitelisted_field():
     assert conn.committed == 1
     assert len(conn.executed) == 1
     sql_text, params = conn.executed[0]
-    # repr of psycopg2.sql.Composed contains Identifier('status') — proves the
-    # column is wrapped in sql.Identifier rather than spliced via f-string.
-    assert "Identifier('status')" in sql_text
-    assert "UPDATE pipeline.run_log" in sql_text
-    assert "WHERE run_id=%s" in sql_text
-    # Terminal status appends ended_at clause.
-    assert "ended_at=COALESCE(ended_at, NOW())" in sql_text
-    assert params == ["succeeded", "rid-1"]
+    assert "pipeline.control_patch_run" in sql_text
+    assert params[0] == "rid-1"
+    assert params[1].adapted == {"status": "succeeded"}
 
 
 @pytest.mark.parametrize(

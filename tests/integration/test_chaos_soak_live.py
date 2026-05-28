@@ -81,6 +81,7 @@ GLUE_COMMON = [
     else ["-v", f"{os.getcwd()}/glue/jobs:/home/glue_user/workspace/jobs"]
 ) + [
     "-v", f"{os.getcwd()}/ods_pipeline:/home/glue_user/ods_pipeline",
+    "-v", f"{os.getcwd()}/ods_ingestion_control:/home/glue_user/ods_ingestion_control",
 ]
 
 PY_FILES = (
@@ -190,11 +191,11 @@ def _wipe(pg, s3) -> None:
     cur.execute(
         """
         DELETE FROM pipeline.lineage_edge
-         WHERE child_run_id IN (
+         WHERE consumer_run_id IN (
                SELECT run_id FROM pipeline.run_log
                 WHERE domain = %s AND dataset = %s
                   AND business_date = ANY(%s::date[]))
-            OR parent_file_id IN (
+            OR source_file_id IN (
                SELECT file_id FROM pipeline.file_catalogue
                 WHERE domain = %s AND dataset = %s
                   AND business_date = ANY(%s::date[]))
@@ -236,7 +237,7 @@ def _wipe(pg, s3) -> None:
     )
     for prefix in _CHAOS_PREFIXES:
         cur.execute(
-            "DELETE FROM pipeline.file_state WHERE s3_path LIKE %s",
+            "DELETE FROM pipeline.file_processing_attempt WHERE s3_path LIKE %s",
             (f"%{prefix}%",),
         )
     pg.commit()

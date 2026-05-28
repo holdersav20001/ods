@@ -42,6 +42,7 @@ GLUE_COMMON = [
     "-e", "ENV=local",
     "-v", f"{os.getcwd()}/glue/jobs:/home/glue_user/workspace/jobs",
     "-v", f"{os.getcwd()}/ods_pipeline:/home/glue_user/ods_pipeline",
+    "-v", f"{os.getcwd()}/ods_ingestion_control:/home/glue_user/ods_ingestion_control",
 ]
 
 PY_FILES = (
@@ -124,11 +125,11 @@ def _wipe(pg):
     )
     cur.execute(
         "DELETE FROM pipeline.lineage_edge "
-        "WHERE child_run_id IN ("
+        "WHERE consumer_run_id IN ("
         "  SELECT run_id FROM pipeline.run_log "
         "   WHERE domain='insurance' "
         "     AND dataset IN ('policies_core','policies_enrichment','policies_enriched')"
-        ") OR parent_file_id IN ("
+        ") OR source_file_id IN ("
         "  SELECT file_id FROM pipeline.file_catalogue "
         "   WHERE domain='insurance' "
         "     AND dataset IN ('policies_core','policies_enrichment','policies_enriched')"
@@ -140,7 +141,7 @@ def _wipe(pg):
         "AND dataset IN ('policies_core','policies_enrichment','policies_enriched')"
     )
     cur.execute(
-        "DELETE FROM pipeline.file_state "
+        "DELETE FROM pipeline.file_processing_attempt "
         "WHERE s3_path LIKE '%policies_core%' OR s3_path LIKE '%policies_enrichment%'"
     )
     cur.execute("DELETE FROM pipeline.slot_staging_core WHERE _ods_business_date='2026-06-01'")
@@ -272,7 +273,7 @@ def test_3_slot_rerun(s3, pg):
     s3.put_object(Bucket=RAW_BUCKET, Key=CORE_KEY, Body=CORE_CSV_V2.encode())
     # Delete file_state so stage doesn't skip
     cur = pg.cursor()
-    cur.execute("DELETE FROM pipeline.file_state WHERE s3_path=%s", (CORE_PATH,))
+    cur.execute("DELETE FROM pipeline.file_processing_attempt WHERE s3_path=%s", (CORE_PATH,))
     pg.commit()
 
     r2, run_core_2 = _stage(CORE_PATH, "policies_core")

@@ -44,7 +44,7 @@ def dashboard_rows(pg_conn):
             cur.execute(
                 """
                 DELETE FROM pipeline.lineage_edge
-                 WHERE child_run_id IN (
+                 WHERE consumer_run_id IN (
                      SELECT run_id FROM pipeline.run_log
                       WHERE domain=%s AND dataset=%s
                  )
@@ -161,8 +161,8 @@ def dashboard_rows(pg_conn):
     )
     ods_pipeline.lineage.write_edge(
         pg_conn,
-        child_run_id=api_run_id,
-        parent_file_id=file_id,
+        consumer_run_id=api_run_id,
+        source_file_id=file_id,
         edge_type="api_to_archive",
         source_ref="https://example.invalid/items",
         target_ref=f"s3://ods-raw-local/api_pull/{DOMAIN}/{DATASET}/run.jsonl.gz",
@@ -176,7 +176,7 @@ def dashboard_rows(pg_conn):
         dataset=DATASET,
         business_date="2026-05-03",
         source_count=3,
-        kafka_count=None,
+        accounted_count=None,
         postgres_count=None,
         status="ok",
         detail=json.dumps({"fetched_count": 3, "archived_count": 3}),
@@ -200,12 +200,12 @@ def dashboard_rows(pg_conn):
     ods_pipeline.runs.start(
         pg_conn,
         run_id=downstream_run_id,
-        pipeline_type="s3_batch",
+        pipeline_type="orchestration",
         domain=DOMAIN,
         dataset=DATASET,
         business_date="2026-05-03",
         file_id=file_id,
-        parents=[{"run_id": api_run_id, "edge_type": TRIGGERED_BY_API_PULL_EDGE}],
+        orchestrators=[{"run_id": api_run_id, "edge_type": TRIGGERED_BY_API_PULL_EDGE}],
     )
     ods_pipeline.runs.update(
         pg_conn,

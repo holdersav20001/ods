@@ -19,6 +19,7 @@ x-airflow-common: &airflow-common
     DOCKER_HOST: unix:///var/run/docker.sock
     GLUE_JOBS_PATH: ${PWD}/glue/jobs
     ODS_PIPELINE_PATH: ${PWD}/ods_pipeline
+    ODS_INGESTION_CONTROL_PATH: ${PWD}/ods_ingestion_control
     PATTERNS_PATH: ${PWD}/patterns
     GLUE_IMAGE: ods-glue:local
     PIPELINE_PG_DSN: host=postgres port=5432 dbname=ods_dev user=ods password=ods
@@ -30,6 +31,7 @@ x-airflow-common: &airflow-common
   volumes:
     - ./airflow/dags:/opt/airflow/dags
     - ./ods_pipeline:/opt/airflow/ods_pipeline
+    - ./ods_ingestion_control:/opt/airflow/ods_ingestion_control
     - ./patterns:/opt/airflow/patterns
     - ./datasets:/opt/airflow/datasets
     - /var/run/docker.sock:/var/run/docker.sock
@@ -199,6 +201,7 @@ services:
       ENV: local
     volumes:
       - ./glue/jobs:/home/glue_user/workspace/jobs
+      - ./ods_ingestion_control:/home/glue_user/ods_ingestion_control
     # This service is pre-built but not run directly.
     # Airflow's DockerOperator spawns it per-job with:
     #   network_mode="ods-network"

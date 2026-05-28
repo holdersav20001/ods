@@ -227,6 +227,7 @@ def test_risk_canonicalize_job_writes_t1_recon(pg):
         "-e", "ENV=local",
         "-v", f"{ROOT / 'glue' / 'jobs'}:/home/glue_user/workspace/jobs",
         "-v", f"{ROOT / 'ods_pipeline'}:/home/glue_user/ods_pipeline",
+        "-v", f"{ROOT / 'ods_ingestion_control'}:/home/glue_user/ods_ingestion_control",
         "-v", f"{ROOT / 'patterns'}:/home/glue_user/patterns",
         "ods-glue:local",
         "spark-submit",
@@ -249,7 +250,7 @@ def test_risk_canonicalize_job_writes_t1_recon(pg):
         "--transform_yaml_path", "/home/glue_user/patterns/insurance/risk.yaml",
         "--offset_ranges", '{"0":{"start":0,"end":3}}',
         "--file_id", file_id,
-        "--parent_run_id", raw_run_id,
+        "--upstream_run_id", raw_run_id,
         "--business_date", "2026-05-01",
     ]
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
@@ -259,7 +260,7 @@ def test_risk_canonicalize_job_writes_t1_recon(pg):
     with pg.cursor() as cur:
         cur.execute(
             """
-            SELECT status, source_count, kafka_count, discrepancy_count
+            SELECT status, source_count, accounted_count, discrepancy_count
               FROM pipeline.reconciliation_log
              WHERE run_id=%s AND check_type='t1_canonicalize_count'
             """,

@@ -134,11 +134,10 @@ def test_reap_writes_kill_stage_and_updates_run_log(janitor) -> None:
     out = janitor.reap_orphan_runs(conn, grace_minutes=5)
     assert out == ["run_a", "run_b"]
 
-    inserts = [s for s, _ in conn.statements if "INSERT INTO pipeline.run_stage_log" in s]
+    inserts = [s for s, _ in conn.statements if "pipeline.control_write_stage_event" in s]
     assert len(inserts) == 2     # one kill row per orphan
 
-    update = next(s for s, _ in conn.statements if "UPDATE pipeline.run_log" in s)
-    assert "status = 'failed'" in update.replace("  ", " ")
+    update = next(s for s, _ in conn.statements if "pipeline.control_patch_run" in s)
     assert "janitor_no_heartbeat" in update or any(
         "janitor_no_heartbeat" in str(p) for _, p in conn.statements
     )

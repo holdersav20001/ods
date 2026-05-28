@@ -1,302 +1,174 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<mxfile host="app.diagrams.net">
-  <diagram id="pipeline-table-write-sequence" name="1. Table Write Sequence">
-    <mxGraphModel dx="1600" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1800" pageHeight="1200" math="0" shadow="0">
+<mxfile host="Claude">
+  <diagram id="pipeline-table-write-sequence" name="Control Table Write Order">
+    <mxGraphModel dx="1600" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2000" pageHeight="700" math="0" shadow="0">
       <root>
-        <mxCell id="0" />
-        <mxCell id="1" parent="0" />
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
 
-        <mxCell id="seq-title" value="Developer flow: populate pipeline tables in this order" style="text;html=1;fontStyle=1;fontSize=24;fillColor=none;strokeColor=none;align=left;" vertex="1" parent="1">
-          <mxGeometry x="40" y="24" width="760" height="36" as="geometry" />
+        <mxCell id="seq-title" value="pipeline.* — Control Table Write Order (File Ingestion)" style="text;html=1;fontStyle=1;fontSize=15;fillColor=none;strokeColor=none;align=left;fontColor=#1F5C8B;" vertex="1" parent="1">
+          <mxGeometry x="40" y="20" width="900" height="36" as="geometry"/>
         </mxCell>
-        <mxCell id="seq-rule" value="Golden rule: file_catalogue creates file_id once. Every DAG/job receives file_id and run_id explicitly and writes its own table evidence before emitting optional events." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=13;align=left;spacing=12;" vertex="1" parent="1">
-          <mxGeometry x="40" y="72" width="1210" height="54" as="geometry" />
-        </mxCell>
-
-        <mxCell id="seq-p1" value="1. Discover file" style="swimlane;html=1;rounded=1;fontStyle=1;startSize=36;fillColor=#dae8fc;strokeColor=#6c8ebf;container=1;collapsible=0;" vertex="1" parent="1">
-          <mxGeometry x="40" y="160" width="300" height="430" as="geometry" />
-        </mxCell>
-        <mxCell id="seq-p1-owner" value="Owner: dag_drop_to_raw" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=12;" vertex="1" parent="seq-p1">
-          <mxGeometry x="18" y="48" width="250" height="24" as="geometry" />
-        </mxCell>
-        <mxCell id="seq-p1-card1" value="file_catalogue&lt;br&gt;&lt;b&gt;upsert&lt;/b&gt; by domain/dataset/file_md5&lt;br&gt;set file_id, business_date, sftp_path, s3_raw_path, source_row_count, state" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;spacing=10;" vertex="1" parent="seq-p1">
-          <mxGeometry x="18" y="88" width="264" height="118" as="geometry" />
-        </mxCell>
-        <mxCell id="seq-p1-card2" value="Trigger downstream&lt;br&gt;&lt;b&gt;pass in conf&lt;/b&gt;&lt;br&gt;file_id, domain, dataset, business_date, s3_raw_path" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;align=left;spacing=10;" vertex="1" parent="seq-p1">
-          <mxGeometry x="18" y="228" width="264" height="96" as="geometry" />
-        </mxCell>
-        <mxCell id="seq-p1-guard" value="No run row yet unless you intentionally model the drop itself as a run." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;align=left;spacing=10;fontSize=12;" vertex="1" parent="seq-p1">
-          <mxGeometry x="18" y="346" width="264" height="58" as="geometry" />
+        <mxCell id="seq-rule" value="Golden rule: file_catalogue creates file_id once in Phase 1. Every subsequent phase receives file_id and run_id explicitly and writes its own table evidence before advancing." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF8E1;strokeColor=#F57F17;fontSize=11;align=left;spacingLeft=12;" vertex="1" parent="1">
+          <mxGeometry x="40" y="62" width="1300" height="44" as="geometry"/>
         </mxCell>
 
-        <mxCell id="seq-p2" value="2. Open run" style="swimlane;html=1;rounded=1;fontStyle=1;startSize=36;fillColor=#ffe6cc;strokeColor=#d79b00;container=1;collapsible=0;" vertex="1" parent="1">
-          <mxGeometry x="380" y="160" width="300" height="430" as="geometry" />
+        <!-- PHASE 1 -->
+        <mxCell id="p1" value="① Discover file" style="swimlane;html=1;rounded=1;fontStyle=1;startSize=36;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="40" y="130" width="270" height="500" as="geometry"/>
         </mxCell>
-        <mxCell id="seq-p2-owner" value="Owner: dag_ingest / job helper" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=12;" vertex="1" parent="seq-p2">
-          <mxGeometry x="18" y="48" width="250" height="24" as="geometry" />
+        <mxCell id="p1-own" value="dag_drop_to_raw" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=11;fontStyle=2;" vertex="1" parent="p1">
+          <mxGeometry x="16" y="44" width="240" height="20" as="geometry"/>
         </mxCell>
-        <mxCell id="seq-p2-card1" value="run_log&lt;br&gt;&lt;b&gt;insert&lt;/b&gt; run_id&lt;br&gt;status=running, pipeline_type, file_id, domain, dataset, business_date, config_version_id, schema_version_id" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;align=left;spacing=10;" vertex="1" parent="seq-p2">
-          <mxGeometry x="18" y="88" width="264" height="136" as="geometry" />
+        <mxCell id="p1-c1" value="&lt;b&gt;file_catalogue&lt;/b&gt;&#xa;UPSERT by domain / dataset / file_md5&#xa;Generates file_id (UUID)&#xa;Sets: sftp_path, s3_raw_path,&#xa;business_date, source_row_count,&#xa;md5_hex, size_bytes&#xa;state = &#39;registered&#39;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;fontSize=11;spacingLeft=10;" vertex="1" parent="p1">
+          <mxGeometry x="16" y="72" width="238" height="145" as="geometry"/>
         </mxCell>
-        <mxCell id="seq-p2-card2" value="lineage_edge&lt;br&gt;&lt;b&gt;append&lt;/b&gt; parent_file_id=file_id -&gt; child_run_id=run_id&lt;br&gt;This makes the file visible before downstream stages." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;spacing=10;" vertex="1" parent="seq-p2">
-          <mxGeometry x="18" y="248" width="264" height="102" as="geometry" />
+        <mxCell id="p1-c2" value="&lt;b&gt;Trigger downstream&lt;/b&gt;&#xa;Pass in conf:&#xa;file_id, domain, dataset,&#xa;business_date, s3_raw_path" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;align=left;fontSize=11;spacingLeft=10;" vertex="1" parent="p1">
+          <mxGeometry x="16" y="232" width="238" height="90" as="geometry"/>
         </mxCell>
-        <mxCell id="seq-p2-guard" value="Optional event: run_started after run_log exists." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;align=left;spacing=10;fontSize=12;" vertex="1" parent="seq-p2">
-          <mxGeometry x="18" y="372" width="264" height="44" as="geometry" />
-        </mxCell>
-
-        <mxCell id="seq-p3" value="3. Ingest and curate" style="swimlane;html=1;rounded=1;fontStyle=1;startSize=36;fillColor=#f8cecc;strokeColor=#b85450;container=1;collapsible=0;" vertex="1" parent="1">
-          <mxGeometry x="720" y="160" width="300" height="430" as="geometry" />
-        </mxCell>
-        <mxCell id="seq-p3-owner" value="Owner: ingestion job" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=12;" vertex="1" parent="seq-p3">
-          <mxGeometry x="18" y="48" width="250" height="24" as="geometry" />
-        </mxCell>
-        <mxCell id="seq-p3-card1" value="run_stage_log&lt;br&gt;&lt;b&gt;start then complete/fail&lt;/b&gt;&lt;br&gt;raw_read, schema_validate, dq_check, curated_write&lt;br&gt;include refs, counts, metrics, error" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;align=left;spacing=10;" vertex="1" parent="seq-p3">
-          <mxGeometry x="18" y="88" width="264" height="124" as="geometry" />
-        </mxCell>
-        <mxCell id="seq-p3-card2" value="file_catalogue&lt;br&gt;&lt;b&gt;update&lt;/b&gt; state and paths&lt;br&gt;ingesting -&gt; curated or failed&lt;br&gt;set s3_curated_path, last_run_id" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;spacing=10;" vertex="1" parent="seq-p3">
-          <mxGeometry x="18" y="236" width="264" height="104" as="geometry" />
-        </mxCell>
-        <mxCell id="seq-p3-guard" value="If ingestion fails, finalise run_log and close any still-running stages." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;align=left;spacing=10;fontSize=12;" vertex="1" parent="seq-p3">
-          <mxGeometry x="18" y="362" width="264" height="54" as="geometry" />
+        <mxCell id="p1-note" value="No run_log row yet.&#xa;run_id is generated by dag_ingest." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;align=left;fontSize=10;spacingLeft=10;fontStyle=2;" vertex="1" parent="p1">
+          <mxGeometry x="16" y="340" width="238" height="50" as="geometry"/>
         </mxCell>
 
-        <mxCell id="seq-p4" value="4. Publish and sink" style="swimlane;html=1;rounded=1;fontStyle=1;startSize=36;fillColor=#e1d5e7;strokeColor=#9673a6;container=1;collapsible=0;" vertex="1" parent="1">
-          <mxGeometry x="1060" y="160" width="300" height="430" as="geometry" />
+        <!-- PHASE 2 -->
+        <mxCell id="p2" value="② Open run" style="swimlane;html=1;rounded=1;fontStyle=1;startSize=36;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="330" y="130" width="270" height="500" as="geometry"/>
         </mxCell>
-        <mxCell id="seq-p4-owner" value="Owner: publish job / sink wait" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=12;" vertex="1" parent="seq-p4">
-          <mxGeometry x="18" y="48" width="250" height="24" as="geometry" />
+        <mxCell id="p2-own" value="dag_ingest — init_run + runs.start" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=11;fontStyle=2;" vertex="1" parent="p2">
+          <mxGeometry x="16" y="44" width="240" height="20" as="geometry"/>
         </mxCell>
-        <mxCell id="seq-p4-card1" value="run_log&lt;br&gt;&lt;b&gt;insert publish run&lt;/b&gt; or update selected run model&lt;br&gt;must include file_id and parent run relationship" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;align=left;spacing=10;" vertex="1" parent="seq-p4">
-          <mxGeometry x="18" y="88" width="264" height="98" as="geometry" />
+        <mxCell id="p2-c1" value="&lt;b&gt;run_log&lt;/b&gt;&#xa;INSERT run_id (UUID)&#xa;status = &#39;started&#39;&#xa;pipeline_type = &#39;file&#39;&#xa;file_id (FK → file_catalogue)&#xa;domain, dataset, business_date&#xa;airflow_dag_id, airflow_run_id&#xa;spark_app_id" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;align=left;fontSize=11;spacingLeft=10;" vertex="1" parent="p2">
+          <mxGeometry x="16" y="72" width="238" height="160" as="geometry"/>
         </mxCell>
-        <mxCell id="seq-p4-card2" value="run_stage_log&lt;br&gt;curated_read, dq_check, kafka_publish, sink_pg_wait, sink_history_wait&lt;br&gt;record topic, counts, offsets in metrics" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;align=left;spacing=10;" vertex="1" parent="seq-p4">
-          <mxGeometry x="18" y="208" width="264" height="124" as="geometry" />
+        <mxCell id="p2-c2" value="&lt;b&gt;file_catalogue&lt;/b&gt;&#xa;UPDATE state = &#39;ingesting&#39;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;align=left;fontSize=11;spacingLeft=10;" vertex="1" parent="p2">
+          <mxGeometry x="16" y="248" width="238" height="60" as="geometry"/>
         </mxCell>
-        <mxCell id="seq-p4-card3" value="lineage_edge&lt;br&gt;append ingestion run -&gt; publish run&lt;br&gt;and parent_file_id=file_id where useful" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;spacing=10;" vertex="1" parent="seq-p4">
-          <mxGeometry x="18" y="354" width="264" height="62" as="geometry" />
-        </mxCell>
-
-        <mxCell id="seq-p5" value="5. Finalise and reconcile" style="swimlane;html=1;rounded=1;fontStyle=1;startSize=36;fillColor=#fff2cc;strokeColor=#d6b656;container=1;collapsible=0;" vertex="1" parent="1">
-          <mxGeometry x="1400" y="160" width="300" height="430" as="geometry" />
-        </mxCell>
-        <mxCell id="seq-p5-owner" value="Owner: DAG finaliser / recon DAG" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=12;" vertex="1" parent="seq-p5">
-          <mxGeometry x="18" y="48" width="250" height="24" as="geometry" />
-        </mxCell>
-        <mxCell id="seq-p5-card1" value="run_log&lt;br&gt;&lt;b&gt;final update&lt;/b&gt;&lt;br&gt;status=succeeded, partial, or failed&lt;br&gt;ended_at, counts, topic, offset start/end, error_summary" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;align=left;spacing=10;" vertex="1" parent="seq-p5">
-          <mxGeometry x="18" y="88" width="264" height="124" as="geometry" />
-        </mxCell>
-        <mxCell id="seq-p5-card2" value="reconciliation_log&lt;br&gt;&lt;b&gt;append check rows&lt;/b&gt;&lt;br&gt;T0 publish counts, T2 history-file count, T2 current-latest consistency" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;align=left;spacing=10;" vertex="1" parent="seq-p5">
-          <mxGeometry x="18" y="236" width="264" height="100" as="geometry" />
-        </mxCell>
-        <mxCell id="seq-p5-card3" value="run_events&lt;br&gt;best-effort diagnostics only&lt;br&gt;emit after authoritative tables are written" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;align=left;spacing=10;" vertex="1" parent="seq-p5">
-          <mxGeometry x="18" y="358" width="264" height="58" as="geometry" />
+        <mxCell id="p2-note" value="Idempotency: if run_id already exists&#xa;with status=succeeded, skip the job." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;align=left;fontSize=10;spacingLeft=10;fontStyle=2;" vertex="1" parent="p2">
+          <mxGeometry x="16" y="326" width="238" height="50" as="geometry"/>
         </mxCell>
 
-        <mxCell id="seq-e1" value="file_id" style="endArrow=block;html=1;rounded=0;strokeWidth=2;edgeStyle=orthogonalEdgeStyle;" edge="1" parent="1" source="seq-p1" target="seq-p2">
-          <mxGeometry relative="1" as="geometry" />
+        <!-- PHASE 3 -->
+        <mxCell id="p3" value="③ Execute stages" style="swimlane;html=1;rounded=1;fontStyle=1;startSize=36;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="620" y="130" width="270" height="500" as="geometry"/>
         </mxCell>
-        <mxCell id="seq-e2" value="run_id + file_id" style="endArrow=block;html=1;rounded=0;strokeWidth=2;edgeStyle=orthogonalEdgeStyle;" edge="1" parent="1" source="seq-p2" target="seq-p3">
-          <mxGeometry relative="1" as="geometry" />
+        <mxCell id="p3-own" value="Glue Spark — stage_ingest (stage_scope)" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=11;fontStyle=2;" vertex="1" parent="p3">
+          <mxGeometry x="16" y="44" width="240" height="20" as="geometry"/>
         </mxCell>
-        <mxCell id="seq-e3" value="curated ref + run_id" style="endArrow=block;html=1;rounded=0;strokeWidth=2;edgeStyle=orthogonalEdgeStyle;" edge="1" parent="1" source="seq-p3" target="seq-p4">
-          <mxGeometry relative="1" as="geometry" />
+        <mxCell id="p3-c1" value="&lt;b&gt;stage_log&lt;/b&gt; (via stage_scope context manager)&#xa;One INSERT per stage:&#xa;• RAW_READ&#xa;• SCHEMA_VALIDATE&#xa;• DQ_CHECK&#xa;• CURATED_WRITE&#xa;Fields: stage, status, input_ref,&#xa;output_ref, record_count_in,&#xa;record_count_out, error_detail" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;fontSize=11;spacingLeft=10;" vertex="1" parent="p3">
+          <mxGeometry x="16" y="72" width="238" height="180" as="geometry"/>
         </mxCell>
-        <mxCell id="seq-e4" value="counts + offsets + status" style="endArrow=block;html=1;rounded=0;strokeWidth=2;edgeStyle=orthogonalEdgeStyle;" edge="1" parent="1" source="seq-p4" target="seq-p5">
-          <mxGeometry relative="1" as="geometry" />
+        <mxCell id="p3-note" value="stage_scope() auto-writes&#xa;status=succeeded or failed&#xa;on context manager exit." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;align=left;fontSize=10;spacingLeft=10;fontStyle=2;" vertex="1" parent="p3">
+          <mxGeometry x="16" y="268" width="238" height="55" as="geometry"/>
         </mxCell>
 
-        <mxCell id="seq-bottom-title" value="Minimum implementation checklist" style="text;html=1;fontStyle=1;fontSize=18;fillColor=none;strokeColor=none;align=left;" vertex="1" parent="1">
-          <mxGeometry x="40" y="650" width="360" height="30" as="geometry" />
+        <!-- PHASE 4 -->
+        <mxCell id="p4" value="④ Finalise ingest" style="swimlane;html=1;rounded=1;fontStyle=1;startSize=36;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="910" y="130" width="270" height="500" as="geometry"/>
         </mxCell>
-        <mxCell id="seq-check-1" value="A. File identity&lt;br&gt;Create file_catalogue.file_id once. Pass it everywhere." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;spacing=10;" vertex="1" parent="1">
-          <mxGeometry x="40" y="700" width="310" height="86" as="geometry" />
+        <mxCell id="p4-own" value="Glue — finalise_success()" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=11;fontStyle=2;" vertex="1" parent="p4">
+          <mxGeometry x="16" y="44" width="240" height="20" as="geometry"/>
         </mxCell>
-        <mxCell id="seq-check-2" value="B. Run header&lt;br&gt;Create run_log before work starts. Finalise exactly once." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;align=left;spacing=10;" vertex="1" parent="1">
-          <mxGeometry x="390" y="700" width="310" height="86" as="geometry" />
+        <mxCell id="p4-c1" value="&lt;b&gt;lineage&lt;/b&gt;&#xa;INSERT edge&#xa;edge_type = &#39;raw_to_curated&#39;&#xa;source_ref = s3://ods-raw-*/&#xa;target_ref = s3://ods-curated-*/" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;align=left;fontSize=11;spacingLeft=10;" vertex="1" parent="p4">
+          <mxGeometry x="16" y="72" width="238" height="110" as="geometry"/>
         </mxCell>
-        <mxCell id="seq-check-3" value="C. Stages&lt;br&gt;Every material operation writes run_stage_log with counts/refs/errors." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;align=left;spacing=10;" vertex="1" parent="1">
-          <mxGeometry x="740" y="700" width="310" height="86" as="geometry" />
+        <mxCell id="p4-c2" value="&lt;b&gt;reconciliation_log&lt;/b&gt;&#xa;INSERT check_type = &#39;t0_input_count&#39;&#xa;source_count, status" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;align=left;fontSize=11;spacingLeft=10;" vertex="1" parent="p4">
+          <mxGeometry x="16" y="198" width="238" height="80" as="geometry"/>
         </mxCell>
-        <mxCell id="seq-check-4" value="D. Lineage&lt;br&gt;Append lineage_edge for file-to-run and run-to-run relationships." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;spacing=10;" vertex="1" parent="1">
-          <mxGeometry x="1090" y="700" width="310" height="86" as="geometry" />
+        <mxCell id="p4-c3" value="&lt;b&gt;file_catalogue&lt;/b&gt;&#xa;UPDATE state = &#39;curated&#39;&#xa;curated_uri, completed_at" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;fontSize=11;spacingLeft=10;" vertex="1" parent="p4">
+          <mxGeometry x="16" y="294" width="238" height="75" as="geometry"/>
         </mxCell>
-        <mxCell id="seq-check-5" value="E. Reconciliation&lt;br&gt;Append reconciliation_log as evidence; do not replace run/stage truth." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;align=left;spacing=10;" vertex="1" parent="1">
-          <mxGeometry x="1440" y="700" width="310" height="86" as="geometry" />
+
+        <!-- PHASE 5 -->
+        <mxCell id="p5" value="⑤ Publish to Kafka" style="swimlane;html=1;rounded=1;fontStyle=1;startSize=36;fillColor=#e1d5e7;strokeColor=#6A1B9A;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1200" y="130" width="270" height="500" as="geometry"/>
         </mxCell>
-        <mxCell id="seq-footer" value="Source-of-truth order: file_catalogue -> run_log -> run_stage_log -> lineage_edge -> reconciliation_log. run_events is a copy/diagnostic stream and should never be the only place operational truth exists." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=13;align=left;spacing=12;" vertex="1" parent="1">
-          <mxGeometry x="40" y="840" width="1210" height="64" as="geometry" />
+        <mxCell id="p5-own" value="stage_publish — ods_s3_publish.py" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=11;fontStyle=2;" vertex="1" parent="p5">
+          <mxGeometry x="16" y="44" width="240" height="20" as="geometry"/>
         </mxCell>
+        <mxCell id="p5-c1" value="&lt;b&gt;publish_stage&lt;/b&gt;&#xa;INSERT per run:&#xa;run_id, topic,&#xa;kafka_offset_start,&#xa;kafka_offset_end,&#xa;record_count" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#6A1B9A;align=left;fontSize=11;spacingLeft=10;" vertex="1" parent="p5">
+          <mxGeometry x="16" y="72" width="238" height="120" as="geometry"/>
+        </mxCell>
+        <mxCell id="p5-c2" value="&lt;b&gt;reconciliation_log&lt;/b&gt;&#xa;INSERT check_type = &#39;t0_publish_count&#39;&#xa;source_count, kafka_count,&#xa;discrepancy_count, status" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;align=left;fontSize=11;spacingLeft=10;" vertex="1" parent="p5">
+          <mxGeometry x="16" y="208" width="238" height="95" as="geometry"/>
+        </mxCell>
+
+        <!-- PHASE 6 -->
+        <mxCell id="p6" value="⑥ Close run" style="swimlane;html=1;rounded=1;fontStyle=1;startSize=36;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1490" y="130" width="270" height="500" as="geometry"/>
+        </mxCell>
+        <mxCell id="p6-own" value="finalise (Airflow task)" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=11;fontStyle=2;" vertex="1" parent="p6">
+          <mxGeometry x="16" y="44" width="240" height="20" as="geometry"/>
+        </mxCell>
+        <mxCell id="p6-c1" value="&lt;b&gt;reconciliation_log&lt;/b&gt;&#xa;INSERT check_type = &#39;dual_sink_parity&#39;&#xa;current_count, history_count,&#xa;discrepancy_count, status" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;align=left;fontSize=11;spacingLeft=10;" vertex="1" parent="p6">
+          <mxGeometry x="16" y="72" width="238" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="p6-c2" value="&lt;b&gt;run_log&lt;/b&gt;&#xa;UPDATE status = &#39;succeeded&#39;&#xa;record_count_source,&#xa;record_count_dq_pass,&#xa;record_count_dq_fail,&#xa;completed_at" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;align=left;fontSize=11;spacingLeft=10;" vertex="1" parent="p6">
+          <mxGeometry x="16" y="188" width="238" height="120" as="geometry"/>
+        </mxCell>
+        <mxCell id="p6-c3" value="&lt;b&gt;file_catalogue&lt;/b&gt;&#xa;UPDATE state = &#39;completed&#39;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;fontSize=11;spacingLeft=10;" vertex="1" parent="p6">
+          <mxGeometry x="16" y="324" width="238" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- flow arrows between phases -->
+        <mxCell id="fa1" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=2;" edge="1" source="p1" target="p2" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="fa2" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=2;" edge="1" source="p2" target="p3" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="fa3" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=2;" edge="1" source="p3" target="p4" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="fa4" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=2;" edge="1" source="p4" target="p5" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="fa5" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=2;" edge="1" source="p5" target="p6" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
       </root>
     </mxGraphModel>
   </diagram>
 
-  <diagram id="pipeline-table-ownership-matrix" name="2. Table Ownership Matrix">
-    <mxGraphModel dx="1600" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1800" pageHeight="1200" math="0" shadow="0">
+  <diagram id="table-schemas" name="Table Schema Quick-Ref">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2000" pageHeight="900" math="0" shadow="0">
       <root>
-        <mxCell id="0" />
-        <mxCell id="1" parent="0" />
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
 
-        <mxCell id="own-title" value="Pipeline table ownership and write contract" style="text;html=1;fontStyle=1;fontSize=24;fillColor=none;strokeColor=none;align=left;" vertex="1" parent="1">
-          <mxGeometry x="40" y="24" width="760" height="36" as="geometry" />
-        </mxCell>
-        <mxCell id="own-sub" value="Use this page as the developer checklist: if a component owns a table, it must populate the required IDs and status fields consistently." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=13;align=left;spacing=12;" vertex="1" parent="1">
-          <mxGeometry x="40" y="72" width="1180" height="52" as="geometry" />
+        <mxCell id="T-title" value="pipeline.* — Table Schema Quick Reference" style="text;html=1;fontStyle=1;fontSize=15;fillColor=none;strokeColor=none;align=left;fontColor=#1F5C8B;" vertex="1" parent="1">
+          <mxGeometry x="40" y="20" width="900" height="36" as="geometry"/>
         </mxCell>
 
-        <mxCell id="own-h-table" value="Table" style="rounded=0;whiteSpace=wrap;html=1;fontStyle=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1"><mxGeometry x="40" y="160" width="230" height="46" as="geometry" /></mxCell>
-        <mxCell id="own-h-owner" value="Owner" style="rounded=0;whiteSpace=wrap;html=1;fontStyle=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1"><mxGeometry x="270" y="160" width="230" height="46" as="geometry" /></mxCell>
-        <mxCell id="own-h-write" value="Write pattern" style="rounded=0;whiteSpace=wrap;html=1;fontStyle=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1"><mxGeometry x="500" y="160" width="240" height="46" as="geometry" /></mxCell>
-        <mxCell id="own-h-purpose" value="Purpose / source of truth" style="rounded=0;whiteSpace=wrap;html=1;fontStyle=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1"><mxGeometry x="740" y="160" width="420" height="46" as="geometry" /></mxCell>
-        <mxCell id="own-h-ids" value="Required correlation" style="rounded=0;whiteSpace=wrap;html=1;fontStyle=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1"><mxGeometry x="1160" y="160" width="360" height="46" as="geometry" /></mxCell>
-
-        <mxCell id="own-r1-a" value="pipeline.file_catalogue" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="206" width="230" height="78" as="geometry" /></mxCell>
-        <mxCell id="own-r1-b" value="dag_drop_to_raw" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d1d1d1;" vertex="1" parent="1"><mxGeometry x="270" y="206" width="230" height="78" as="geometry" /></mxCell>
-        <mxCell id="own-r1-c" value="Upsert by domain/dataset/file_md5; update lifecycle state and paths" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d1d1d1;" vertex="1" parent="1"><mxGeometry x="500" y="206" width="240" height="78" as="geometry" /></mxCell>
-        <mxCell id="own-r1-d" value="File identity, dedupe, file lifecycle, raw/curated path lookup" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d1d1d1;" vertex="1" parent="1"><mxGeometry x="740" y="206" width="420" height="78" as="geometry" /></mxCell>
-        <mxCell id="own-r1-e" value="file_id, domain, dataset, business_date, file_md5, s3_raw_path, s3_curated_path, last_run_id" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d1d1d1;" vertex="1" parent="1"><mxGeometry x="1160" y="206" width="360" height="78" as="geometry" /></mxCell>
-
-        <mxCell id="own-r2-a" value="pipeline.run_log" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="284" width="230" height="78" as="geometry" /></mxCell>
-        <mxCell id="own-r2-b" value="Airflow DAG / job header helper" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d1d1d1;" vertex="1" parent="1"><mxGeometry x="270" y="284" width="230" height="78" as="geometry" /></mxCell>
-        <mxCell id="own-r2-c" value="One row per logical run; update status/counts/end time as run progresses" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d1d1d1;" vertex="1" parent="1"><mxGeometry x="500" y="284" width="240" height="78" as="geometry" /></mxCell>
-        <mxCell id="own-r2-d" value="Authoritative run state for dashboards, alerts, and recovery decisions" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d1d1d1;" vertex="1" parent="1"><mxGeometry x="740" y="284" width="420" height="78" as="geometry" /></mxCell>
-        <mxCell id="own-r2-e" value="run_id, pipeline_type, file_id, domain, dataset, business_date, status, config_version_id, schema_version_id" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d1d1d1;" vertex="1" parent="1"><mxGeometry x="1160" y="284" width="360" height="78" as="geometry" /></mxCell>
-
-        <mxCell id="own-r3-a" value="pipeline.run_stage_log" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="362" width="230" height="78" as="geometry" /></mxCell>
-        <mxCell id="own-r3-b" value="Every DAG/job stage" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d1d1d1;" vertex="1" parent="1"><mxGeometry x="270" y="362" width="230" height="78" as="geometry" /></mxCell>
-        <mxCell id="own-r3-c" value="Append/start stage, then update same row to terminal status with counts/metrics/error" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d1d1d1;" vertex="1" parent="1"><mxGeometry x="500" y="362" width="240" height="78" as="geometry" /></mxCell>
-        <mxCell id="own-r3-d" value="Step-level observability and root-cause evidence" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d1d1d1;" vertex="1" parent="1"><mxGeometry x="740" y="362" width="420" height="78" as="geometry" /></mxCell>
-        <mxCell id="own-r3-e" value="run_id, stage, status, started_at, ended_at, input_ref, output_ref, record_count_in/out, metrics" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d1d1d1;" vertex="1" parent="1"><mxGeometry x="1160" y="362" width="360" height="78" as="geometry" /></mxCell>
-
-        <mxCell id="own-r4-a" value="pipeline.lineage_edge" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="440" width="230" height="78" as="geometry" /></mxCell>
-        <mxCell id="own-r4-b" value="Ingestion, publish, merge jobs" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d1d1d1;" vertex="1" parent="1"><mxGeometry x="270" y="440" width="230" height="78" as="geometry" /></mxCell>
-        <mxCell id="own-r4-c" value="Append one edge per parent contribution; never infer later from dates" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d1d1d1;" vertex="1" parent="1"><mxGeometry x="500" y="440" width="240" height="78" as="geometry" /></mxCell>
-        <mxCell id="own-r4-d" value="Queryable lineage graph for single-file and multi-file flows" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d1d1d1;" vertex="1" parent="1"><mxGeometry x="740" y="440" width="420" height="78" as="geometry" /></mxCell>
-        <mxCell id="own-r4-e" value="child_run_id, parent_run_id and/or parent_file_id, edge_type, source_ref, target_ref, record_count" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d1d1d1;" vertex="1" parent="1"><mxGeometry x="1160" y="440" width="360" height="78" as="geometry" /></mxCell>
-
-        <mxCell id="own-r5-a" value="pipeline.reconciliation_log" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="518" width="230" height="78" as="geometry" /></mxCell>
-        <mxCell id="own-r5-b" value="Reconciliation DAG" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d1d1d1;" vertex="1" parent="1"><mxGeometry x="270" y="518" width="230" height="78" as="geometry" /></mxCell>
-        <mxCell id="own-r5-c" value="Append one row per check execution; do not delete previous evidence" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d1d1d1;" vertex="1" parent="1"><mxGeometry x="500" y="518" width="240" height="78" as="geometry" /></mxCell>
-        <mxCell id="own-r5-d" value="Count/check evidence across source, Kafka, Postgres, history, and current-state tables" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d1d1d1;" vertex="1" parent="1"><mxGeometry x="740" y="518" width="420" height="78" as="geometry" /></mxCell>
-        <mxCell id="own-r5-e" value="check_type, run_id when available, domain, dataset, business_date/window, counts, discrepancy, status, detail" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d1d1d1;" vertex="1" parent="1"><mxGeometry x="1160" y="518" width="360" height="78" as="geometry" /></mxCell>
-
-        <mxCell id="own-r6-a" value="pipeline.run_events" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="596" width="230" height="78" as="geometry" /></mxCell>
-        <mxCell id="own-r6-b" value="Event producer / jobs" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d1d1d1;" vertex="1" parent="1"><mxGeometry x="270" y="596" width="230" height="78" as="geometry" /></mxCell>
-        <mxCell id="own-r6-c" value="Append-only best-effort event copy; write after authoritative table updates" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d1d1d1;" vertex="1" parent="1"><mxGeometry x="500" y="596" width="240" height="78" as="geometry" /></mxCell>
-        <mxCell id="own-r6-d" value="Diagnostics and event-stream debugging, not authoritative run state" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d1d1d1;" vertex="1" parent="1"><mxGeometry x="740" y="596" width="420" height="78" as="geometry" /></mxCell>
-        <mxCell id="own-r6-e" value="run_id, event_type, status, file_id, topic, offsets, counts, stages snapshot" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d1d1d1;" vertex="1" parent="1"><mxGeometry x="1160" y="596" width="360" height="78" as="geometry" /></mxCell>
-
-        <mxCell id="own-r7-a" value="pipeline.merge_contribution_log" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="674" width="230" height="78" as="geometry" /></mxCell>
-        <mxCell id="own-r7-b" value="Merge pipeline" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d1d1d1;" vertex="1" parent="1"><mxGeometry x="270" y="674" width="230" height="78" as="geometry" /></mxCell>
-        <mxCell id="own-r7-c" value="Append one row per slot contribution; also create lineage_edge rows for graph consistency" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d1d1d1;" vertex="1" parent="1"><mxGeometry x="500" y="674" width="240" height="78" as="geometry" /></mxCell>
-        <mxCell id="own-r7-d" value="Merge audit detail: which slot/file/run contributed which columns" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d1d1d1;" vertex="1" parent="1"><mxGeometry x="740" y="674" width="420" height="78" as="geometry" /></mxCell>
-        <mxCell id="own-r7-e" value="merge_run_id, slot_name, slot_run_id, file_id, s3_raw_path, columns_written, record_count" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d1d1d1;" vertex="1" parent="1"><mxGeometry x="1160" y="674" width="360" height="78" as="geometry" /></mxCell>
-
-        <mxCell id="own-note" value="Developer guardrails&lt;br&gt;1. If a row is visible to operators, write it before emitting events.&lt;br&gt;2. A terminal run must not leave active stages as running.&lt;br&gt;3. file_id and run_id are contracts, not optional conveniences.&lt;br&gt;4. Reconciliation rows are evidence; failed checks should explain the comparison and source of counts." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=13;align=left;spacing=12;" vertex="1" parent="1">
-          <mxGeometry x="40" y="800" width="900" height="130" as="geometry" />
+        <!-- file_catalogue -->
+        <mxCell id="T-fc" value="&lt;b&gt;pipeline.file_catalogue&lt;/b&gt;&#xa;file_id UUID PK&#xa;domain, dataset, business_date&#xa;sftp_path, s3_raw_path, curated_uri&#xa;md5_hex, size_bytes&#xa;source_row_count&#xa;state: registered → ingesting → curated → completed&#xa;registered_at, completed_at" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;fontSize=11;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="40" y="80" width="260" height="180" as="geometry"/>
         </mxCell>
+
+        <!-- run_log -->
+        <mxCell id="T-rl" value="&lt;b&gt;pipeline.run_log&lt;/b&gt;&#xa;run_id UUID PK&#xa;file_id FK → file_catalogue&#xa;pipeline_type, domain, dataset, business_date&#xa;status: started → succeeded / failed&#xa;record_count_source&#xa;record_count_dq_pass, record_count_dq_fail&#xa;airflow_dag_id, airflow_run_id, spark_app_id&#xa;started_at, completed_at" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;align=left;fontSize=11;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="320" y="80" width="260" height="200" as="geometry"/>
+        </mxCell>
+
+        <!-- stage_log -->
+        <mxCell id="T-sl" value="&lt;b&gt;pipeline.stage_log&lt;/b&gt;&#xa;id SERIAL PK&#xa;run_id FK → run_log&#xa;stage: RAW_READ | SCHEMA_VALIDATE |&#xa;  DQ_CHECK | CURATED_WRITE | ...&#xa;status: succeeded | failed | skipped&#xa;input_ref, output_ref&#xa;record_count_in, record_count_out&#xa;error_detail&#xa;started_at, completed_at" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;fontSize=11;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="600" y="80" width="270" height="210" as="geometry"/>
+        </mxCell>
+
+        <!-- lineage -->
+        <mxCell id="T-ln" value="&lt;b&gt;pipeline.lineage&lt;/b&gt;&#xa;id SERIAL PK&#xa;run_id FK → run_log&#xa;file_id FK → file_catalogue&#xa;edge_type: raw_to_curated | ...&#xa;source_ref (s3 URI)&#xa;target_ref (s3 URI)&#xa;recorded_at" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;align=left;fontSize=11;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="890" y="80" width="260" height="180" as="geometry"/>
+        </mxCell>
+
+        <!-- publish_stage -->
+        <mxCell id="T-ps" value="&lt;b&gt;pipeline.publish_stage&lt;/b&gt;&#xa;id SERIAL PK&#xa;run_id FK → run_log&#xa;topic (Kafka topic name)&#xa;kafka_offset_start&#xa;kafka_offset_end&#xa;record_count&#xa;published_at" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#6A1B9A;align=left;fontSize=11;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="1170" y="80" width="260" height="175" as="geometry"/>
+        </mxCell>
+
+        <!-- reconciliation_log -->
+        <mxCell id="T-rcl" value="&lt;b&gt;pipeline.reconciliation_log&lt;/b&gt;&#xa;id SERIAL PK&#xa;check_type: t0_input_count | t0_publish_count |&#xa;  dual_sink_parity | current_history_row_value&#xa;run_id FK → run_log&#xa;domain, dataset, business_date&#xa;window_start, window_end&#xa;source_count, kafka_count, postgres_count&#xa;discrepancy_count, discrepancy_pct&#xa;status: ok | pending | failed&#xa;detail (JSON for row-level checks)&#xa;checked_at" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF8E1;strokeColor=#F57F17;align=left;fontSize=11;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="1450" y="80" width="290" height="260" as="geometry"/>
+        </mxCell>
+
+        <!-- FK arrows -->
+        <mxCell id="Tf1" value="FK file_id" style="edgeStyle=orthogonalEdgeStyle;fontSize=9;dashed=1;" edge="1" source="T-rl"  target="T-fc"  parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="Tf2" value="FK run_id"  style="edgeStyle=orthogonalEdgeStyle;fontSize=9;dashed=1;" edge="1" source="T-sl"  target="T-rl"  parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="Tf3" value="FK run_id"  style="edgeStyle=orthogonalEdgeStyle;fontSize=9;dashed=1;" edge="1" source="T-ln"  target="T-rl"  parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="Tf4" value="FK run_id"  style="edgeStyle=orthogonalEdgeStyle;fontSize=9;dashed=1;" edge="1" source="T-ps"  target="T-rl"  parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="Tf5" value="FK run_id"  style="edgeStyle=orthogonalEdgeStyle;fontSize=9;dashed=1;" edge="1" source="T-rcl" target="T-rl"  parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
       </root>
     </mxGraphModel>
   </diagram>
 
-  <diagram id="pipeline-state-transitions" name="3. State Transitions">
-    <mxGraphModel dx="1600" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1800" pageHeight="1200" math="0" shadow="0">
-      <root>
-        <mxCell id="0" />
-        <mxCell id="1" parent="0" />
-
-        <mxCell id="st-title" value="Pipeline state machines" style="text;html=1;fontStyle=1;fontSize=24;fillColor=none;strokeColor=none;align=left;" vertex="1" parent="1">
-          <mxGeometry x="40" y="24" width="560" height="36" as="geometry" />
-        </mxCell>
-        <mxCell id="st-note" value="Statuses are operator-facing contracts. Keep transitions boring, explicit, and terminal. Do not leave a child stage running when the parent run is terminal." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=13;align=left;spacing=12;" vertex="1" parent="1">
-          <mxGeometry x="40" y="72" width="1060" height="54" as="geometry" />
-        </mxCell>
-
-        <mxCell id="st-file-title" value="file_catalogue.state" style="text;html=1;fontStyle=1;fontSize=18;fillColor=none;strokeColor=none;align=left;" vertex="1" parent="1"><mxGeometry x="60" y="170" width="280" height="30" as="geometry" /></mxCell>
-        <mxCell id="st-file-new" value="new" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="70" y="230" width="130" height="54" as="geometry" /></mxCell>
-        <mxCell id="st-file-ing" value="ingesting" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="300" y="230" width="130" height="54" as="geometry" /></mxCell>
-        <mxCell id="st-file-cur" value="curated" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="530" y="190" width="130" height="54" as="geometry" /></mxCell>
-        <mxCell id="st-file-sunk" value="sunk" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="760" y="190" width="130" height="54" as="geometry" /></mxCell>
-        <mxCell id="st-file-failed" value="failed" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="530" y="300" width="130" height="54" as="geometry" /></mxCell>
-        <mxCell id="st-file-e1" value="registered" style="endArrow=block;html=1;rounded=0;strokeWidth=2;" edge="1" parent="1" source="st-file-new" target="st-file-ing"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="st-file-e2" value="curated path written" style="endArrow=block;html=1;rounded=0;strokeWidth=2;" edge="1" parent="1" source="st-file-ing" target="st-file-cur"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="st-file-e3" value="sink confirmed" style="endArrow=block;html=1;rounded=0;strokeWidth=2;" edge="1" parent="1" source="st-file-cur" target="st-file-sunk"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="st-file-e4" value="hard failure" style="endArrow=block;html=1;rounded=0;strokeWidth=2;" edge="1" parent="1" source="st-file-ing" target="st-file-failed"><mxGeometry relative="1" as="geometry" /></mxCell>
-
-        <mxCell id="st-run-title" value="run_log.status" style="text;html=1;fontStyle=1;fontSize=18;fillColor=none;strokeColor=none;align=left;" vertex="1" parent="1"><mxGeometry x="60" y="430" width="280" height="30" as="geometry" /></mxCell>
-        <mxCell id="st-run-running" value="running" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="70" y="500" width="130" height="54" as="geometry" /></mxCell>
-        <mxCell id="st-run-suc" value="succeeded" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="330" y="430" width="130" height="54" as="geometry" /></mxCell>
-        <mxCell id="st-run-part" value="partial" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="330" y="530" width="130" height="54" as="geometry" /></mxCell>
-        <mxCell id="st-run-failed" value="failed" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="330" y="630" width="130" height="54" as="geometry" /></mxCell>
-        <mxCell id="st-run-e1" value="all required checks passed" style="endArrow=block;html=1;rounded=0;strokeWidth=2;" edge="1" parent="1" source="st-run-running" target="st-run-suc"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="st-run-e2" value="published but sink/recon incomplete" style="endArrow=block;html=1;rounded=0;strokeWidth=2;" edge="1" parent="1" source="st-run-running" target="st-run-part"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="st-run-e3" value="hard failure or blocking DQ" style="endArrow=block;html=1;rounded=0;strokeWidth=2;" edge="1" parent="1" source="st-run-running" target="st-run-failed"><mxGeometry relative="1" as="geometry" /></mxCell>
-
-        <mxCell id="st-stage-title" value="run_stage_log.status" style="text;html=1;fontStyle=1;fontSize=18;fillColor=none;strokeColor=none;align=left;" vertex="1" parent="1"><mxGeometry x="860" y="430" width="300" height="30" as="geometry" /></mxCell>
-        <mxCell id="st-stage-running" value="running" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="870" y="500" width="130" height="54" as="geometry" /></mxCell>
-        <mxCell id="st-stage-suc" value="succeeded" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="1130" y="410" width="130" height="54" as="geometry" /></mxCell>
-        <mxCell id="st-stage-warn" value="warned / dq_warned" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="1130" y="500" width="150" height="54" as="geometry" /></mxCell>
-        <mxCell id="st-stage-skip" value="skipped" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="1130" y="590" width="130" height="54" as="geometry" /></mxCell>
-        <mxCell id="st-stage-failed" value="failed" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="1130" y="680" width="130" height="54" as="geometry" /></mxCell>
-        <mxCell id="st-stage-e1" value="normal completion" style="endArrow=block;html=1;rounded=0;strokeWidth=2;" edge="1" parent="1" source="st-stage-running" target="st-stage-suc"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="st-stage-e2" value="soft DQ or recoverable warning" style="endArrow=block;html=1;rounded=0;strokeWidth=2;" edge="1" parent="1" source="st-stage-running" target="st-stage-warn"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="st-stage-e3" value="not applicable after prior result" style="endArrow=block;html=1;rounded=0;strokeWidth=2;" edge="1" parent="1" source="st-stage-running" target="st-stage-skip"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="st-stage-e4" value="exception or failed check" style="endArrow=block;html=1;rounded=0;strokeWidth=2;" edge="1" parent="1" source="st-stage-running" target="st-stage-failed"><mxGeometry relative="1" as="geometry" /></mxCell>
-
-        <mxCell id="st-close-note" value="Terminal run finalisation rule&lt;br&gt;When run_log.status becomes succeeded, partial, or failed, close any open stages for that run. Use failed for the active failing stage and skipped for downstream stages that did not execute." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=13;align=left;spacing=12;" vertex="1" parent="1">
-          <mxGeometry x="60" y="820" width="820" height="82" as="geometry" />
-        </mxCell>
-      </root>
-    </mxGraphModel>
-  </diagram>
-
-  <diagram id="pipeline-lineage-relationships" name="4. Lineage Relationships">
-    <mxGraphModel dx="1600" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1800" pageHeight="1200" math="0" shadow="0">
-      <root>
-        <mxCell id="0" />
-        <mxCell id="1" parent="0" />
-
-        <mxCell id="lin-title" value="Lineage relationships: single-file and merge paths" style="text;html=1;fontStyle=1;fontSize=24;fillColor=none;strokeColor=none;align=left;" vertex="1" parent="1">
-          <mxGeometry x="40" y="24" width="760" height="36" as="geometry" />
-        </mxCell>
-        <mxCell id="lin-note" value="lineage_edge is the normalized graph. merge_contribution_log can keep merge-specific details, but it should be mirrored into lineage_edge so all lineage queries work the same way." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=13;align=left;spacing=12;" vertex="1" parent="1">
-          <mxGeometry x="40" y="72" width="1180" height="54" as="geometry" />
-        </mxCell>
-
-        <mxCell id="lin-single-title" value="Single-file path" style="text;html=1;fontStyle=1;fontSize=18;fillColor=none;strokeColor=none;align=left;" vertex="1" parent="1"><mxGeometry x="60" y="160" width="240" height="30" as="geometry" /></mxCell>
-        <mxCell id="lin-s-file" value="file_catalogue&lt;br&gt;file_id=F1&lt;br&gt;raw/curated paths" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="70" y="230" width="190" height="86" as="geometry" /></mxCell>
-        <mxCell id="lin-s-ingest" value="run_log&lt;br&gt;run_id=R_ingest&lt;br&gt;pipeline_type=ingestion&lt;br&gt;file_id=F1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="360" y="230" width="220" height="96" as="geometry" /></mxCell>
-        <mxCell id="lin-s-pub" value="run_log&lt;br&gt;run_id=R_publish&lt;br&gt;pipeline_type=publish&lt;br&gt;file_id=F1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="690" y="230" width="220" height="96" as="geometry" /></mxCell>
-        <mxCell id="lin-s-edge1" value="lineage_edge&lt;br&gt;parent_file_id=F1&lt;br&gt;child_run_id=R_ingest&lt;br&gt;edge_type=file_to_run" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1"><mxGeometry x="345" y="370" width="250" height="94" as="geometry" /></mxCell>
-        <mxCell id="lin-s-edge2" value="lineage_edge&lt;br&gt;parent_run_id=R_ingest&lt;br&gt;child_run_id=R_publish&lt;br&gt;edge_type=run_to_run" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1"><mxGeometry x="675" y="370" width="260" height="94" as="geometry" /></mxCell>
-        <mxCell id="lin-s-tgt" value="Kafka / Postgres targets&lt;br&gt;rows carry _ods_run_id&lt;br&gt;and _ods_file_id" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="1010" y="230" width="230" height="96" as="geometry" /></mxCell>
-        <mxCell id="lin-s-e1" value="explicit file_id" style="endArrow=block;html=1;rounded=0;strokeWidth=2;" edge="1" parent="1" source="lin-s-file" target="lin-s-ingest"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="lin-s-e2" value="parent run" style="endArrow=block;html=1;rounded=0;strokeWidth=2;" edge="1" parent="1" source="lin-s-ingest" target="lin-s-pub"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="lin-s-e3" value="published records" style="endArrow=block;html=1;rounded=0;strokeWidth=2;" edge="1" parent="1" source="lin-s-pub" target="lin-s-tgt"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="lin-s-e4" value="record edge" style="endArrow=block;html=1;rounded=0;dashed=1;" edge="1" parent="1" source="lin-s-file" target="lin-s-edge1"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="lin-s-e5" value="record edge" style="endArrow=block;html=1;rounded=0;dashed=1;" edge="1" parent="1" source="lin-s-ingest" target="lin-s-edge2"><mxGeometry relative="1" as="geometry" /></mxCell>
-
-        <mxCell id="lin-merge-title" value="Multi-file merge path" style="text;html=1;fontStyle=1;fontSize=18;fillColor=none;strokeColor=none;align=left;" vertex="1" parent="1"><mxGeometry x="60" y="560" width="280" height="30" as="geometry" /></mxCell>
-        <mxCell id="lin-m-file-a" value="file F_core&lt;br&gt;slot=core" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="70" y="650" width="150" height="64" as="geometry" /></mxCell>
-        <mxCell id="lin-m-file-b" value="file F_enrich&lt;br&gt;slot=enrichment" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="70" y="760" width="150" height="64" as="geometry" /></mxCell>
-        <mxCell id="lin-m-run-a" value="slot run R_core&lt;br&gt;file_id=F_core" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="330" y="650" width="190" height="64" as="geometry" /></mxCell>
-        <mxCell id="lin-m-run-b" value="slot run R_enrich&lt;br&gt;file_id=F_enrich" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="330" y="760" width="190" height="64" as="geometry" /></mxCell>
-        <mxCell id="lin-m-merge" value="merge run R_merge&lt;br&gt;dataset=policies_enriched&lt;br&gt;parents from lineage_edge" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="660" y="690" width="240" height="96" as="geometry" /></mxCell>
-        <mxCell id="lin-m-edge-a" value="lineage_edge&lt;br&gt;parent_run_id=R_core&lt;br&gt;parent_file_id=F_core&lt;br&gt;child_run_id=R_merge" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1"><mxGeometry x="990" y="620" width="260" height="94" as="geometry" /></mxCell>
-        <mxCell id="lin-m-edge-b" value="lineage_edge&lt;br&gt;parent_run_id=R_enrich&lt;br&gt;parent_file_id=F_enrich&lt;br&gt;child_run_id=R_merge" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1"><mxGeometry x="990" y="750" width="260" height="94" as="geometry" /></mxCell>
-        <mxCell id="lin-m-contrib" value="merge_contribution_log&lt;br&gt;slot_name, slot_run_id,&lt;br&gt;file_id, columns_written,&lt;br&gt;record_count" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="1340" y="680" width="240" height="120" as="geometry" /></mxCell>
-        <mxCell id="lin-m-e1" value="file_id carried" style="endArrow=block;html=1;rounded=0;strokeWidth=2;" edge="1" parent="1" source="lin-m-file-a" target="lin-m-run-a"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="lin-m-e2" value="file_id carried" style="endArrow=block;html=1;rounded=0;strokeWidth=2;" edge="1" parent="1" source="lin-m-file-b" target="lin-m-run-b"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="lin-m-e3" value="contributes" style="endArrow=block;html=1;rounded=0;strokeWidth=2;" edge="1" parent="1" source="lin-m-run-a" target="lin-m-merge"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="lin-m-e4" value="contributes" style="endArrow=block;html=1;rounded=0;strokeWidth=2;" edge="1" parent="1" source="lin-m-run-b" target="lin-m-merge"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="lin-m-e5" value="normalized edge" style="endArrow=block;html=1;rounded=0;dashed=1;" edge="1" parent="1" source="lin-m-run-a" target="lin-m-edge-a"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="lin-m-e6" value="normalized edge" style="endArrow=block;html=1;rounded=0;dashed=1;" edge="1" parent="1" source="lin-m-run-b" target="lin-m-edge-b"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="lin-m-e7" value="merge audit detail" style="endArrow=block;html=1;rounded=0;dashed=1;" edge="1" parent="1" source="lin-m-merge" target="lin-m-contrib"><mxGeometry relative="1" as="geometry" /></mxCell>
-
-        <mxCell id="lin-query" value="Lineage query rule&lt;br&gt;To find everything involving a file, query both:&lt;br&gt;1. run_log.file_id = :file_id&lt;br&gt;2. lineage_edge.parent_file_id = :file_id&lt;br&gt;Then expand child_run_id and parent_run_id recursively." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=13;align=left;spacing=12;" vertex="1" parent="1">
-          <mxGeometry x="60" y="960" width="800" height="110" as="geometry" />
-        </mxCell>
-      </root>
-    </mxGraphModel>
-  </diagram>
 </mxfile>

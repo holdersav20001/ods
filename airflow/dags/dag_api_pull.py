@@ -275,7 +275,7 @@ def _poll_one_direct_kafka(cfg: dict) -> dict | None:
                 run_id,
                 status="succeeded",
                 record_count_source=0,
-                record_count_published=0,
+                record_count_target=0,
             )
             ods_pipeline.events.produce(
                 "api_pull.skipped_no_changes",
@@ -310,8 +310,8 @@ def _poll_one_direct_kafka(cfg: dict) -> dict | None:
         )
         ods_pipeline.lineage.write_edge(
             conn,
-            child_run_id=run_id,
-            parent_file_id=None,
+            consumer_run_id=run_id,
+            source_file_id=None,
             edge_type="api_to_kafka",
             source_ref=str(source.get("url", "")),
             target_ref=f"kafka://{published.target_topic}",
@@ -334,7 +334,7 @@ def _poll_one_direct_kafka(cfg: dict) -> dict | None:
             dataset=dataset,
             business_date=business_date,
             source_count=published.record_count,
-            kafka_count=offset_delta,
+            accounted_count=offset_delta,
             postgres_count=None,
             status="ok" if offset_delta == published.record_count else "failed",
             detail=json.dumps({
@@ -362,7 +362,7 @@ def _poll_one_direct_kafka(cfg: dict) -> dict | None:
             conn,
             run_id,
             record_count_source=published.record_count,
-            record_count_published=published.record_count,
+            record_count_target=published.record_count,
         )
         ods_pipeline.events.produce(
             "api_pull.archived",
@@ -517,7 +517,7 @@ def poll_one(cfg: dict) -> dict | None:
                 run_id,
                 status="succeeded",
                 record_count_source=0,
-                record_count_published=0,
+                record_count_target=0,
             )
             ods_pipeline.events.produce(
                 "api_pull.skipped_no_changes",
@@ -559,8 +559,8 @@ def poll_one(cfg: dict) -> dict | None:
 
         ods_pipeline.lineage.write_edge(
             conn,
-            child_run_id=run_id,
-            parent_file_id=file_id,
+            consumer_run_id=run_id,
+            source_file_id=file_id,
             edge_type="api_to_archive",
             source_ref=str(source.get("url", "")),
             target_ref=archive.s3_uri,
@@ -575,7 +575,7 @@ def poll_one(cfg: dict) -> dict | None:
             dataset=dataset,
             business_date=business_date,
             source_count=archive.record_count,
-            kafka_count=None,
+            accounted_count=None,
             postgres_count=None,
             status="ok",
             detail=json.dumps({
@@ -646,8 +646,8 @@ def poll_one(cfg: dict) -> dict | None:
     # TriggerDagRunOperator retries / manual replays:
     #
     #   1. ``triggered_by_run_id`` + ``triggered_by_edge_type`` —
-    #      written by dag_ingest.init_run into run_log.parents.
-    #   2. ``parent_run_id`` — pre-minted deterministically (uuid5 of
+    #      written by dag_ingest.init_run into run_log.orchestrators.
+    #   2. ``upstream_run_id`` — pre-minted deterministically (uuid5 of
     #      ``api_pull_run_id``) and consumed by dag_ingest.init_run as
     #      the s3_batch parent run_id, so the linkage helper can do an
     #      exact PK lookup, not a "latest by edge" scan.
@@ -662,7 +662,7 @@ def poll_one(cfg: dict) -> dict | None:
         "new_cursor_value": archive.new_cursor_value,
         "triggered_by_run_id": run_id,
         "triggered_by_edge_type": TRIGGERED_BY_API_PULL_EDGE,
-        "parent_run_id": expected_parent_run_id,
+        "upstream_run_id": expected_parent_run_id,
         "dag_ingest_parent_run_id": expected_parent_run_id,
     }
 

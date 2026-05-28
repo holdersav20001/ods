@@ -152,7 +152,7 @@ def clean_state(pg_conn):
             )
             cur.execute(
                 "DELETE FROM pipeline.lineage_edge "
-                "WHERE child_run_id IN (SELECT run_id FROM pipeline.run_log "
+                "WHERE consumer_run_id IN (SELECT run_id FROM pipeline.run_log "
                 "                        WHERE domain=%s AND dataset IN (%s, %s))",
                 (DOMAIN, UPSERT_DATASET, APPEND_DATASET),
             )
@@ -171,7 +171,7 @@ def clean_state(pg_conn):
                 (DOMAIN, UPSERT_DATASET, APPEND_DATASET),
             )
             cur.execute(
-                "DELETE FROM pipeline.file_state WHERE s3_path LIKE %s OR s3_path LIKE %s",
+                "DELETE FROM pipeline.file_processing_attempt WHERE s3_path LIKE %s OR s3_path LIKE %s",
                 (
                     f"s3://{RAW_BUCKET}/{DOMAIN}/{UPSERT_DATASET}/%",
                     f"s3://{RAW_BUCKET}/{DOMAIN}/{APPEND_DATASET}/%",
@@ -203,10 +203,11 @@ def _glue_env_args() -> list[str]:
         "-e", "ODS_SOURCE_APPLICATION=sftp",
         "-v", f"{REPO_ROOT}/glue/jobs:/home/glue_user/workspace/jobs",
         "-v", f"{REPO_ROOT}/ods_pipeline:/home/glue_user/ods_pipeline",
+        "-v", f"{REPO_ROOT}/ods_ingestion_control:/home/glue_user/ods_ingestion_control",
     ]
 
 
-def _run_ingestion(*, run_id, file_id, s3_input_path, parent_run_id,
+def _run_ingestion(*, run_id, file_id, s3_input_path, upstream_run_id,
                    dataset) -> subprocess.CompletedProcess:
     cmd = [
         "docker", "run", "--rm", "--network", NETWORK,
@@ -227,12 +228,12 @@ def _run_ingestion(*, run_id, file_id, s3_input_path, parent_run_id,
         "--dataset", dataset,
         "--s3_input_path", s3_input_path,
         "--file_id", file_id,
-        "--parent_run_id", parent_run_id,
+        "--upstream_run_id", upstream_run_id,
     ]
     return subprocess.run(cmd, capture_output=True, text=True, timeout=420)
 
 
-def _run_postgres_write(*, run_id, file_id, curated_path, parent_run_id,
+def _run_postgres_write(*, run_id, file_id, curated_path, upstream_run_id,
                         dataset) -> subprocess.CompletedProcess:
     cmd = [
         "docker", "run", "--rm", "--network", NETWORK,
@@ -255,7 +256,7 @@ def _run_postgres_write(*, run_id, file_id, curated_path, parent_run_id,
         "--dataset", dataset,
         "--s3_input_path", curated_path,
         "--file_id", file_id,
-        "--parent_run_id", parent_run_id,
+        "--upstream_run_id", upstream_run_id,
     ]
     return subprocess.run(cmd, capture_output=True, text=True, timeout=600)
 
@@ -330,14 +331,14 @@ def test_upsert_first_run_inserts_then_second_run_updates_in_place(
 
     r1 = _run_ingestion(
         run_id=ingest_run_a, file_id=file_id_a, s3_input_path=raw_a,
-        parent_run_id=parent_a, dataset=UPSERT_DATASET,
+        upstream_run_id=parent_a, dataset=UPSERT_DATASET,
     )
     assert r1.returncode == 0, r1.stderr[-2000:]
 
     r2 = _run_postgres_write(
         run_id=pg_run_a, file_id=file_id_a,
         curated_path=_curated_path(UPSERT_DATASET, iso_a),
-        parent_run_id=parent_a, dataset=UPSERT_DATASET,
+        upstream_run_id=parent_a, dataset=UPSERT_DATASET,
     )
     assert r2.returncode == 0, (
         f"postgres_write failed.\nSTDOUT:\n{r2.stdout[-4000:]}\n"
@@ -379,14 +380,14 @@ def test_upsert_first_run_inserts_then_second_run_updates_in_place(
 
     r3 = _run_ingestion(
         run_id=ingest_run_b, file_id=file_id_b, s3_input_path=raw_b,
-        parent_run_id=parent_b, dataset=UPSERT_DATASET,
+        upstream_run_id=parent_b, dataset=UPSERT_DATASET,
     )
     assert r3.returncode == 0, r3.stderr[-2000:]
 
     r4 = _run_postgres_write(
         run_id=pg_run_b, file_id=file_id_b,
         curated_path=_curated_path(UPSERT_DATASET, iso_b),
-        parent_run_id=parent_b, dataset=UPSERT_DATASET,
+        upstream_run_id=parent_b, dataset=UPSERT_DATASET,
     )
     assert r4.returncode == 0, r4.stderr[-2000:]
 
@@ -454,13 +455,13 @@ def test_append_first_and_second_runs_accumulate(
 
     r1 = _run_ingestion(
         run_id=ingest_run_a, file_id=file_id_a, s3_input_path=raw_a,
-        parent_run_id=parent_a, dataset=APPEND_DATASET,
+        upstream_run_id=parent_a, dataset=APPEND_DATASET,
     )
     assert r1.returncode == 0, r1.stderr[-2000:]
     r2 = _run_postgres_write(
         run_id=pg_run_a, file_id=file_id_a,
         curated_path=_curated_path(APPEND_DATASET, iso_a),
-        parent_run_id=parent_a, dataset=APPEND_DATASET,
+        upstream_run_id=parent_a, dataset=APPEND_DATASET,
     )
     assert r2.returncode == 0, (
         f"postgres_write failed.\nSTDOUT:\n{r2.stdout[-4000:]}\n"
@@ -489,13 +490,13 @@ def test_append_first_and_second_runs_accumulate(
 
     r3 = _run_ingestion(
         run_id=ingest_run_b, file_id=file_id_b, s3_input_path=raw_b,
-        parent_run_id=parent_b, dataset=APPEND_DATASET,
+        upstream_run_id=parent_b, dataset=APPEND_DATASET,
     )
     assert r3.returncode == 0, r3.stderr[-2000:]
     r4 = _run_postgres_write(
         run_id=pg_run_b, file_id=file_id_b,
         curated_path=_curated_path(APPEND_DATASET, iso_b),
-        parent_run_id=parent_b, dataset=APPEND_DATASET,
+        upstream_run_id=parent_b, dataset=APPEND_DATASET,
     )
     assert r4.returncode == 0, r4.stderr[-2000:]
 

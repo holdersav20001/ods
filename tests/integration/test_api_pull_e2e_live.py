@@ -339,7 +339,7 @@ def control_plane_clean(pg_conn):
             )
             cur.execute(
                 "DELETE FROM pipeline.lineage_edge "
-                "WHERE child_run_id IN (SELECT run_id FROM pipeline.run_log "
+                "WHERE consumer_run_id IN (SELECT run_id FROM pipeline.run_log "
                 "                        WHERE domain=%s AND dataset IN (%s, %s))",
                 (DOMAIN, DATASET, RISK_DATASET),
             )
@@ -359,7 +359,7 @@ def control_plane_clean(pg_conn):
                 (DOMAIN, DATASET, RISK_DATASET),
             )
             cur.execute(
-                "DELETE FROM pipeline.file_state "
+                "DELETE FROM pipeline.file_processing_attempt "
                 "WHERE s3_path LIKE %s OR s3_path LIKE %s "
                 "   OR s3_path LIKE %s OR s3_path LIKE %s",
                 (
@@ -414,12 +414,13 @@ def _glue_env_args() -> list[str]:
     base += [
         "-v", f"{REPO_ROOT}/glue/jobs:/home/glue_user/workspace/jobs",
         "-v", f"{REPO_ROOT}/ods_pipeline:/home/glue_user/ods_pipeline",
+        "-v", f"{REPO_ROOT}/ods_ingestion_control:/home/glue_user/ods_ingestion_control",
     ]
     return base
 
 
 def _run_glue_jsonl_ingest(*, run_id, file_id, s3_input_path,
-                          parent_run_id, domain=DOMAIN,
+                          upstream_run_id, domain=DOMAIN,
                           dataset=DATASET) -> subprocess.CompletedProcess:
     cmd = [
         "docker", "run", "--rm", "--network", NETWORK,
@@ -440,13 +441,13 @@ def _run_glue_jsonl_ingest(*, run_id, file_id, s3_input_path,
         "--dataset", dataset,
         "--s3_input_path", s3_input_path,
         "--file_id", file_id,
-        "--parent_run_id", parent_run_id,
+        "--upstream_run_id", upstream_run_id,
     ]
     return subprocess.run(cmd, capture_output=True, text=True, timeout=420)
 
 
 def _run_glue_publish(*, run_id, file_id, s3_input_path,
-                     parent_run_id, domain=DOMAIN,
+                     upstream_run_id, domain=DOMAIN,
                      dataset=DATASET) -> subprocess.CompletedProcess:
     cmd = [
         "docker", "run", "--rm", "--network", NETWORK,
@@ -468,7 +469,7 @@ def _run_glue_publish(*, run_id, file_id, s3_input_path,
         "--dataset", dataset,
         "--s3_input_path", s3_input_path,
         "--file_id", file_id,
-        "--parent_run_id", parent_run_id,
+        "--upstream_run_id", upstream_run_id,
     ]
     return subprocess.run(cmd, capture_output=True, text=True, timeout=420)
 
@@ -477,7 +478,7 @@ def _run_glue_canonicalize(
     *,
     run_id,
     file_id,
-    parent_run_id,
+    upstream_run_id,
     offset_ranges: dict[int, dict[str, int]],
     business_date: str,
 ) -> subprocess.CompletedProcess:
@@ -506,7 +507,7 @@ def _run_glue_canonicalize(
         "--transform_yaml_path", "/home/glue_user/patterns/insurance/api_pull_risk.yaml",
         "--offset_ranges", json.dumps(offset_ranges),
         "--file_id", file_id,
-        "--parent_run_id", parent_run_id,
+        "--upstream_run_id", upstream_run_id,
         "--business_date", business_date,
     ]
     return subprocess.run(cmd, capture_output=True, text=True, timeout=420)
@@ -782,8 +783,8 @@ def test_e2e_stub_to_curated_parquet_with_watermark_promotion(
     )
     ods_pipeline.lineage.write_edge(
         pg_conn,
-        child_run_id=api_pull_run_id,
-        parent_file_id=file_id,
+        consumer_run_id=api_pull_run_id,
+        source_file_id=file_id,
         edge_type="api_to_archive",
         source_ref=stub_url,
         target_ref=archive.s3_uri,
@@ -797,7 +798,7 @@ def test_e2e_stub_to_curated_parquet_with_watermark_promotion(
         dataset=DATASET,
         business_date=business_date,
         source_count=archive.record_count,
-        kafka_count=None,
+        accounted_count=None,
         postgres_count=None,
         status="ok",
         detail=json.dumps({"fetched_count": archive.record_count}),
@@ -822,10 +823,10 @@ def test_e2e_stub_to_curated_parquet_with_watermark_promotion(
     #    equivalent) via docker run. This exercises the new raw_format
     #    branch in glue/jobs/ods_ingestion.py end-to-end.
     # ------------------------------------------------------------------
-    # Use the same deterministic parent_run_id dag_api_pull.poll_one
+    # Use the same deterministic upstream_run_id dag_api_pull.poll_one
     # would have pre-minted so the linkage helper exercises the
     # exact-PK match.
-    parent_run_id = derive_dag_ingest_parent_run_id(api_pull_run_id)
+    upstream_run_id = derive_dag_ingest_parent_run_id(api_pull_run_id)
     ingest_run_id = str(uuid.uuid4())
 
     # Stand in for dag_ingest.init_run: create the s3_batch parent run
@@ -833,13 +834,13 @@ def test_e2e_stub_to_curated_parquet_with_watermark_promotion(
     # resolve it after Glue completes.
     ods_pipeline.runs.start(
         pg_conn,
-        run_id=parent_run_id,
-        pipeline_type="s3_batch",
+        run_id=upstream_run_id,
+        pipeline_type="orchestration",
         domain=DOMAIN,
         dataset=DATASET,
         business_date=business_date,
         file_id=file_id,
-        parents=[{
+        orchestrators=[{
             "run_id": api_pull_run_id,
             "edge_type": TRIGGERED_BY_API_PULL_EDGE,
         }],
@@ -849,7 +850,7 @@ def test_e2e_stub_to_curated_parquet_with_watermark_promotion(
         run_id=ingest_run_id,
         file_id=file_id,
         s3_input_path=archive.s3_uri,
-        parent_run_id=parent_run_id,
+        upstream_run_id=upstream_run_id,
     )
     assert glue_result.returncode == 0, (
         "glue ingestion failed:\n"
@@ -897,7 +898,7 @@ def test_e2e_stub_to_curated_parquet_with_watermark_promotion(
         run_id=publish_run_id,
         file_id=file_id,
         s3_input_path=curated_path,
-        parent_run_id=parent_run_id,
+        upstream_run_id=upstream_run_id,
     )
     assert publish_result.returncode == 0, (
         "glue publish failed:\n"
@@ -917,7 +918,7 @@ def test_e2e_stub_to_curated_parquet_with_watermark_promotion(
     with pg_conn.cursor() as cur:
         cur.execute(
             """
-            SELECT status, record_count_published, kafka_topic
+            SELECT status, record_count_target, kafka_topic
               FROM pipeline.run_log
              WHERE run_id=%s
             """,
@@ -926,7 +927,7 @@ def test_e2e_stub_to_curated_parquet_with_watermark_promotion(
         publish_log = cur.fetchone()
         cur.execute(
             """
-            SELECT status, source_count, kafka_count, discrepancy_count
+            SELECT status, source_count, accounted_count, discrepancy_count
               FROM pipeline.reconciliation_log
              WHERE run_id=%s AND check_type='t0_publish_count'
             """,
@@ -952,7 +953,7 @@ def test_e2e_stub_to_curated_parquet_with_watermark_promotion(
     with pg_conn.cursor() as cur:
         cur.execute(
             "SELECT edge_type FROM pipeline.lineage_edge "
-            "WHERE parent_file_id=%s",
+            "WHERE source_file_id=%s",
             (file_id,),
         )
         edges = {row[0] for row in cur.fetchall()}
@@ -974,11 +975,11 @@ def test_e2e_stub_to_curated_parquet_with_watermark_promotion(
     # 5) Linkage + watermark promotion: the s3_batch run carrying the
     #    triggered_by_api_pull edge succeeded → promote.
     # ------------------------------------------------------------------
-    ods_pipeline.runs.update(pg_conn, parent_run_id, status="succeeded")
+    ods_pipeline.runs.update(pg_conn, upstream_run_id, status="succeeded")
 
     assert ingest_status_for_api_pull_run(
         pg_conn, api_pull_run_id,
-        expected_parent_run_id=parent_run_id,
+        expected_parent_run_id=upstream_run_id,
     ) == "succeeded"
 
     promoted = store.promote(
@@ -1107,8 +1108,8 @@ def test_e2e_api_pull_noncanonical_to_canonical_jdbc_with_t1_t2_recon(
     )
     ods_pipeline.lineage.write_edge(
         pg_conn,
-        child_run_id=api_pull_run_id,
-        parent_file_id=file_id,
+        consumer_run_id=api_pull_run_id,
+        source_file_id=file_id,
         edge_type="api_to_archive",
         source_ref=risk_url,
         target_ref=archive.s3_uri,
@@ -1125,17 +1126,17 @@ def test_e2e_api_pull_noncanonical_to_canonical_jdbc_with_t1_t2_recon(
         status="ok",
     )
 
-    parent_run_id = derive_dag_ingest_parent_run_id(api_pull_run_id)
+    upstream_run_id = derive_dag_ingest_parent_run_id(api_pull_run_id)
     ingest_run_id = str(uuid.uuid4())
     ods_pipeline.runs.start(
         pg_conn,
-        run_id=parent_run_id,
-        pipeline_type="s3_batch",
+        run_id=upstream_run_id,
+        pipeline_type="orchestration",
         domain=DOMAIN,
         dataset=RISK_DATASET,
         business_date=business_date,
         file_id=file_id,
-        parents=[{
+        orchestrators=[{
             "run_id": api_pull_run_id,
             "edge_type": TRIGGERED_BY_API_PULL_EDGE,
         }],
@@ -1145,7 +1146,7 @@ def test_e2e_api_pull_noncanonical_to_canonical_jdbc_with_t1_t2_recon(
         run_id=ingest_run_id,
         file_id=file_id,
         s3_input_path=archive.s3_uri,
-        parent_run_id=parent_run_id,
+        upstream_run_id=upstream_run_id,
         dataset=RISK_DATASET,
     )
     assert ingest_result.returncode == 0, (
@@ -1167,7 +1168,7 @@ def test_e2e_api_pull_noncanonical_to_canonical_jdbc_with_t1_t2_recon(
         run_id=publish_run_id,
         file_id=file_id,
         s3_input_path=curated_path,
-        parent_run_id=parent_run_id,
+        upstream_run_id=upstream_run_id,
         dataset=RISK_DATASET,
     )
     assert publish_result.returncode == 0, (
@@ -1184,7 +1185,7 @@ def test_e2e_api_pull_noncanonical_to_canonical_jdbc_with_t1_t2_recon(
     canonicalize_result = _run_glue_canonicalize(
         run_id=canonicalize_run_id,
         file_id=file_id,
-        parent_run_id=publish_run_id,
+        upstream_run_id=publish_run_id,
         offset_ranges=offset_ranges,
         business_date=business_date,
     )
@@ -1203,7 +1204,7 @@ def test_e2e_api_pull_noncanonical_to_canonical_jdbc_with_t1_t2_recon(
     with pg_conn.cursor() as cur:
         cur.execute(
             """
-            SELECT status, source_count, kafka_count, discrepancy_count
+            SELECT status, source_count, accounted_count, discrepancy_count
               FROM pipeline.reconciliation_log
              WHERE run_id=%s AND check_type='t1_canonicalize_count'
             """,
@@ -1227,9 +1228,9 @@ def test_e2e_api_pull_noncanonical_to_canonical_jdbc_with_t1_t2_recon(
         t2 = cur.fetchone()
     assert t2 == ("passed", 2, 2, 0)
 
-    ods_pipeline.runs.update(pg_conn, parent_run_id, status="succeeded")
+    ods_pipeline.runs.update(pg_conn, upstream_run_id, status="succeeded")
     assert ingest_status_for_api_pull_run(
         pg_conn,
         api_pull_run_id,
-        expected_parent_run_id=parent_run_id,
+        expected_parent_run_id=upstream_run_id,
     ) == "succeeded"

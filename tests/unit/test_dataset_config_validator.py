@@ -353,24 +353,43 @@ def test_overlap_check_excludes_self():
     check_no_filename_pattern_overlap(cfg, peers=peers)
 
 
+def test_validator_rejects_legacy_dq_sections():
+    cfg = _file_pipeline_min()
+    cfg["dq_rules"] = {"hard": [{"rule": "not_null", "column": "policy_id"}]}
+
+    with pytest.raises(DatasetConfigError, match="legacy section"):
+        validate_dataset_config(cfg)
+
+
+def test_validator_rejects_legacy_dq_keys():
+    cfg = _file_pipeline_min()
+    cfg["dq_rules"] = {
+        "hard_blocks": [{"rule": "not_null", "column": "policy_id"}],
+    }
+
+    with pytest.raises(DatasetConfigError, match="legacy keys"):
+        validate_dataset_config(cfg)
+
+
 def test_validator_round_trip_through_real_yamls_no_overlap():
     """Every shipped YAML in patterns/ + datasets/ must validate AND not
     overlap with any of its peers. Run as a regression guard so a future
     PR adding a colliding YAML fails CI immediately."""
     import glob
     import os
-
-    import yaml as _yaml
+    import sys
 
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    sys.path.insert(0, os.path.join(repo_root, "airflow", "dags"))
+    from common.yaml_loader import load_dataset_yaml
+
     paths = (
         glob.glob(os.path.join(repo_root, "patterns", "**", "*.yaml"), recursive=True)
         + glob.glob(os.path.join(repo_root, "datasets", "**", "*.yaml"), recursive=True)
     )
     configs = []
     for p in paths:
-        with open(p) as f:
-            cfg = _yaml.safe_load(f)
+        cfg = load_dataset_yaml(p)
         if (
             isinstance(cfg, dict)
             and "domain" in cfg

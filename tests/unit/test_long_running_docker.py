@@ -147,7 +147,7 @@ def test_write_heartbeat_row_inserts_expected_columns():
     )
     assert len(fake.calls) == 1
     sql, params = fake.calls[0]
-    assert "INSERT INTO pipeline.run_stage_log" in sql
+    assert "pipeline.control_write_stage_event" in sql
     # event_type position 4 (0-indexed=3)
     assert params[3] == "stage_heartbeat"
     assert params[0] == "run-1"

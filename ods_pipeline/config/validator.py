@@ -34,10 +34,47 @@ class DatasetConfigError(ValueError):
 _ALLOWED_DELIVERIES = {"file_pipeline", "direct_kafka", "direct_postgres"}
 _ALLOWED_SOURCE_TYPES = {"s3_batch", "api_pull", "cdc", "event"}
 _ALLOWED_WRITE_MODES = {"upsert", "append", "replace"}
+_ALLOWED_DQ_SECTIONS = {"hard_blocks", "soft_warns"}
 
 
 def _qualified(cfg: Mapping[str, Any]) -> str:
     return f"{cfg.get('domain', '<no-domain>')}/{cfg.get('dataset', '<no-dataset>')}"
+
+
+def _validate_dq_rules_shape(name: str, cfg: Mapping[str, Any]) -> None:
+    dq_rules = cfg.get("dq_rules") or {}
+    if not isinstance(dq_rules, Mapping):
+        raise DatasetConfigError(f"{name}: dq_rules must be a mapping")
+
+    legacy_sections = {"hard", "soft"} & set(dq_rules)
+    if legacy_sections:
+        raise DatasetConfigError(
+            f"{name}: dq_rules uses legacy section(s) "
+            f"{sorted(legacy_sections)}; use hard_blocks/soft_warns"
+        )
+
+    unknown_sections = set(dq_rules) - _ALLOWED_DQ_SECTIONS
+    if unknown_sections:
+        raise DatasetConfigError(
+            f"{name}: dq_rules has unknown section(s) "
+            f"{sorted(unknown_sections)}; expected hard_blocks/soft_warns"
+        )
+
+    for section in _ALLOWED_DQ_SECTIONS:
+        rules = dq_rules.get(section, [])
+        if not isinstance(rules, list):
+            raise DatasetConfigError(f"{name}: dq_rules.{section} must be a list")
+        for rule in rules:
+            if not isinstance(rule, Mapping):
+                raise DatasetConfigError(
+                    f"{name}: dq_rules.{section} entries must be mappings"
+                )
+            if "column" in rule or "min_pct" in rule:
+                raise DatasetConfigError(
+                    f"{name}: dq_rules.{section} uses legacy keys "
+                    "'column'/'min_pct'; use runtime keys 'field' or "
+                    "'fields'/'threshold'"
+                )
 
 
 def validate_dataset_config(cfg: Mapping[str, Any]) -> None:
@@ -135,6 +172,8 @@ def validate_dataset_config(cfg: Mapping[str, Any]) -> None:
     # Probe-string overlap with self is allowed (one filename matches
     # only the dataset that owns it); cross-dataset overlap is checked
     # by ``check_no_filename_pattern_overlap`` when peers are known.
+
+    _validate_dq_rules_shape(name, cfg)
 
     if source_type == "api_pull":
         source = cfg.get("source") or {}

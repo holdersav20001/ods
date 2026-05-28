@@ -30,6 +30,7 @@ GLUE_COMMON = [
 ] + (["-v", f"{_HOST_JOBS}:/home/glue_user/workspace/jobs"] if _HOST_JOBS else
      ["-v", f"{os.getcwd()}/glue/jobs:/home/glue_user/workspace/jobs"]) + [
     "-v", f"{os.getcwd()}/ods_pipeline:/home/glue_user/ods_pipeline",
+    "-v", f"{os.getcwd()}/ods_ingestion_control:/home/glue_user/ods_ingestion_control",
 ]
 
 GLUE_KAFKA_ENV = GLUE_COMMON + ["-e", "KAFKA_BOOTSTRAP_SERVERS=broker:29092"]
@@ -71,7 +72,7 @@ def reset_pipeline_state(pg, s3):
             OR policy_id LIKE 'P%'
     """)
     cur.execute("""
-        DELETE FROM pipeline.file_state
+        DELETE FROM pipeline.file_processing_attempt
         WHERE s3_path LIKE 's3://ods-raw-local/insurance/policies/%'
            OR s3_path LIKE 's3://ods-curated-local/insurance/policies/%'
     """)
@@ -82,11 +83,11 @@ def reset_pipeline_state(pg, s3):
     """)
     cur.execute("""
         DELETE FROM pipeline.lineage_edge
-         WHERE child_run_id IN (
+         WHERE consumer_run_id IN (
                SELECT run_id FROM pipeline.run_log
                 WHERE domain='insurance' AND dataset='policies'
          )
-            OR parent_file_id IN (
+            OR source_file_id IN (
                SELECT file_id FROM pipeline.file_catalogue
                 WHERE domain='insurance' AND dataset='policies'
          )
@@ -147,7 +148,7 @@ def upload(s3, key, content, bucket=RAW_BUCKET):
     s3.put_object(Bucket=bucket, Key=key, Body=content.encode())
 
 
-def kafka_count(topic=TOPIC, timeout=15.0):
+def accounted_count(topic=TOPIC, timeout=15.0):
     c = Consumer({"bootstrap.servers": KAFKA_BROKERS,
                   "group.id": f"test-{uuid.uuid4()}",
                   "auto.offset.reset": "earliest",
@@ -193,12 +194,12 @@ def test_1_happy_path(s3, pg):
     r2, run_pub = publish(curated_path)
     assert r2.returncode == 0, r2.stderr
 
-    msgs = kafka_count()
+    msgs = accounted_count()
     assert msgs >= 2
     assert log_status(pg, run_pub) == "succeeded"
 
     cur = pg.cursor()
-    cur.execute("SELECT record_count_published FROM pipeline.run_log WHERE run_id=%s", (run_pub,))
+    cur.execute("SELECT record_count_target FROM pipeline.run_log WHERE run_id=%s", (run_pub,))
     row = cur.fetchone()
     assert row is not None and row[0] == 2
 
@@ -313,13 +314,13 @@ def test_7_publish_idempotency(s3, pg):
     r1, _ = publish(curated)
     assert r1.returncode == 0, r1.stderr
 
-    msgs_after_first = kafka_count()
+    msgs_after_first = accounted_count()
 
     # Second publish to same path — file_state guard exits 0, no new messages
     r2, _ = publish(curated)
     assert r2.returncode == 0, r2.stderr
 
-    msgs_after_second = kafka_count()
+    msgs_after_second = accounted_count()
     assert msgs_after_second == msgs_after_first
 
 
@@ -338,7 +339,7 @@ def test_8_full_pipeline(s3, pg):
     assert r2.returncode == 0, r2.stderr
 
     cur = pg.cursor()
-    cur.execute("SELECT record_count_published FROM pipeline.run_log WHERE run_id=%s", (run_pub,))
+    cur.execute("SELECT record_count_target FROM pipeline.run_log WHERE run_id=%s", (run_pub,))
     assert cur.fetchone()[0] == 2
 
 

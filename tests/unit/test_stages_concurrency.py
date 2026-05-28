@@ -52,7 +52,7 @@ def race_run(pg_conn):
     stage = "raw_read"
     attempt = 1
     runs.start(
-        pg_conn, run_id=rid, pipeline_type="s3_batch",
+        pg_conn, run_id=rid, pipeline_type="orchestration",
         domain="insurance", dataset="policies",
         business_date="2026-04-28", file_id=None, config_version_id=1,
     )

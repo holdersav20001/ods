@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import sys
 import uuid
 
 import boto3
@@ -19,6 +20,17 @@ import paramiko
 import pendulum
 import psycopg2
 
+# Add likely roots so ods_pipeline is importable both during full DAG parsing
+# and when Airflow LocalExecutor loads only this DAG file by subdir.
+_DAG_DIR = os.path.dirname(__file__)
+for _root in (
+    os.path.abspath(os.path.join(_DAG_DIR, "..")),
+    os.path.abspath(os.path.join(_DAG_DIR, "..", "..")),
+):
+    if _root not in sys.path:
+        sys.path.insert(0, _root)
+
+import ods_pipeline
 from airflow import DAG
 from airflow.decorators import task
 from airflow.operators.trigger_dagrun import TriggerDagRunOperator
@@ -126,25 +138,18 @@ def _scan_and_register(delivery: str) -> list[dict]:
 
                     file_id = str(uuid.uuid4())
                     s3.put_object(Bucket=S3_RAW_BUCKET, Key=s3_key, Body=body)
-                    cur.execute(
-                        """
-                        INSERT INTO pipeline.file_catalogue
-                            (file_id, domain, dataset, business_date, sftp_path, s3_raw_path,
-                             file_size_bytes, file_md5, state)
-                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'received')
-                        """,
-                        (
-                            file_id,
-                            domain,
-                            dataset,
-                            bd_iso,
-                            f"/upload/{filename}",
-                            s3_raw_path,
-                            len(body),
-                            md5,
-                        ),
+                    ods_pipeline.files.upsert(
+                        conn,
+                        file_id=file_id,
+                        domain=domain,
+                        dataset=dataset,
+                        business_date=bd_iso,
+                        sftp_path=f"/upload/{filename}",
+                        s3_raw_path=s3_raw_path,
+                        file_size_bytes=len(body),
+                        file_md5=md5,
+                        state="received",
                     )
-                conn.commit()
                 new_files.append(
                     {
                         "file_id": file_id,

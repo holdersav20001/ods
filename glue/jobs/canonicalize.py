@@ -111,7 +111,7 @@ def compile_transform(
     return select_exprs, sorted(required_targets), warnings
 
 
-def matches_context(row: dict[str, Any], *, file_id: str | None, parent_run_id: str | None) -> bool:
+def matches_context(row: dict[str, Any], *, file_id: str | None, upstream_run_id: str | None) -> bool:
     """True when a raw Kafka row belongs to the file/raw run being canonicalized.
 
     Thin shim over :func:`ods_pipeline.messages.correlate` (PatternType.FILE).
@@ -123,7 +123,7 @@ def matches_context(row: dict[str, Any], *, file_id: str | None, parent_run_id: 
 
     return correlate(
         row,
-        {"_ods_file_id": file_id, "_ods_run_id": parent_run_id},
+        {"_ods_file_id": file_id, "_ods_run_id": upstream_run_id},
         pattern_type=PatternType.FILE,
     )
 

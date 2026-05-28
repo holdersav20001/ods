@@ -216,7 +216,7 @@ def _recent_events(limit: int = 100) -> list[dict]:
         rows = _q(conn, """
             SELECT id, run_id, event_type, pipeline_type, domain, dataset,
                    business_date, status, record_count_source, record_count_dq_pass,
-                   record_count_dq_fail, record_count_published,
+                   record_count_dq_fail, record_count_target,
                    kafka_topic, kafka_offset_end, error_summary, occurred_at,
                    file_id, s3_raw_path, s3_curated_path, file_md5, kafka_offset_start
             FROM pipeline.run_events
@@ -268,12 +268,12 @@ def _lineage_edges(limit: int = 200, domain: str = "", dataset: str = "") -> lis
         where = ("WHERE " + " AND ".join(filters)) if filters else ""
         params.append(limit)
         rows = _q(conn, f"""
-            SELECT le.lineage_edge_id, le.child_run_id, le.parent_run_id,
-                   le.parent_file_id, le.edge_type,
+            SELECT le.lineage_edge_id, le.consumer_run_id, le.upstream_run_id,
+                   le.source_file_id, le.edge_type,
                    le.source_ref, le.target_ref, le.record_count, le.created_at,
                    rl.domain, rl.dataset, rl.pipeline_type
             FROM pipeline.lineage_edge le
-            JOIN pipeline.run_log rl ON rl.run_id = le.child_run_id
+            JOIN pipeline.run_log rl ON rl.run_id = le.consumer_run_id
             {where}
             ORDER BY le.created_at DESC
             LIMIT %s
@@ -755,7 +755,7 @@ async function loadTopicEvents() {
       <td class="py-2 pr-4 text-right mono text-xs">${fmt(e.record_count_source)}</td>
       <td class="py-2 pr-4 text-right mono text-xs text-green-600">${fmt(e.record_count_dq_pass)}</td>
       <td class="py-2 pr-4 text-right mono text-xs ${e.record_count_dq_fail>0?'text-red-500':''}">${fmt(e.record_count_dq_fail)}</td>
-      <td class="py-2 pr-4 text-right mono text-xs">${fmt(e.record_count_published)}</td>
+      <td class="py-2 pr-4 text-right mono text-xs">${fmt(e.record_count_target)}</td>
       <td class="py-2 pr-4 text-xs text-slate-400">${e.kafka_topic||'—'}</td>
       <td class="py-2 pr-4 text-right mono text-xs text-slate-400">${fmt(e.kafka_offset_start||e.kafka_offset_end)}</td>
       <td class="py-2 pr-4 mono text-xs">${e.file_id ? `<a href="http://localhost:8888/lineage/${e.file_id}" target="_blank" class="text-indigo-500 hover:text-indigo-700" title="${e.file_id}">${e.file_id.slice(0,8)}…</a>` : '—'}</td>
@@ -791,7 +791,7 @@ function renderEvents(data) {
       <td class="py-3 pr-4 text-right text-slate-600">${fmt(e.record_count_source)}</td>
       <td class="py-3 pr-4 text-right text-emerald-600 font-medium">${fmt(e.record_count_dq_pass)}</td>
       <td class="py-3 pr-4 text-right text-red-500">${fmt(e.record_count_dq_fail)}</td>
-      <td class="py-3 pr-4 text-right text-indigo-600 font-semibold">${fmt(e.record_count_published)}</td>
+      <td class="py-3 pr-4 text-right text-indigo-600 font-semibold">${fmt(e.record_count_target)}</td>
       <td class="py-3 pr-4 mono text-xs text-slate-400">${truncate(e.kafka_topic,35)||'—'}</td>
       <td class="py-3 pr-4 text-right mono text-xs text-slate-400">${fmt(e.kafka_offset_end)}</td>
       <td class="py-3 pr-4 mono text-xs">${e.file_id ? `<a href="http://localhost:8888/lineage/${e.file_id}" target="_blank" class="text-indigo-500 hover:text-indigo-700" title="${e.file_id}">${e.file_id.slice(0,8)}…</a>` : '—'}</td>
@@ -878,8 +878,8 @@ async function loadLineageEdges() {
       <td class="py-2 pr-4 mono text-slate-400">${truncate(e.source_ref,45)}</td>
       <td class="py-2 pr-4 mono text-slate-400">${truncate(e.target_ref,45)}</td>
       <td class="py-2 pr-4 text-right font-semibold text-slate-700">${fmt(e.record_count)}</td>
-      <td class="py-2 pr-4 mono">${e.parent_file_id
-        ? `<a href="http://localhost:8888/lineage/${e.parent_file_id}" target="_blank" class="text-indigo-500 hover:text-indigo-700" title="${e.parent_file_id}">${e.parent_file_id.slice(0,8)}…</a>`
+      <td class="py-2 pr-4 mono">${e.source_file_id
+        ? `<a href="http://localhost:8888/lineage/${e.source_file_id}" target="_blank" class="text-indigo-500 hover:text-indigo-700" title="${e.source_file_id}">${e.source_file_id.slice(0,8)}…</a>`
         : '—'}</td>
       <td class="py-2 text-slate-400 whitespace-nowrap">${fmtDt(e.created_at)}</td>
     </tr>`).join('');

@@ -118,7 +118,7 @@ def test_event_api_archives_publishes_and_closes_run(pg_conn, s3_client):
     with pg_conn.cursor() as cur:
         cur.execute(
             """
-            SELECT status, pipeline_type, record_count_source, record_count_published
+            SELECT status, pipeline_type, record_count_source, record_count_target
               FROM pipeline.run_log
              WHERE run_id = %s::uuid
             """,
@@ -140,7 +140,7 @@ def test_event_api_archives_publishes_and_closes_run(pg_conn, s3_client):
         assert stages["recon_message"] == "succeeded"
         cur.execute(
             """
-            SELECT status, source_count, kafka_count
+            SELECT status, source_count, accounted_count
               FROM pipeline.reconciliation_log
              WHERE run_id = %s::uuid
                AND check_type = 'message_batch_count'

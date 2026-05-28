@@ -12,6 +12,9 @@
         <mxCell id="subtitle" value="POST /events  →  one transaction wraps every Postgres write" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=11;fontStyle=2;fontColor=#666666;" vertex="1" parent="1">
           <mxGeometry x="0" y="56" width="1500" height="24" as="geometry"/>
         </mxCell>
+        <mxCell id="xref" value="File-path equivalent: docs/dev-guides/file-ingestion-route.drawio (Sequence page)" style="text;html=1;strokeColor=#BBDEFB;fillColor=#E3F2FD;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=10;fontStyle=2;fontColor=#1565C0;" vertex="1" parent="1">
+          <mxGeometry x="400" y="82" width="700" height="22" as="geometry"/>
+        </mxCell>
 
         <!-- Lifelines (5 actors) -->
         <mxCell id="L1head" value="HTTP&#10;Client" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE0B2;strokeColor=#E65100;fontSize=10;fontStyle=1;arcSize=15;" vertex="1" parent="1">

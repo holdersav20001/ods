@@ -2,7 +2,7 @@
 
 Operators inspect S3 DLQ records and replay specific envelopes back through
 the canonical pipeline. Replay creates a new ``run_log`` row linked via
-``lineage_edge`` (``edge_type='replay'``, ``parent_run_id=<original failed
+``lineage_edge`` (``edge_type='replay'``, ``upstream_run_id=<original failed
 run>``) so the original evidence is preserved.
 
 Designed to be unit-testable: side-effects (S3, Kafka, Postgres) are passed
@@ -140,10 +140,10 @@ class _DlqOps:
                    domain=domain or "unknown",
                    dataset=dataset or "unknown",
                    business_date=envelope.get("_ods_business_date"),
-                   parents=[original_run] if original_run else None)
+                   orchestrators=[original_run] if original_run else None)
         if original_run:
-            lineage.write_edge(self._pg, child_run_id=replay_run_id,
-                               parent_run_id=original_run,
+            lineage.write_edge(self._pg, consumer_run_id=replay_run_id,
+                               upstream_run_id=original_run,
                                edge_type="replay",
                                source_ref=s3_uri,
                                target_ref=f"kafka://{target_topic}",

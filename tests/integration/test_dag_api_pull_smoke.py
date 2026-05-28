@@ -28,11 +28,11 @@ import pytest
 _REQUIRED_INGEST_CONF_KEYS = ("file_id", "domain", "dataset", "business_date")
 
 # The api_pull-specific keys we expect dag_api_pull.poll_one to set so
-# the parents/JSONB linkage and the watermark sensor can do their job.
+# the orchestrators/JSONB linkage and the watermark sensor can do their job.
 _REQUIRED_LINKAGE_KEYS = ("api_pull_run_id", "triggered_by_run_id",
                           "triggered_by_edge_type", "source_application",
                           "new_cursor_value",
-                          "parent_run_id", "dag_ingest_parent_run_id")
+                          "upstream_run_id", "dag_ingest_parent_run_id")
 
 
 _AIRFLOW_CONTAINER = "avivaods-airflow-scheduler-1"
@@ -78,7 +78,7 @@ def _expected_poll_one_payload() -> dict:
         "new_cursor_value": "2026-04-04T00:00:00Z",
         "triggered_by_run_id": api_pull_run_id,
         "triggered_by_edge_type": "triggered_by_api_pull",
-        "parent_run_id": expected_parent,
+        "upstream_run_id": expected_parent,
         "dag_ingest_parent_run_id": expected_parent,
     }
 

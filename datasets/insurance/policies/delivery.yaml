@@ -1,0 +1,4 @@
+write_mode: upsert
+target_topic: ods.insurance.policies
+postgres_target_table: ods.insurance_policy
+s3_curated_path: s3://ods-curated/insurance/policies/

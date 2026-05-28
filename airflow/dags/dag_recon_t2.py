@@ -9,10 +9,23 @@ earlier rows.
 from __future__ import annotations
 
 import os
+import sys
 
 import psycopg2
 import psycopg2.extras
 from psycopg2 import sql
+
+# Add likely roots so ods_pipeline is importable both during full DAG parsing
+# and when Airflow LocalExecutor loads only this DAG file by subdir.
+_DAG_DIR = os.path.dirname(__file__)
+for _root in (
+    os.path.abspath(os.path.join(_DAG_DIR, "..")),
+    os.path.abspath(os.path.join(_DAG_DIR, "..", "..")),
+):
+    if _root not in sys.path:
+        sys.path.insert(0, _root)
+
+import ods_pipeline
 
 try:
     import pendulum
@@ -85,37 +98,26 @@ def _insert_recon(
     dataset,
     business_date,
     source_count,
-    kafka_count,
+    accounted_count,
     postgres_count,
     discrepancy,
     status,
     detail,
 ):
-    pct = (abs(discrepancy) / max(int(source_count or 0), 1)) * 100
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            INSERT INTO pipeline.reconciliation_log (
-                check_type, run_id, domain, dataset, business_date,
-                source_count, kafka_count, postgres_count,
-                discrepancy_count, discrepancy_pct, status, detail
-            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-            """,
-            (
-                check_type,
-                run_id,
-                domain,
-                dataset,
-                business_date,
-                source_count,
-                kafka_count,
-                postgres_count,
-                discrepancy,
-                round(pct, 4),
-                status,
-                detail,
-            ),
-        )
+    ods_pipeline.reconciliation.write_check(
+        conn,
+        check_type=check_type,
+        run_id=run_id,
+        domain=domain,
+        dataset=dataset,
+        business_date=business_date,
+        source_count=source_count,
+        accounted_count=accounted_count,
+        postgres_count=postgres_count,
+        status=status,
+        detail=detail,
+        commit=False,
+    )
 
 
 def _status(discrepancy: int, source_count: int | None, tol_rec, tol_pct) -> str:
@@ -149,9 +151,9 @@ def _is_source_run(row) -> bool:
     # no canonicalize step to fall back to.
     if row["pipeline_type"] == "direct_postgres":
         return True
-    if row.get("is_canonical") is False and row["pipeline_type"] in ("ingestion", "s3_batch"):
+    if row.get("is_canonical") is False and row["pipeline_type"] in ("ingestion", "orchestration"):
         return False
-    return row["pipeline_type"] in ("ingestion", "s3_batch", "message_api")
+    return row["pipeline_type"] in ("ingestion", "orchestration", "message_api")
 
 
 def _key_fields(row) -> list[str]:
@@ -206,7 +208,7 @@ def _reconcile_append_file_count(conn, row, target_schema: str, target_table: st
         dataset=row["dataset"],
         business_date=row["business_date"],
         source_count=accepted,
-        kafka_count=None,
+        accounted_count=None,
         postgres_count=landed,
         discrepancy=discrepancy,
         status=status,
@@ -231,7 +233,7 @@ def _reconcile_history_file_count(conn, row, history_schema: str, history_table:
         dataset=row["dataset"],
         business_date=row["business_date"],
         source_count=accepted,
-        kafka_count=None,
+        accounted_count=None,
         postgres_count=history_count,
         discrepancy=discrepancy,
         status=status,
@@ -364,7 +366,7 @@ def _reconcile_current_consistency(
         dataset=row["dataset"],
         business_date=row["business_date"],
         source_count=latest_count,
-        kafka_count=None,
+        accounted_count=None,
         postgres_count=latest_count - missing - mismatched,
         discrepancy=discrepancy,
         status=status,
@@ -385,7 +387,7 @@ def _record_current_history_missing(conn, row, target_schema: str, target_table:
         dataset=row["dataset"],
         business_date=row["business_date"],
         source_count=_accepted_count(row),
-        kafka_count=None,
+        accounted_count=None,
         postgres_count=None,
         discrepancy=0,
         status="skipped",

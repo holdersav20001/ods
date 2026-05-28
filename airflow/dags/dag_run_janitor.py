@@ -43,10 +43,22 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 from datetime import timedelta
 
 import psycopg2
 
+# Add likely roots so ods_pipeline is importable both during full DAG parsing
+# and when Airflow LocalExecutor loads only this DAG file by subdir.
+_DAG_DIR = os.path.dirname(__file__)
+for _root in (
+    os.path.abspath(os.path.join(_DAG_DIR, "..")),
+    os.path.abspath(os.path.join(_DAG_DIR, "..", "..")),
+):
+    if _root not in sys.path:
+        sys.path.insert(0, _root)
+
+import ods_pipeline
 from airflow import DAG
 from airflow.decorators import task
 from airflow.utils.dates import days_ago
@@ -109,31 +121,24 @@ def reap_orphan_runs(
             # Both writes share this transaction so the dashboard never
             # observes a failed run without a matching kill marker.
             for run_id in stuck:
-                cur.execute(
-                    """
-                    INSERT INTO pipeline.run_stage_log
-                        (run_id, stage, status, event_type, attempt_number,
-                         started_at, ended_at, error, metrics)
-                    VALUES (%s, 'finalise', 'failed', 'stage_failed', 1,
-                            NOW(), NOW(),
-                            %s, %s::jsonb)
-                    """,
-                    (
-                        run_id,
-                        f"janitor_no_heartbeat: no stage activity for >{grace_minutes} min",
-                        '{"reaped_by": "dag_run_janitor"}',
-                    ),
+                ods_pipeline.stages.write(
+                    conn,
+                    run_id=run_id,
+                    stage=ods_pipeline.Stage.FINALISE,
+                    status="failed",
+                    event_type=ods_pipeline.StageEvent.FAILED,
+                    attempt_number=1,
+                    error=f"janitor_no_heartbeat: no stage activity for >{grace_minutes} min",
+                    metrics={"reaped_by": "dag_run_janitor"},
+                    commit=False,
                 )
-            cur.execute(
-                """
-                UPDATE pipeline.run_log
-                   SET status = 'failed',
-                       error_summary = 'janitor_no_heartbeat',
-                       ended_at = NOW()
-                 WHERE run_id = ANY(%s)
-                """,
-                (stuck,),
-            )
+                ods_pipeline.runs.update(
+                    conn,
+                    str(run_id),
+                    status="failed",
+                    error_summary="janitor_no_heartbeat",
+                    commit=False,
+                )
     return stuck
 
 

@@ -149,7 +149,7 @@ def clean_state(pg_conn):
             )
             cur.execute(
                 "DELETE FROM pipeline.lineage_edge "
-                "WHERE child_run_id IN (SELECT run_id FROM pipeline.run_log "
+                "WHERE consumer_run_id IN (SELECT run_id FROM pipeline.run_log "
                 "                        WHERE domain=%s AND dataset=%s)",
                 (DOMAIN, DATASET),
             )
@@ -168,7 +168,7 @@ def clean_state(pg_conn):
                 (DOMAIN, DATASET),
             )
             cur.execute(
-                "DELETE FROM pipeline.file_state WHERE s3_path LIKE %s",
+                "DELETE FROM pipeline.file_processing_attempt WHERE s3_path LIKE %s",
                 (f"s3://{RAW_BUCKET}/{DOMAIN}/{DATASET}/%",),
             )
         pg_conn.commit()
@@ -197,11 +197,12 @@ def _glue_env_args() -> list[str]:
         "-e", "ODS_SOURCE_APPLICATION=sftp",
         "-v", f"{REPO_ROOT}/glue/jobs:/home/glue_user/workspace/jobs",
         "-v", f"{REPO_ROOT}/ods_pipeline:/home/glue_user/ods_pipeline",
+        "-v", f"{REPO_ROOT}/ods_ingestion_control:/home/glue_user/ods_ingestion_control",
         "-v", f"{REPO_ROOT}/patterns:/home/glue_user/workspace/jobs/patterns",
     ]
 
 
-def _run_ingestion(*, run_id, file_id, s3_input_path, parent_run_id,
+def _run_ingestion(*, run_id, file_id, s3_input_path, upstream_run_id,
                    ) -> subprocess.CompletedProcess:
     cmd = [
         "docker", "run", "--rm", "--network", NETWORK,
@@ -222,12 +223,12 @@ def _run_ingestion(*, run_id, file_id, s3_input_path, parent_run_id,
         "--dataset", DATASET,
         "--s3_input_path", s3_input_path,
         "--file_id", file_id,
-        "--parent_run_id", parent_run_id,
+        "--upstream_run_id", upstream_run_id,
     ]
     return subprocess.run(cmd, capture_output=True, text=True, timeout=420)
 
 
-def _run_postgres_write(*, run_id, file_id, curated_path, parent_run_id,
+def _run_postgres_write(*, run_id, file_id, curated_path, upstream_run_id,
                         ) -> subprocess.CompletedProcess:
     cmd = [
         "docker", "run", "--rm", "--network", NETWORK,
@@ -250,7 +251,7 @@ def _run_postgres_write(*, run_id, file_id, curated_path, parent_run_id,
         "--dataset", DATASET,
         "--s3_input_path", curated_path,
         "--file_id", file_id,
-        "--parent_run_id", parent_run_id,
+        "--upstream_run_id", upstream_run_id,
     ]
     return subprocess.run(cmd, capture_output=True, text=True, timeout=600)
 
@@ -343,7 +344,7 @@ def test_noncanonical_inline_canonicalize_preserves_row_alignment(
 
     r1 = _run_ingestion(
         run_id=ingest_run, file_id=file_id, s3_input_path=raw,
-        parent_run_id=parent,
+        upstream_run_id=parent,
     )
     assert r1.returncode == 0, (
         f"ingestion failed.\nSTDOUT:\n{r1.stdout[-2500:]}\n"
@@ -353,7 +354,7 @@ def test_noncanonical_inline_canonicalize_preserves_row_alignment(
     r2 = _run_postgres_write(
         run_id=pg_run, file_id=file_id,
         curated_path=_curated_path(iso),
-        parent_run_id=parent,
+        upstream_run_id=parent,
     )
     assert r2.returncode == 0, (
         f"postgres_write failed.\nSTDOUT:\n{r2.stdout[-4000:]}\n"

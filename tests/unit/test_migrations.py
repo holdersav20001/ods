@@ -38,13 +38,14 @@ def test_glue_job_log_has_config_snapshot(conn):
     )
     assert cur.fetchone() is not None
 
-def test_file_state_status_constraint(conn):
+def test_file_processing_attempt_status_constraint(conn):
     cur = conn.cursor()
     cur.execute(
         "SELECT check_clause FROM information_schema.check_constraints cc "
         "JOIN information_schema.constraint_column_usage ccu "
         "ON cc.constraint_name = ccu.constraint_name "
-        "WHERE ccu.table_schema='pipeline' AND ccu.table_name='file_state' "
+        "WHERE ccu.table_schema='pipeline' "
+        "AND ccu.table_name='file_processing_attempt' "
         "AND ccu.column_name='status'"
     )
     row = cur.fetchone()
@@ -109,9 +110,10 @@ def test_run_log_table_exists(conn):
         cols = {r[0]: r[1] for r in cur.fetchall()}
     assert 'run_id' in cols and cols['run_id'] == 'uuid'
     assert 'pipeline_type' in cols
-    assert 'record_count_published' in cols
+    assert 'record_count_target' in cols
     assert 'kafka_offset_start' in cols and cols['kafka_offset_start'] == 'bigint'
-    assert 'parents' in cols and cols['parents'] == 'jsonb'
+    assert 'orchestrators' in cols and cols['orchestrators'] == 'jsonb'
+    assert 'runtime_context' in cols and cols['runtime_context'] == 'jsonb'
 
 def test_run_stage_log_fk(conn):
     with conn.cursor() as cur:
@@ -174,3 +176,79 @@ def test_v_lineage_view_exists(conn):
     assert 'run_id' in cols
     assert 'kafka_topic' in cols
     assert 'source_ref' in cols
+
+
+def test_control_functions_raise_explicit_validation_errors(conn):
+    with conn.cursor() as cur:
+        with pytest.raises(psycopg2.Error, match="run_id is required"):
+            cur.execute(
+                """
+                SELECT pipeline.control_start_run(
+                    NULL, 'ingestion', 'insurance', 'policies'
+                )
+                """
+            )
+        conn.rollback()
+
+    with conn.cursor() as cur:
+        with pytest.raises(psycopg2.Error, match="status has invalid value"):
+            cur.execute(
+                """
+                SELECT pipeline.control_update_run(
+                    '00000000-0000-0000-0000-000000000001'::uuid,
+                    'done'
+                )
+                """
+            )
+        conn.rollback()
+
+    with conn.cursor() as cur:
+        with pytest.raises(psycopg2.Error, match="source_count must be non-negative"):
+            cur.execute(
+                """
+                SELECT pipeline.control_write_reconciliation_check(
+                    't0_publish_count',
+                    NULL,
+                    'insurance',
+                    'policies',
+                    NULL,
+                    -1,
+                    0,
+                    0,
+                    'ok'
+                )
+                """
+            )
+        conn.rollback()
+
+
+def test_control_start_run_rejects_duplicate_run_metadata(conn):
+    run_id = "00000000-0000-0000-0000-000000000033"
+
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT pipeline.control_start_run(
+                %s::uuid, 'ingestion', 'insurance', 'policies'
+            )
+            """,
+            (run_id,),
+        )
+        cur.execute(
+            """
+            SELECT pipeline.control_start_run(
+                %s::uuid, 'ingestion', 'insurance', 'policies'
+            )
+            """,
+            (run_id,),
+        )
+        with pytest.raises(psycopg2.Error, match="already exists with different metadata"):
+            cur.execute(
+                """
+                SELECT pipeline.control_start_run(
+                    %s::uuid, 'ingestion', 'insurance', 'claims'
+                )
+                """,
+                (run_id,),
+            )
+        conn.rollback()

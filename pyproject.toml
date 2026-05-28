@@ -24,6 +24,7 @@ filterwarnings = [
 # tests have low signal. The reusable helpers under airflow/dags/common
 # ARE measured because they're imported and called like normal modules.
 source = [
+    "ods_ingestion_control",
     "ods_pipeline",
     "glue/jobs",
     "services",
