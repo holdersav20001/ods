@@ -5,8 +5,12 @@ from datetime import date, datetime, timezone
 from typing import Any, Mapping
 
 FILE_RECORD_FIELDS: tuple[str, ...] = (
-    "_ods_file_id",
-    "_ods_run_id",
+    # File-batch routes (source_type='s3_batch') after migration 36.
+    # _ods_lineage_link_id is the ONLY lineage handle. _ods_file_id and
+    # _ods_run_id have been DROPPED from file-batch target tables.  Trace
+    # back to source file via pipeline.lineage_edge.lineage_link_id =
+    # _ods_lineage_link_id.
+    "_ods_lineage_link_id",
     "_ods_domain",
     "_ods_dataset",
     "_ods_business_date",
@@ -31,9 +35,10 @@ MESSAGE_RECORD_FIELDS: tuple[str, ...] = (
 )
 
 CANONICAL_FILE_RECORD_FIELDS: tuple[str, ...] = (
-    "_ods_file_id",
-    "_ods_raw_run_id",
-    "_ods_canonicalize_run_id",
+    # Canonicalize stage on file-batch routes (e.g. ods.insurance_risk).
+    # Migration 36 collapses every legacy run/file pointer into the single
+    # _ods_lineage_link_id handle. Walk back via lineage_edge.
+    "_ods_lineage_link_id",
     "_ods_domain",
     "_ods_dataset",
     "_ods_business_date",
@@ -58,8 +63,11 @@ HISTORY_TABLE_FIELDS: tuple[str, ...] = (
 )
 
 FILE_HISTORY_TABLE_FIELDS: tuple[str, ...] = (
-    *HISTORY_TABLE_FIELDS,
-    "_ods_file_id",
+    # History tables on file-batch routes also use the single lineage handle.
+    # _ods_file_id and _ods_run_id are gone after migration 36.
+    "_ods_lineage_link_id",
+    "_ods_business_date",
+    "_ods_ingested_at",
 )
 
 MESSAGE_HISTORY_TABLE_FIELDS: tuple[str, ...] = (

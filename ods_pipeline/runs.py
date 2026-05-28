@@ -1,4 +1,12 @@
-"""pipeline.run_log operations."""
+"""pipeline.run_log operations.
+
+Autonomous-task helpers
+-----------------------
+Tasks should not receive their upstream run_id via XCom (Airflow-coupling).
+Instead they discover the upstream by querying control tables. Helpers
+below implement those lookups. Use them from any orchestrator — Airflow,
+EventBridge, Step Functions, cron — they only depend on the database.
+"""
 from __future__ import annotations
 
 import ods_ingestion_control as control
@@ -102,6 +110,47 @@ def finish(
     if error_summary is not None:
         kw["error_summary"] = error_summary
     update(conn, run_id, **kw)
+
+
+def latest_succeeded_run(
+    conn,
+    *,
+    file_id: str,
+    pipeline_type: str,
+) -> str | None:
+    """Return the most recent succeeded run_id for ``file_id`` of the given
+    ``pipeline_type``, or ``None`` if no such run exists.
+
+    Used by autonomous load tasks to discover their data parent without
+    requiring an upstream task to hand the run_id over via XCom.
+
+    Typical usage from a direct-Postgres load task::
+
+        ingest_run = ods_pipeline.runs.latest_succeeded_run(
+            conn, file_id=file_id, pipeline_type="ingestion"
+        )
+        if ingest_run is None:
+            raise RuntimeError(
+                f"no succeeded ingestion run for file_id={file_id}; "
+                "cannot establish data parent"
+            )
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT run_id
+              FROM pipeline.run_log
+             WHERE file_id = %s::uuid
+               AND pipeline_type = %s
+               AND status = 'succeeded'
+             ORDER BY ended_at DESC NULLS LAST,
+                      started_at DESC
+             LIMIT 1
+            """,
+            (file_id, pipeline_type),
+        )
+        row = cur.fetchone()
+    return row[0] if row else None
 
 
 class LineageInvariantError(RuntimeError):
