@@ -55,6 +55,12 @@ ALTER TABLE pipeline.lineage_edge
         FOREIGN KEY (consumer_run_id)
         REFERENCES pipeline.run_log(run_id) ON DELETE CASCADE;
 
+ALTER TABLE pipeline.lineage_edge
+    DROP CONSTRAINT IF EXISTS lineage_edge_parent_run_id_fkey,
+    ADD  CONSTRAINT lineage_edge_parent_run_id_fkey
+        FOREIGN KEY (upstream_run_id)
+        REFERENCES pipeline.run_log(run_id) ON DELETE CASCADE;
+
 ALTER TABLE pipeline.run_stage_log
     DROP CONSTRAINT IF EXISTS run_stage_log_run_id_fkey,
     ADD  CONSTRAINT run_stage_log_run_id_fkey
