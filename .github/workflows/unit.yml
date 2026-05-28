@@ -30,6 +30,31 @@ jobs:
 
   unit:
     runs-on: ubuntu-latest
+    # Postgres sidecar matches the local stack (host 127.0.0.1:5440 → 5432).
+    # Many tests under tests/unit hit pipeline.* via the pg_conn fixture and
+    # cannot run without a live DB. The unit job applies all migrations
+    # before pytest so the schema matches what callers expect.
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: ods_dev
+          POSTGRES_USER: ods
+          POSTGRES_PASSWORD: ods
+        ports:
+          - 5440:5432
+        options: >-
+          --health-cmd "pg_isready -U ods -d ods_dev"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_PG_HOST: 127.0.0.1
+      TEST_PG_PORT: "5440"
+      TEST_PG_DB: ods_dev
+      TEST_PG_USER: ods
+      TEST_PG_PASSWORD: ods
+      PIPELINE_PG_DSN: "host=127.0.0.1 port=5440 dbname=ods_dev user=ods password=ods"
     steps:
       - uses: actions/checkout@v4
 
@@ -41,6 +66,18 @@ jobs:
 
       - name: Install dependencies
         run: python -m pip install -r requirements-dev.txt
+
+      - name: Install psql client
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client
+
+      - name: Apply all migrations
+        env:
+          PGPASSWORD: ods
+        run: |
+          for f in $(ls db/migrations/*.sql | sort); do
+            echo "==> applying $f"
+            psql -h 127.0.0.1 -p 5440 -U ods -d ods_dev -v ON_ERROR_STOP=1 -f "$f"
+          done
 
       # Two coverage gates, both run on every PR.
       #

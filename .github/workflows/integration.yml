@@ -30,6 +30,11 @@ jobs:
       - name: Install dependencies
         run: python -m pip install -r requirements-dev.txt
 
+      - name: Provision .env from .env.example
+        # docker-compose.yml references env_file: .env. .env is gitignored
+        # locally, so CI copies the committed defaults.
+        run: cp .env.example .env
+
       - name: Start local stack
         run: docker compose up -d --build
 
