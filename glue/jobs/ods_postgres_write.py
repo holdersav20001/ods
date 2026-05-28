@@ -210,13 +210,18 @@ def _dispatch_write(df, *, write_mode: str, target: str,
         )
 
 
-def _postgres_count_for_run(conn, target: str, run_id: str) -> int:
+def _postgres_count_for_link(conn, target: str, lineage_link_id: str) -> int:
+    """Row count in target table stamped with this write event.
+
+    After migration 36, target rows on file-batch routes carry a single
+    ``_ods_lineage_link_id`` column. Reconciliation counts via that handle.
+    """
     schema, table = _split_table(target)
     with conn.cursor() as cur:
         cur.execute(
             f"SELECT COUNT(*) FROM {_quote_ident(schema)}.{_quote_ident(table)} "
-            f"WHERE _ods_run_id = %s",
-            (run_id,),
+            f"WHERE _ods_lineage_link_id = %s::uuid",
+            (lineage_link_id,),
         )
         return int(cur.fetchone()[0])
 
@@ -372,13 +377,20 @@ def run(*, run_id: str, domain: str, dataset: str, s3_input_path: str,
                     )
             df = transformed
 
-        # Curated parquet was written by ods_ingestion with its own
-        # _ods_run_id; rebrand each row with THIS write's run_id so
-        # downstream recon (curated count vs postgres rows tagged with
-        # this run_id) matches and dashboards can locate "what did this
-        # write touch?". The ingest run is still recoverable via
-        # _ods_file_id → file_catalogue → run_log.
-        df = df.withColumn("_ods_run_id", F.lit(run_id))
+        # Curated parquet carries the ingest run's lineage handle. Strip it
+        # and stamp THIS write's lineage_link_id on every row so downstream
+        # recon, dashboards, and "what did this write touch?" all resolve
+        # via a single column on the target table.
+        #
+        # Migration 36: file-batch target tables have a single
+        # _ods_lineage_link_id column (no _ods_run_id / _ods_file_id).
+        # Drop the curated copies of the legacy columns if present, then
+        # add the new handle.
+        for legacy in ("_ods_run_id", "_ods_file_id"):
+            if legacy in df.columns:
+                df = df.drop(legacy)
+        lineage_link_id = str(uuid.uuid4())
+        df = df.withColumn("_ods_lineage_link_id", F.lit(lineage_link_id))
         curated_count = df.count()
 
         ods_pipeline.stages.finish(
@@ -413,9 +425,9 @@ def run(*, run_id: str, domain: str, dataset: str, s3_input_path: str,
         )
 
         # Reconciliation: curated row count vs postgres rows tagged
-        # with this run_id. Direct equality check; tolerance honoured
-        # via dataset_config.recon_tolerance_records.
-        postgres_count = _postgres_count_for_run(conn, target, run_id)
+        # with THIS write event's lineage_link_id. Direct equality;
+        # tolerance via dataset_config.recon_tolerance_records.
+        postgres_count = _postgres_count_for_link(conn, target, lineage_link_id)
         tolerance = int(config.get("recon_tolerance_records") or 0)
         ok = abs(curated_count - postgres_count) <= tolerance
 
@@ -437,19 +449,31 @@ def run(*, run_id: str, domain: str, dataset: str, s3_input_path: str,
             }, sort_keys=True),
         )
 
-        # source_file_id alone is sufficient to anchor lineage; we
-        # intentionally do NOT pass upstream_run_id here because the
-        # orchestration run_id (when present) is already linked via
-        # run_log.orchestrators and lineage_edge.upstream_run_id has an FK to
-        # run_log.run_id which the standalone job cannot guarantee.
-        ods_pipeline.lineage.write_edge(
+        # Autonomous lineage: this task discovers its upstream ingestion
+        # run from control tables rather than receiving it via XCom.
+        # Migration 36 contract — write one lineage_link row + N
+        # lineage_edge contributions, all sharing lineage_link_id. The
+        # contributions list has length 1 for single-source loads; merge
+        # jobs use the same write_link helper with N entries.
+        upstream_ingest_run = None
+        if file_id:
+            upstream_ingest_run = ods_pipeline.runs.latest_succeeded_run(
+                conn, file_id=file_id, pipeline_type="ingestion"
+            )
+
+        ods_pipeline.lineage.write_link(
             conn,
+            lineage_link_id=lineage_link_id,   # minted before stamping rows
             consumer_run_id=run_id,
-            source_file_id=file_id,
             edge_type="curated_to_postgres",
-            source_ref=s3_input_path,
             target_ref=f"jdbc:postgresql://.../{target}",
-            record_count=curated_count,
+            record_count=postgres_count,
+            contributions=[{
+                "upstream_run_id": upstream_ingest_run,
+                "source_file_id": file_id,
+                "source_ref": s3_input_path,
+                "record_count": curated_count,
+            }],
         )
 
         _ws(

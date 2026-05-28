@@ -58,6 +58,7 @@ def write_link(
     target_ref: str | None,
     record_count: int | None,
     contributions: Iterable[Mapping],
+    lineage_link_id: str | None = None,
 ) -> str:
     """Atomically record one consumer write event + N source contributions.
 
@@ -88,7 +89,7 @@ def write_link(
     ``lineage.write_edge`` continue to work; their rows carry
     ``lineage_link_id = NULL``.
     """
-    link_id = str(uuid.uuid4())
+    link_id = lineage_link_id or str(uuid.uuid4())
     payload = []
     for c in contributions:
         if not isinstance(c, Mapping):
