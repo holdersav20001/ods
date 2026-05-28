@@ -539,3 +539,117 @@ def test_append_first_and_second_runs_accumulate(
     by_run_recon = {r[0]: r for r in recons}
     assert by_run_recon[pg_run_a][1] == 2 and by_run_recon[pg_run_a][3] == "ok"
     assert by_run_recon[pg_run_b][1] == 3 and by_run_recon[pg_run_b][3] == "ok"
+
+
+# ── Lineage trace: target row → lineage_link → lineage_edge → raw S3 ─────────
+
+def test_lineage_trace_target_row_to_raw_file(
+    s3_client, pg_conn, configs_synced, clean_state,
+):
+    """Single-file direct-PG path: every target row must trace back to the
+    raw CSV in S3 via the lineage_link / lineage_edge handles.
+
+    Asserts:
+      target row carries _ods_lineage_link_id
+      lineage_link.consumer_run_id  == postgres_write run_id
+      lineage_link.edge_type        == 'curated_to_postgres'
+      lineage_link.target_ref       == 'ods.<table>'
+      lineage_edge.upstream_run_id  == ingestion run_id
+      lineage_edge.source_file_id   == registered file_id
+      file_catalogue.s3_raw_path    matches the raw S3 URI ingested
+    """
+    business_date = "20260507"
+    csv = (
+        "country_code,country_name\n"
+        "GB,United Kingdom\n"
+        "FR,France\n"
+    )
+    raw, iso = _upload_csv(
+        s3_client, dataset=UPSERT_DATASET,
+        business_date_yyyymmdd=business_date,
+        filename_prefix="country_codes", content=csv,
+    )
+    file_id = _register_file(
+        pg_conn, dataset=UPSERT_DATASET, s3_raw_path=raw,
+        iso=iso, content=csv,
+    )
+    parent = str(uuid.uuid4())
+    ingest_run = str(uuid.uuid4())
+    pg_run = str(uuid.uuid4())
+
+    r1 = _run_ingestion(
+        run_id=ingest_run, file_id=file_id, s3_input_path=raw,
+        upstream_run_id=parent, dataset=UPSERT_DATASET,
+    )
+    assert r1.returncode == 0, r1.stderr[-2000:]
+
+    r2 = _run_postgres_write(
+        run_id=pg_run, file_id=file_id,
+        curated_path=_curated_path(UPSERT_DATASET, iso),
+        upstream_run_id=parent, dataset=UPSERT_DATASET,
+    )
+    assert r2.returncode == 0, r2.stderr[-2000:]
+
+    pg_conn.rollback()
+    with pg_conn.cursor() as cur:
+        # 1. Target rows carry the lineage handle.
+        cur.execute(
+            f"SELECT DISTINCT _ods_lineage_link_id FROM {UPSERT_TABLE} "
+            f"WHERE country_code IN ('GB','FR')"
+        )
+        link_ids = [r[0] for r in cur.fetchall()]
+        assert len(link_ids) == 1, (
+            f"expected one lineage_link covering this load; got {link_ids}"
+        )
+        link_id = link_ids[0]
+        assert link_id is not None
+
+        # 2. lineage_link bundle row points at the postgres run + target.
+        cur.execute(
+            "SELECT consumer_run_id::text, edge_type, target_ref, record_count "
+            "FROM pipeline.lineage_link WHERE lineage_link_id = %s",
+            (link_id,),
+        )
+        link = cur.fetchone()
+        assert link is not None, "lineage_link row missing"
+        assert link[0] == pg_run, (
+            f"lineage_link.consumer_run_id={link[0]} but pg_run={pg_run}"
+        )
+        assert link[1] == "curated_to_postgres"
+        # target_ref is the writer's JDBC URL ending in the schema-qualified
+        # table name, e.g. "jdbc:postgresql://.../ods.insurance_..."
+        assert link[2].endswith(UPSERT_TABLE), (
+            f"target_ref={link[2]} does not end with {UPSERT_TABLE}"
+        )
+        assert link[3] == 2
+
+        # 3. lineage_edge rows carry upstream run + source file.
+        cur.execute(
+            "SELECT upstream_run_id::text, source_file_id::text, edge_type "
+            "FROM pipeline.lineage_edge WHERE lineage_link_id = %s",
+            (link_id,),
+        )
+        edges = cur.fetchall()
+        assert len(edges) >= 1, "expected >=1 lineage_edge contribution"
+        upstream_run_ids = {e[0] for e in edges}
+        source_file_ids  = {e[1] for e in edges}
+        assert ingest_run in upstream_run_ids, (
+            f"ingest_run {ingest_run} not in lineage_edge.upstream_run_id "
+            f"({upstream_run_ids})"
+        )
+        assert file_id in source_file_ids, (
+            f"file_id {file_id} not in lineage_edge.source_file_id "
+            f"({source_file_ids})"
+        )
+
+        # 4. source_file_id dereferences to the raw S3 URI.
+        cur.execute(
+            "SELECT s3_raw_path FROM pipeline.file_catalogue "
+            "WHERE file_id = %s::uuid",
+            (file_id,),
+        )
+        fc = cur.fetchone()
+        assert fc is not None, "file_catalogue row missing"
+        assert fc[0] == raw, (
+            f"file_catalogue.s3_raw_path={fc[0]} but raw S3 URI={raw}"
+        )
