@@ -164,7 +164,26 @@ def _key_fields(row) -> list[str]:
 
 
 def _file_count_where(cols: set[str], run_id, file_id, business_date):
-    if "_ods_file_id" in cols and file_id:
+    if "_ods_lineage_link_id" in cols:
+        # Post-migration-36 file-batch target: lineage handle is the only
+        # row-level pointer. Resolve via pipeline.lineage_link / lineage_edge.
+        if file_id:
+            where = sql.SQL(
+                "_ods_lineage_link_id IN ("
+                "SELECT lineage_link_id FROM pipeline.lineage_edge "
+                "WHERE source_file_id = %s::uuid)"
+            )
+            params = [str(file_id)]
+            detail = f"file_id={file_id}"
+        else:
+            where = sql.SQL(
+                "_ods_lineage_link_id IN ("
+                "SELECT lineage_link_id FROM pipeline.lineage_link "
+                "WHERE consumer_run_id = %s::uuid)"
+            )
+            params = [str(run_id)]
+            detail = f"run_id={run_id}"
+    elif "_ods_file_id" in cols and file_id:
         where = sql.SQL("_ods_file_id = %s")
         params = [str(file_id)]
         detail = f"file_id={file_id}"

@@ -365,10 +365,18 @@ def test_noncanonical_inline_canonicalize_preserves_row_alignment(
     pg_conn.rollback()
     with pg_conn.cursor() as cur:
         cur.execute(
-            f"SELECT risk_id, policy_id, exposure_amount, as_of_date, "
-            f"       _ods_run_id, _ods_business_date, _ods_file_id, "
-            f"       _ods_domain, _ods_dataset "
-            f"FROM {TABLE} ORDER BY risk_id"
+            f"SELECT t.risk_id, t.policy_id, t.exposure_amount, t.as_of_date, "
+            f"       ll.consumer_run_id::text AS _ods_run_id, "
+            f"       t._ods_business_date, "
+            f"       le.source_file_id::text  AS _ods_file_id, "
+            f"       t._ods_domain, t._ods_dataset "
+            f"FROM {TABLE} t "
+            f"JOIN pipeline.lineage_link ll "
+            f"  ON ll.lineage_link_id = t._ods_lineage_link_id "
+            f"LEFT JOIN pipeline.lineage_edge le "
+            f"  ON le.lineage_link_id = t._ods_lineage_link_id "
+            f" AND le.source_file_id IS NOT NULL "
+            f"ORDER BY t.risk_id"
         )
         rows = cur.fetchall()
 

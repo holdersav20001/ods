@@ -415,7 +415,10 @@ def test_t2_writes_append_file_count_for_direct_postgres_append(
     pg_conn.rollback()
     with pg_conn.cursor() as cur:
         cur.execute(
-            f"SELECT count(*) FROM {APPEND_TABLE} WHERE _ods_run_id::text = %s",
+            f"SELECT count(*) FROM {APPEND_TABLE} t "
+            f"JOIN pipeline.lineage_link ll "
+            f"  ON ll.lineage_link_id = t._ods_lineage_link_id "
+            f"WHERE ll.consumer_run_id::text = %s",
             (pg_run,),
         )
         landed = cur.fetchone()[0]

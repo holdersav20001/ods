@@ -124,13 +124,60 @@ def _short(run_id: str) -> str:
 
 
 def _write_append(df, *, target: str) -> None:
-    """Direct append; the target must be a no-PK history table."""
+    """Stage-and-insert append.
+
+    Spark JDBC writes UUID-typed columns as text. To preserve uuid types on
+    the target (and the FK from _ods_lineage_link_id), the rows land in a
+    per-run stage table first; a psycopg2 INSERT...SELECT with explicit
+    casts copies them into the target and drops the stage.
+    """
+    schema, table = _split_table(target)
+    stage_table = f"{table}_append_stage_{uuid.uuid4().hex[:8]}"
+    stage_qualified = f"{schema}.{stage_table}"
+
     df.write.format("jdbc") \
         .option("url", _jdbc_url()) \
-        .option("dbtable", target) \
+        .option("dbtable", stage_qualified) \
         .options(**_jdbc_props()) \
-        .mode("append") \
+        .option("truncate", "false") \
+        .mode("overwrite") \
         .save()
+
+    conn = ods_pipeline.connect()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_schema=%s AND table_name=%s "
+                "ORDER BY ordinal_position",
+                (schema, stage_table),
+            )
+            cols = [r[0] for r in cur.fetchall()]
+            if not cols:
+                raise RuntimeError(
+                    f"append stage table {stage_qualified} not found after Spark write"
+                )
+            _UUID_COLS = {"_ods_lineage_link_id"}
+            insert_cols = ", ".join(_quote_ident(c) for c in cols)
+            select_cols = ", ".join(
+                (f"s.{_quote_ident(c)}::uuid" if c in _UUID_COLS
+                 else f"s.{_quote_ident(c)}")
+                for c in cols
+            )
+            cur.execute(
+                f"INSERT INTO {_quote_ident(schema)}.{_quote_ident(table)} "
+                f"({insert_cols}) SELECT {select_cols} "
+                f"FROM {_quote_ident(schema)}.{_quote_ident(stage_table)} s"
+            )
+            cur.execute(
+                f"DROP TABLE {_quote_ident(schema)}.{_quote_ident(stage_table)}"
+            )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def _write_upsert(df, *, target: str, key_fields: list[str], run_id: str) -> None:
@@ -172,7 +219,14 @@ def _write_upsert(df, *, target: str, key_fields: list[str], run_id: str) -> Non
                 )
 
             insert_cols = ", ".join(_quote_ident(c) for c in cols)
-            select_cols = ", ".join(f"s.{_quote_ident(c)}" for c in cols)
+            # Spark JDBC writes UUID-typed columns as text in the stage table;
+            # cast on the SELECT so the merge into the typed target succeeds.
+            _UUID_COLS = {"_ods_lineage_link_id"}
+            select_cols = ", ".join(
+                (f"s.{_quote_ident(c)}::uuid" if c in _UUID_COLS
+                 else f"s.{_quote_ident(c)}")
+                for c in cols
+            )
             update_cols = ", ".join(
                 f"{_quote_ident(c)}=EXCLUDED.{_quote_ident(c)}"
                 for c in cols if c not in key_fields

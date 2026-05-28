@@ -22,7 +22,7 @@ BEGIN;
 -- ── 1. pipeline.lineage_link — the bundle / write event ──────────────────────
 CREATE TABLE pipeline.lineage_link (
     lineage_link_id  UUID PRIMARY KEY,
-    consumer_run_id  UUID NOT NULL REFERENCES pipeline.run_log(run_id),
+    consumer_run_id  UUID NOT NULL REFERENCES pipeline.run_log(run_id) ON DELETE CASCADE,
     edge_type        TEXT NOT NULL,
     target_ref       TEXT,
     record_count     BIGINT,

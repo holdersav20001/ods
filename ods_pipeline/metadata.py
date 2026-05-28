@@ -5,17 +5,23 @@ from datetime import date, datetime, timezone
 from typing import Any, Mapping
 
 FILE_RECORD_FIELDS: tuple[str, ...] = (
-    # File-batch routes (source_type='s3_batch') after migration 36.
-    # _ods_lineage_link_id is the ONLY lineage handle. _ods_file_id and
-    # _ods_run_id have been DROPPED from file-batch target tables.  Trace
-    # back to source file via pipeline.lineage_edge.lineage_link_id =
-    # _ods_lineage_link_id.
-    "_ods_lineage_link_id",
+    # S3/Kafka envelope shape for raw file ingestion. These travel with the
+    # record into S3 raw/curated and into Kafka payloads. Postgres TARGET
+    # tables use a different shape: a single _ods_lineage_link_id (see
+    # FILE_TARGET_TABLE_FIELDS) — stamped at write time by ods_postgres_write
+    # / ods_merge, not via this factory.
+    "_ods_file_id",
+    "_ods_run_id",
     "_ods_domain",
     "_ods_dataset",
     "_ods_business_date",
     "_ods_source_application",
     "_ods_ingested_at",
+)
+
+FILE_TARGET_TABLE_FIELDS: tuple[str, ...] = (
+    # Postgres file-batch target tables after migration 36.
+    "_ods_lineage_link_id",
 )
 
 MESSAGE_CORRELATION_FIELDS: tuple[str, ...] = (
@@ -35,10 +41,11 @@ MESSAGE_RECORD_FIELDS: tuple[str, ...] = (
 )
 
 CANONICAL_FILE_RECORD_FIELDS: tuple[str, ...] = (
-    # Canonicalize stage on file-batch routes (e.g. ods.insurance_risk).
-    # Migration 36 collapses every legacy run/file pointer into the single
-    # _ods_lineage_link_id handle. Walk back via lineage_edge.
-    "_ods_lineage_link_id",
+    # Canonicalize stage S3 envelope shape (curated parquet metadata).
+    # Postgres target shape lives in FILE_TARGET_TABLE_FIELDS.
+    "_ods_file_id",
+    "_ods_raw_run_id",
+    "_ods_canonicalize_run_id",
     "_ods_domain",
     "_ods_dataset",
     "_ods_business_date",
@@ -63,8 +70,7 @@ HISTORY_TABLE_FIELDS: tuple[str, ...] = (
 )
 
 FILE_HISTORY_TABLE_FIELDS: tuple[str, ...] = (
-    # History tables on file-batch routes also use the single lineage handle.
-    # _ods_file_id and _ods_run_id are gone after migration 36.
+    # Postgres file-batch history tables after migration 36.
     "_ods_lineage_link_id",
     "_ods_business_date",
     "_ods_ingested_at",

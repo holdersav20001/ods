@@ -348,8 +348,11 @@ def test_upsert_first_run_inserts_then_second_run_updates_in_place(
     pg_conn.rollback()
     with pg_conn.cursor() as cur:
         cur.execute(
-            f"SELECT country_code, country_name, _ods_run_id "
-            f"FROM {UPSERT_TABLE} ORDER BY country_code"
+            f"SELECT t.country_code, t.country_name, ll.consumer_run_id::text "
+            f"FROM {UPSERT_TABLE} t "
+            f"JOIN pipeline.lineage_link ll "
+            f"  ON ll.lineage_link_id = t._ods_lineage_link_id "
+            f"ORDER BY t.country_code"
         )
         rows = cur.fetchall()
     assert len(rows) == 3
@@ -394,8 +397,11 @@ def test_upsert_first_run_inserts_then_second_run_updates_in_place(
     pg_conn.rollback()
     with pg_conn.cursor() as cur:
         cur.execute(
-            f"SELECT country_code, country_name, _ods_run_id "
-            f"FROM {UPSERT_TABLE} ORDER BY country_code"
+            f"SELECT t.country_code, t.country_name, ll.consumer_run_id::text "
+            f"FROM {UPSERT_TABLE} t "
+            f"JOIN pipeline.lineage_link ll "
+            f"  ON ll.lineage_link_id = t._ods_lineage_link_id "
+            f"ORDER BY t.country_code"
         )
         rows2 = cur.fetchall()
     by_code = {r[0]: r for r in rows2}
@@ -503,8 +509,11 @@ def test_append_first_and_second_runs_accumulate(
     pg_conn.rollback()
     with pg_conn.cursor() as cur:
         cur.execute(
-            f"SELECT event_id, _ods_run_id FROM {APPEND_TABLE} "
-            f"ORDER BY event_id"
+            f"SELECT t.event_id, ll.consumer_run_id::text "
+            f"FROM {APPEND_TABLE} t "
+            f"JOIN pipeline.lineage_link ll "
+            f"  ON ll.lineage_link_id = t._ods_lineage_link_id "
+            f"ORDER BY t.event_id"
         )
         rows = cur.fetchall()
     assert {r[0] for r in rows} == {f"evt-00{i}" for i in range(1, 6)}
