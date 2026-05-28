@@ -118,7 +118,7 @@ ALLOWED_RUN_FIELDS: frozenset[str] = frozenset({
     "record_count_source",
     "record_count_dq_pass",
     "record_count_dq_fail",
-    "record_count_published",
+    "record_count_target",
     "kafka_topic",
     "kafka_offset_start",
     "kafka_offset_end",

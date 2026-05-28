@@ -176,7 +176,7 @@ def dashboard_rows(pg_conn):
         dataset=DATASET,
         business_date="2026-05-03",
         source_count=3,
-        kafka_count=None,
+        accounted_count=None,
         postgres_count=None,
         status="ok",
         detail=json.dumps({"fetched_count": 3, "archived_count": 3}),
@@ -200,7 +200,7 @@ def dashboard_rows(pg_conn):
     ods_pipeline.runs.start(
         pg_conn,
         run_id=downstream_run_id,
-        pipeline_type="s3_batch",
+        pipeline_type="orchestration",
         domain=DOMAIN,
         dataset=DATASET,
         business_date="2026-05-03",

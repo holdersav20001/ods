@@ -19,7 +19,7 @@ Optional fourth, only when Airflow owns the route:
 
 | UUID | Where it lives | Created by |
 |---|---|---|
-| `route_run_id` | `pipeline.run_log.run_id` (row where `pipeline_type='s3_batch'`) | DAG start task, once per DAG run |
+| `route_run_id` | `pipeline.run_log.run_id` (row where `pipeline_type='orchestration'`) | DAG start task, once per DAG run |
 
 **Rule:** each task generates its own `run_id` *when its work starts*. Never pre-allocate downstream UUIDs.
 
@@ -150,12 +150,12 @@ file_id = ods_pipeline.files.upsert(
 
 **Why bother?** Without it, you cannot answer "show me all stage activity for the 8am DAG run on 2026-05-21." With it, every child task carries `route_run_id` in its `orchestrators[]` and you can pivot reports by orchestration run.
 
-`pipeline_type="s3_batch"` is the convention for "this row represents the orchestration of an S3 file batch route." Not a data pipeline — a wrapper run.
+`pipeline_type="orchestration"` is the convention for "this row represents the orchestration of an S3 file batch route." Not a data pipeline — a wrapper run.
 
 ```python
 route_run_id = uuid4()
 ods_pipeline.runs.start(
-    conn, run_id=route_run_id, pipeline_type="s3_batch",
+    conn, run_id=route_run_id, pipeline_type="orchestration",
     domain="insurance", dataset="country_codes",
     business_date="2026-05-21", file_id=file_id,
 )
@@ -165,7 +165,7 @@ ods_pipeline.runs.start(
 
 | run_id | pipeline_type | file_id | status | orchestrators |
 |---|---|---|---|---|
-| `route_run_id` | s3_batch | `file_id` | running | [] |
+| `route_run_id` | orchestration | `file_id` | running | [] |
 
 ### Step 3 — Ingestion task starts
 
@@ -189,7 +189,7 @@ ods_pipeline.runs.start(
 
 | run_id | pipeline_type | file_id | status | orchestrators |
 |---|---|---|---|---|
-| `route_run_id` | s3_batch | `file_id` | running | [] |
+| `route_run_id` | orchestration | `file_id` | running | [] |
 | `ingestion_run_id` | ingestion | `file_id` | running | [{run_id: `route_run_id`, edge_type: orchestrates}] |
 
 ### Step 4 — Ingestion writes stage evidence
@@ -253,7 +253,7 @@ ods_pipeline.reconciliation.write_check(
     run_id=ingestion_run_id,          # I
     domain="insurance", dataset="country_codes",
     business_date="2026-05-21",
-    source_count=100, kafka_count=None, status="ok",
+    source_count=100, accounted_count=None, status="ok",
 )
 
 ods_pipeline.runs.update(
@@ -315,7 +315,7 @@ ods_pipeline.runs.start(
 
 | run_id | pipeline_type | file_id | status | orchestrators |
 |---|---|---|---|---|
-| `route_run_id` | s3_batch | `file_id` | running | [] |
+| `route_run_id` | orchestration | `file_id` | running | [] |
 | `ingestion_run_id` | ingestion | `file_id` | succeeded | [{`route_run_id`, orchestrates}] |
 | `pg_write_run_id` | direct_postgres | `file_id` | running | [{`route_run_id`, orchestrates}] |
 
@@ -326,7 +326,7 @@ ods_pipeline.runs.start(
 1. **`run_stage_log`** for `postgres_write` (start + finish) — same checkpoint pattern as ingestion stages.
 2. **`lineage_edge` (curated_to_postgres)** — here `upstream_run_id = ingestion_run_id` because ingestion **produced the data** the load consumed. `source_file_id = file_id` for traceability back to the original source file.
 3. **`reconciliation_log` (direct_postgres_count)** — row count: rows accepted for load vs rows actually visible in target table for this `pg_write_run_id`.
-4. **`file_catalogue.state = "sunk"`** — terminal state for this route. Means "data reached the target table successfully."
+4. **`file_catalogue.state = "loaded"`** — terminal state for this route. Means "data reached the target table successfully."
 5. **`run_log.status = "succeeded"`** — closes the load run.
 
 **Key UUID rule for the lineage edge:** the orchestration parent (`route_run_id`) goes in `run_log.orchestrators`. The **data parent** (`ingestion_run_id`) goes in `lineage_edge.upstream_run_id`. Different columns because they answer different questions.
@@ -366,12 +366,12 @@ ods_pipeline.reconciliation.write_check(
 )
 
 ods_pipeline.files.update_catalogue(
-    conn, file_id=file_id, state="sunk", last_run_id=pg_write_run_id,
+    conn, file_id=file_id, state="loaded", last_run_id=pg_write_run_id,
 )
 
 ods_pipeline.runs.update(
     conn, pg_write_run_id, status="succeeded",
-    record_count_source=100, record_count_published=100,
+    record_count_source=100, record_count_target=100,
 )
 ```
 
@@ -386,7 +386,7 @@ ods_pipeline.runs.update(
 
 | file_id | state | last_run_id |
 |---|---|---|
-| `file_id` | sunk | `pg_write_run_id` |
+| `file_id` | loaded | `pg_write_run_id` |
 
 Target table rows in `ods.insurance_country_code`:
 
@@ -404,7 +404,7 @@ Note `_ods_run_id = pg_write_run_id` (the load run), **never** `ingestion_run_id
 ```mermaid
 flowchart LR
     subgraph FC["pipeline.file_catalogue"]
-      FC1["file_id<br/>state=sunk<br/>last_run_id=pg_write_run_id"]
+      FC1["file_id<br/>state=loaded<br/>last_run_id=pg_write_run_id"]
     end
     subgraph RL["pipeline.run_log"]
       RL1["route_run_id<br/>type=s3_batch"]
@@ -471,7 +471,7 @@ File reached final state:
 
 ```sql
 SELECT state, last_run_id FROM pipeline.file_catalogue WHERE file_id = '<file_id>';
--- expect: state=sunk, last_run_id=<pg_write_run_id>
+-- expect: state=loaded, last_run_id=<pg_write_run_id>
 ```
 
 All runs for this file succeeded:
@@ -504,7 +504,7 @@ FROM ods.insurance_country_code t
 JOIN pipeline.file_catalogue fc ON fc.file_id = t._ods_file_id::uuid
 JOIN pipeline.run_log rl ON rl.run_id = t._ods_run_id::uuid
 WHERE t.country_code = 'GB';
--- expect: GB, sunk, direct_postgres, succeeded
+-- expect: GB, loaded, direct_postgres, succeeded
 ```
 
 ---

@@ -2,7 +2,7 @@
 
 The finalise contract (docstring on :func:`ods_pipeline.runs.finalise`):
 
-  1. If ``record_count_published > 0``, at least one ``lineage_edge``
+  1. If ``record_count_target > 0``, at least one ``lineage_edge``
      row must exist with ``consumer_run_id = run_id``.
   2. No non-terminal ``run_stage_log`` rows may exist for ``run_id``.
 
@@ -64,7 +64,7 @@ def _seed_run(pg_conn, *, published: int, edges: int, open_stages: int) -> str:
     )
     if published > 0:
         ods_pipeline.runs.update(
-            pg_conn, run_id, record_count_published=published,
+            pg_conn, run_id, record_count_target=published,
         )
     for _ in range(edges):
         ods_pipeline.lineage.write_edge(

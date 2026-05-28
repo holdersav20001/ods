@@ -113,7 +113,7 @@ def test_drop_file_lands_in_postgres(pg_conn):
                    AND fc.domain='insurance'
                    AND fc.dataset='policies'
                    AND fc.business_date='2026-04-28'
-                   AND fc.state='sunk'
+                   AND fc.state='loaded'
                 """
             )
             n = cur.fetchone()[0]
@@ -124,7 +124,7 @@ def test_drop_file_lands_in_postgres(pg_conn):
                  WHERE domain='insurance'
                    AND dataset='policies'
                    AND business_date='2026-04-28'
-                   AND pipeline_type='s3_batch'
+                   AND pipeline_type='orchestration'
                  ORDER BY started_at DESC
                  LIMIT 1
                 """
@@ -135,6 +135,6 @@ def test_drop_file_lands_in_postgres(pg_conn):
             return
         time.sleep(3)
     raise AssertionError(
-        "expected 2 sunk rows in ods.insurance_policy and a succeeded parent run, "
+        "expected 2 loaded rows in ods.insurance_policy and a succeeded parent run, "
         f"got rows={n}, parent_status={parent_status}"
     )

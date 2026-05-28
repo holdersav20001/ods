@@ -212,7 +212,7 @@ def _insert_run_log(conn, *, run_id, file_id, orchestrators, status):
             INSERT INTO pipeline.run_log
                 (run_id, pipeline_type, domain, dataset, business_date,
                  file_id, status, orchestrators)
-            VALUES (%s, 's3_batch', %s, %s, %s, %s, %s, %s::jsonb)
+            VALUES (%s, 'orchestration', %s, %s, %s, %s, %s, %s::jsonb)
             ON CONFLICT (run_id) DO NOTHING
             """,
             (run_id, DOMAIN, DATASET, "2026-05-02",

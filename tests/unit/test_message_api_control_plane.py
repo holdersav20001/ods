@@ -69,7 +69,7 @@ def test_record_result_accounts_for_validation_dlq_and_archive(monkeypatch):
     recon = [call for call in calls if call[0] == "recon"][0][1]
     assert recon["check_type"] == "message_batch_count"
     assert recon["source_count"] == 7
-    assert recon["kafka_count"] == 7
+    assert recon["accounted_count"] == 7
     detail = json.loads(recon["detail"])
     assert detail["validation_fail_count"] == 2
     assert detail["dlq_count"] == 1

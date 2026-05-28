@@ -135,7 +135,7 @@
         <mxCell id="s7" value="Step 7: Load does work" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4E5;strokeColor=#E65100;fontStyle=1;align=center;" vertex="1" parent="1">
           <mxGeometry x="40" y="660" width="140" height="40" as="geometry"/>
         </mxCell>
-        <mxCell id="s7b" value="writes run_stage_log (postgres_write, start+finish)&#10;writes lineage_edge (child=28, parent_run=22, parent_file=11,&#10;                    curated_to_postgres)&#10;writes reconciliation_log (direct_postgres_count, run_id=28)&#10;writes target rows (_ods_file_id=11, _ods_run_id=28)&#10;updates file_catalogue (state=sunk, last_run_id=28)&#10;updates run_log (status=succeeded)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#E65100;align=left;spacingLeft=8;fontSize=10;" vertex="1" parent="1">
+        <mxCell id="s7b" value="writes run_stage_log (postgres_write, start+finish)&#10;writes lineage_edge (child=28, parent_run=22, parent_file=11,&#10;                    curated_to_postgres)&#10;writes reconciliation_log (direct_postgres_count, run_id=28)&#10;writes target rows (_ods_file_id=11, _ods_run_id=28)&#10;updates file_catalogue (state=loaded, last_run_id=28)&#10;updates run_log (status=succeeded)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#E65100;align=left;spacingLeft=8;fontSize=10;" vertex="1" parent="1">
           <mxGeometry x="1080" y="655" width="300" height="130" as="geometry"/>
         </mxCell>
         <mxCell id="s7back1" style="endArrow=classic;html=1;strokeColor=#6A1B9A;dashed=1;" edge="1" parent="1">
@@ -153,7 +153,7 @@
             <mxPoint x="290" y="740" as="targetPoint"/>
           </mxGeometry>
         </mxCell>
-        <mxCell id="s7back2lbl" value="target rows _ods_file_id=11 + updates file_catalogue.state=sunk" style="text;html=1;align=center;fontSize=9;fontStyle=2;fontColor=#1565C0;" vertex="1" parent="1">
+        <mxCell id="s7back2lbl" value="target rows _ods_file_id=11 + updates file_catalogue.state=loaded" style="text;html=1;align=center;fontSize=9;fontStyle=2;fontColor=#1565C0;" vertex="1" parent="1">
           <mxGeometry x="400" y="720" width="400" height="20" as="geometry"/>
         </mxCell>
 
@@ -161,7 +161,7 @@
         <mxCell id="s8" value="Final state" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#37474F;fontColor=#FFFFFF;fontStyle=1;align=center;" vertex="1" parent="1">
           <mxGeometry x="40" y="840" width="140" height="40" as="geometry"/>
         </mxCell>
-        <mxCell id="s8f1" value="state=sunk" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E3F2FD;strokeColor=#1565C0;align=center;fontStyle=1;fontSize=10;" vertex="1" parent="1">
+        <mxCell id="s8f1" value="state=loaded" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E3F2FD;strokeColor=#1565C0;align=center;fontStyle=1;fontSize=10;" vertex="1" parent="1">
           <mxGeometry x="220" y="840" width="160" height="40" as="geometry"/>
         </mxCell>
         <mxCell id="s8f2" value="status=succeeded" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;align=center;fontStyle=1;fontSize=10;" vertex="1" parent="1">

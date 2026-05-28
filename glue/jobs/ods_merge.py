@@ -309,7 +309,7 @@ def run(merge_run_id: str, domain: str, dataset: str, business_date: str) -> int
         pg.commit()
         update_run_fields(pg_dsn, merge_run_id,
                           status="succeeded",
-                          record_count_published=written)
+                          record_count_target=written)
         pg.close()
         return 0
 

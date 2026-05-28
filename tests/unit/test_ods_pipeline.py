@@ -239,57 +239,57 @@ class TestReconciliationWriteCheck:
         return args_tuple[5], args_tuple[6], args_tuple[7]
 
     def test_source_kafka_discrepancy_zero(self):
-        source_count, kafka_count, postgres_count = self._capture_discrepancy(
+        source_count, accounted_count, postgres_count = self._capture_discrepancy(
             check_type="t0", run_id="r1", domain="ins", dataset="pol",
             business_date="2026-04-28",
-            source_count=100, kafka_count=100,
+            source_count=100, accounted_count=100,
             status="ok",
         )
         assert source_count == 100
-        assert kafka_count == 100
+        assert accounted_count == 100
         assert postgres_count is None
 
     def test_source_kafka_discrepancy_negative(self):
-        source_count, kafka_count, postgres_count = self._capture_discrepancy(
+        source_count, accounted_count, postgres_count = self._capture_discrepancy(
             check_type="t0", run_id="r1", domain="ins", dataset="pol",
             business_date="2026-04-28",
-            source_count=10, kafka_count=9,
+            source_count=10, accounted_count=9,
             status="failed",
         )
         assert source_count == 10
-        assert kafka_count == 9
+        assert accounted_count == 9
         assert postgres_count is None
 
     def test_source_kafka_discrepancy_positive(self):
-        source_count, kafka_count, postgres_count = self._capture_discrepancy(
+        source_count, accounted_count, postgres_count = self._capture_discrepancy(
             check_type="t0", run_id="r1", domain="ins", dataset="pol",
             business_date="2026-04-28",
-            source_count=10, kafka_count=12,
+            source_count=10, accounted_count=12,
             status="failed",
         )
         assert source_count == 10
-        assert kafka_count == 12
+        assert accounted_count == 12
         assert postgres_count is None
 
     def test_kafka_postgres_discrepancy(self):
-        source_count, kafka_count, postgres_count = self._capture_discrepancy(
+        source_count, accounted_count, postgres_count = self._capture_discrepancy(
             check_type="t1", run_id="r1", domain="ins", dataset="pol",
             business_date="2026-04-28",
-            kafka_count=50, postgres_count=48,
+            accounted_count=50, postgres_count=48,
             status="failed",
         )
         assert source_count is None
-        assert kafka_count == 50
+        assert accounted_count == 50
         assert postgres_count == 48
 
     def test_no_counts_gives_none_discrepancy(self):
-        source_count, kafka_count, postgres_count = self._capture_discrepancy(
+        source_count, accounted_count, postgres_count = self._capture_discrepancy(
             check_type="t0", run_id="r1", domain="ins", dataset="pol",
             business_date="2026-04-28",
             status="ok",
         )
         assert source_count is None
-        assert kafka_count is None
+        assert accounted_count is None
         assert postgres_count is None
 
     def test_commits_on_success(self):
@@ -298,7 +298,7 @@ class TestReconciliationWriteCheck:
             conn,
             check_type="t0", run_id="r1", domain="ins", dataset="pol",
             business_date="2026-04-28",
-            source_count=5, kafka_count=5,
+            source_count=5, accounted_count=5,
             status="ok",
         )
         conn.commit.assert_called_once()

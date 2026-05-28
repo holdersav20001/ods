@@ -798,7 +798,7 @@ def test_e2e_stub_to_curated_parquet_with_watermark_promotion(
         dataset=DATASET,
         business_date=business_date,
         source_count=archive.record_count,
-        kafka_count=None,
+        accounted_count=None,
         postgres_count=None,
         status="ok",
         detail=json.dumps({"fetched_count": archive.record_count}),
@@ -835,7 +835,7 @@ def test_e2e_stub_to_curated_parquet_with_watermark_promotion(
     ods_pipeline.runs.start(
         pg_conn,
         run_id=upstream_run_id,
-        pipeline_type="s3_batch",
+        pipeline_type="orchestration",
         domain=DOMAIN,
         dataset=DATASET,
         business_date=business_date,
@@ -918,7 +918,7 @@ def test_e2e_stub_to_curated_parquet_with_watermark_promotion(
     with pg_conn.cursor() as cur:
         cur.execute(
             """
-            SELECT status, record_count_published, kafka_topic
+            SELECT status, record_count_target, kafka_topic
               FROM pipeline.run_log
              WHERE run_id=%s
             """,
@@ -927,7 +927,7 @@ def test_e2e_stub_to_curated_parquet_with_watermark_promotion(
         publish_log = cur.fetchone()
         cur.execute(
             """
-            SELECT status, source_count, kafka_count, discrepancy_count
+            SELECT status, source_count, accounted_count, discrepancy_count
               FROM pipeline.reconciliation_log
              WHERE run_id=%s AND check_type='t0_publish_count'
             """,
@@ -1131,7 +1131,7 @@ def test_e2e_api_pull_noncanonical_to_canonical_jdbc_with_t1_t2_recon(
     ods_pipeline.runs.start(
         pg_conn,
         run_id=upstream_run_id,
-        pipeline_type="s3_batch",
+        pipeline_type="orchestration",
         domain=DOMAIN,
         dataset=RISK_DATASET,
         business_date=business_date,
@@ -1204,7 +1204,7 @@ def test_e2e_api_pull_noncanonical_to_canonical_jdbc_with_t1_t2_recon(
     with pg_conn.cursor() as cur:
         cur.execute(
             """
-            SELECT status, source_count, kafka_count, discrepancy_count
+            SELECT status, source_count, accounted_count, discrepancy_count
               FROM pipeline.reconciliation_log
              WHERE run_id=%s AND check_type='t1_canonicalize_count'
             """,

@@ -277,7 +277,7 @@ def record_result(
         dataset=dataset,
         business_date=business_date,
         source_count=accepted_count,
-        kafka_count=published_count,
+        accounted_count=published_count,
         status="ok" if ok else "failed",
         detail=json.dumps(detail, sort_keys=True),
         commit=True,
@@ -301,7 +301,7 @@ def record_result(
         status=status,
         record_count_source=source_count,
         record_count_dq_fail=validation_fail_count + dlq_count,
-        record_count_published=published_count,
+        record_count_target=published_count,
         kafka_topic=kafka_topic,
         error_summary=None if ok else "message/API reconciliation failed",
     )

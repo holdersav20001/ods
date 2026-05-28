@@ -148,7 +148,7 @@ def upload(s3, key, content, bucket=RAW_BUCKET):
     s3.put_object(Bucket=bucket, Key=key, Body=content.encode())
 
 
-def kafka_count(topic=TOPIC, timeout=15.0):
+def accounted_count(topic=TOPIC, timeout=15.0):
     c = Consumer({"bootstrap.servers": KAFKA_BROKERS,
                   "group.id": f"test-{uuid.uuid4()}",
                   "auto.offset.reset": "earliest",
@@ -194,12 +194,12 @@ def test_1_happy_path(s3, pg):
     r2, run_pub = publish(curated_path)
     assert r2.returncode == 0, r2.stderr
 
-    msgs = kafka_count()
+    msgs = accounted_count()
     assert msgs >= 2
     assert log_status(pg, run_pub) == "succeeded"
 
     cur = pg.cursor()
-    cur.execute("SELECT record_count_published FROM pipeline.run_log WHERE run_id=%s", (run_pub,))
+    cur.execute("SELECT record_count_target FROM pipeline.run_log WHERE run_id=%s", (run_pub,))
     row = cur.fetchone()
     assert row is not None and row[0] == 2
 
@@ -314,13 +314,13 @@ def test_7_publish_idempotency(s3, pg):
     r1, _ = publish(curated)
     assert r1.returncode == 0, r1.stderr
 
-    msgs_after_first = kafka_count()
+    msgs_after_first = accounted_count()
 
     # Second publish to same path — file_state guard exits 0, no new messages
     r2, _ = publish(curated)
     assert r2.returncode == 0, r2.stderr
 
-    msgs_after_second = kafka_count()
+    msgs_after_second = accounted_count()
     assert msgs_after_second == msgs_after_first
 
 
@@ -339,7 +339,7 @@ def test_8_full_pipeline(s3, pg):
     assert r2.returncode == 0, r2.stderr
 
     cur = pg.cursor()
-    cur.execute("SELECT record_count_published FROM pipeline.run_log WHERE run_id=%s", (run_pub,))
+    cur.execute("SELECT record_count_target FROM pipeline.run_log WHERE run_id=%s", (run_pub,))
     assert cur.fetchone()[0] == 2
 
 

@@ -98,7 +98,7 @@ def _insert_recon(
     dataset,
     business_date,
     source_count,
-    kafka_count,
+    accounted_count,
     postgres_count,
     discrepancy,
     status,
@@ -112,7 +112,7 @@ def _insert_recon(
         dataset=dataset,
         business_date=business_date,
         source_count=source_count,
-        kafka_count=kafka_count,
+        accounted_count=accounted_count,
         postgres_count=postgres_count,
         status=status,
         detail=detail,
@@ -151,9 +151,9 @@ def _is_source_run(row) -> bool:
     # no canonicalize step to fall back to.
     if row["pipeline_type"] == "direct_postgres":
         return True
-    if row.get("is_canonical") is False and row["pipeline_type"] in ("ingestion", "s3_batch"):
+    if row.get("is_canonical") is False and row["pipeline_type"] in ("ingestion", "orchestration"):
         return False
-    return row["pipeline_type"] in ("ingestion", "s3_batch", "message_api")
+    return row["pipeline_type"] in ("ingestion", "orchestration", "message_api")
 
 
 def _key_fields(row) -> list[str]:
@@ -208,7 +208,7 @@ def _reconcile_append_file_count(conn, row, target_schema: str, target_table: st
         dataset=row["dataset"],
         business_date=row["business_date"],
         source_count=accepted,
-        kafka_count=None,
+        accounted_count=None,
         postgres_count=landed,
         discrepancy=discrepancy,
         status=status,
@@ -233,7 +233,7 @@ def _reconcile_history_file_count(conn, row, history_schema: str, history_table:
         dataset=row["dataset"],
         business_date=row["business_date"],
         source_count=accepted,
-        kafka_count=None,
+        accounted_count=None,
         postgres_count=history_count,
         discrepancy=discrepancy,
         status=status,
@@ -366,7 +366,7 @@ def _reconcile_current_consistency(
         dataset=row["dataset"],
         business_date=row["business_date"],
         source_count=latest_count,
-        kafka_count=None,
+        accounted_count=None,
         postgres_count=latest_count - missing - mismatched,
         discrepancy=discrepancy,
         status=status,
@@ -387,7 +387,7 @@ def _record_current_history_missing(conn, row, target_schema: str, target_table:
         dataset=row["dataset"],
         business_date=row["business_date"],
         source_count=_accepted_count(row),
-        kafka_count=None,
+        accounted_count=None,
         postgres_count=None,
         discrepancy=0,
         status="skipped",

@@ -201,7 +201,7 @@ async def overview():
                     conn,
                     """
                     SELECT created_at, check_type, run_id, domain, dataset,
-                           business_date, status, source_count, kafka_count,
+                           business_date, status, source_count, accounted_count,
                            postgres_count, discrepancy_count, discrepancy_pct, detail
                     FROM pipeline.reconciliation_log
                     WHERE status NOT IN ('ok', 'succeeded', 'passed')
@@ -215,7 +215,7 @@ async def overview():
                     SELECT run_id, pipeline_type, domain, dataset, business_date,
                            file_id, status, started_at, ended_at,
                            record_count_source, record_count_dq_pass,
-                           record_count_dq_fail, record_count_published,
+                           record_count_dq_fail, record_count_target,
                            kafka_topic, kafka_offset_start, kafka_offset_end,
                            error_summary
                     FROM pipeline.run_log
@@ -286,7 +286,7 @@ async def runs(
                 SELECT run_id, pipeline_type, domain, dataset, business_date,
                        file_id, status, started_at, ended_at,
                        record_count_source, record_count_dq_pass,
-                       record_count_dq_fail, record_count_published,
+                       record_count_dq_fail, record_count_target,
                        kafka_topic, kafka_offset_start, kafka_offset_end,
                        error_summary
                 FROM pipeline.run_log
@@ -578,7 +578,7 @@ async def api_pull_dashboard(
                 f"""
                 SELECT r.run_id, r.pipeline_type, r.domain, r.dataset,
                        r.business_date, r.status, r.started_at, r.ended_at,
-                       r.record_count_source, r.record_count_published,
+                       r.record_count_source, r.record_count_target,
                        r.error_summary,
                        w.source_application, w.committed_cursor_value,
                        w.pending_cursor_value, w.locked_at
@@ -656,7 +656,7 @@ async def api_pull_dashboard(
                 conn,
                 f"""
                 SELECT created_at, check_type, run_id, domain, dataset,
-                       business_date, status, source_count, kafka_count,
+                       business_date, status, source_count, accounted_count,
                        postgres_count, discrepancy_count, discrepancy_pct, detail
                 FROM pipeline.reconciliation_log
                 {recon_where}
@@ -715,7 +715,7 @@ async def api_pull_dashboard(
                   ON fc.file_id = le.source_file_id
                 LEFT JOIN pipeline.run_log downstream
                   ON downstream.file_id = fc.file_id
-                 AND downstream.pipeline_type = 's3_batch'
+                 AND downstream.pipeline_type = 'orchestration'
                  AND downstream.status IN ('failed', 'partial')
                 LEFT JOIN pipeline.api_pull_watermark w
                   ON w.domain = api.domain AND w.dataset = api.dataset
@@ -899,7 +899,7 @@ async def direct_postgres_dashboard(
                 SELECT r.run_id, r.pipeline_type, r.domain, r.dataset,
                        r.business_date, r.file_id, r.status, r.started_at,
                        r.ended_at, r.record_count_source,
-                       r.record_count_published, r.error_summary
+                       r.record_count_target, r.error_summary
                 FROM pipeline.run_log r
                 {run_where}
                 ORDER BY r.started_at DESC
@@ -1060,7 +1060,7 @@ async def direct_kafka_dashboard(
                 f"""
                 SELECT r.run_id, r.domain, r.dataset, r.business_date,
                        r.status, r.started_at, r.ended_at,
-                       r.record_count_source, r.record_count_published,
+                       r.record_count_source, r.record_count_target,
                        r.kafka_topic, r.kafka_offset_start, r.kafka_offset_end,
                        r.error_summary
                 FROM pipeline.run_log r
@@ -1116,7 +1116,7 @@ async def direct_kafka_dashboard(
                 conn,
                 f"""
                 SELECT created_at, check_type, run_id, domain, dataset,
-                       business_date, status, source_count, kafka_count,
+                       business_date, status, source_count, accounted_count,
                        postgres_count, discrepancy_count, discrepancy_pct, detail
                 FROM pipeline.reconciliation_log
                 {recon_where}
@@ -1436,7 +1436,7 @@ HTML = r"""<!DOCTYPE html>
     .muted { color: var(--muted); }
     .truncate { max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .badge { display: inline-block; border-radius: 999px; padding: 2px 8px; font-size: 12px; font-weight: 700; }
-    .succeeded, .completed, .ok, .passed, .sunk, .curated { background: #dcfce7; color: var(--green); }
+    .succeeded, .completed, .ok, .passed, .loaded, .curated { background: #dcfce7; color: var(--green); }
     .failed { background: #fee4e2; color: var(--red); }
     .partial, .warned, .dq_warned { background: #fef0c7; color: var(--amber); }
     .running, .processing, .ingesting { background: #dbeafe; color: var(--blue); }
@@ -1722,7 +1722,7 @@ async function loadOverview() {
     {label:'Domain / Dataset', value:r => `${r.domain} / ${r.dataset}`},
     {label:'Status', html:true, value:r => badge(r.status)},
     {label:'Source', key:'source_count', right:true},
-    {label:'Kafka', key:'kafka_count', right:true},
+    {label:'Kafka', key:'accounted_count', right:true},
     {label:'Postgres', key:'postgres_count', right:true},
     {label:'Diff', key:'discrepancy_count', right:true},
     {label:'Detail', key:'detail', truncate:true},
@@ -1756,7 +1756,7 @@ async function loadRuns() {
     {label:'Source', key:'record_count_source', right:true},
     {label:'DQ Pass', key:'record_count_dq_pass', right:true},
     {label:'DQ Fail', key:'record_count_dq_fail', right:true},
-    {label:'Published', key:'record_count_published', right:true},
+    {label:'Published', key:'record_count_target', right:true},
     {label:'Started', html:true, value:r => dt(r.started_at)},
     {label:'Error', key:'error_summary', truncate:true},
   ]);
@@ -1832,7 +1832,7 @@ async function loadApiPull() {
     {label:'Date', key:'business_date'},
     {label:'Status', html:true, value:r => badge(r.status)},
     {label:'Fetched', key:'record_count_source', right:true},
-    {label:'Published', key:'record_count_published', right:true},
+    {label:'Published', key:'record_count_target', right:true},
     {label:'Started', html:true, value:r => dt(r.started_at)},
     {label:'Ended', html:true, value:r => dt(r.ended_at)},
     {label:'Error', key:'error_summary', truncate:true},
@@ -1932,7 +1932,7 @@ async function loadRunDetail() {
         ['Source Count','record_count_source'],
         ['DQ Pass','record_count_dq_pass'],
         ['DQ Fail','record_count_dq_fail'],
-        ['Published','record_count_published'],
+        ['Published','record_count_target'],
         ['Kafka Topic','kafka_topic'],
         ['Offset Start','kafka_offset_start'],
         ['Offset End','kafka_offset_end'],
@@ -1965,7 +1965,7 @@ function reconTable(rows) {
     {label:'Check', key:'check_type'},
     {label:'Status', html:true, value:r => badge(r.status)},
     {label:'Source', key:'source_count', right:true},
-    {label:'Kafka', key:'kafka_count', right:true},
+    {label:'Kafka', key:'accounted_count', right:true},
     {label:'Postgres', key:'postgres_count', right:true},
     {label:'Diff', key:'discrepancy_count', right:true},
     {label:'Created', html:true, value:r => dt(r.created_at)},
@@ -2031,7 +2031,7 @@ async function loadEventDiagnostics() {
       {label:'Pipeline', key:'pipeline_type'},
       {label:'Domain / Dataset', value:r => `${r.domain} / ${r.dataset}`},
       {label:'Status', html:true, value:r => badge(r.status)},
-      {label:'Published', key:'record_count_published', right:true},
+      {label:'Published', key:'record_count_target', right:true},
       {label:'Occurred', html:true, value:r => dt(r.occurred_at)},
       {label:'Error', key:'error_summary', truncate:true},
     ], 'No event rows.');
@@ -2074,7 +2074,7 @@ async function loadTopicMessages() {
     {label:'Source', key:'record_count_source', right:true},
     {label:'DQ Pass', key:'record_count_dq_pass', right:true},
     {label:'DQ Fail', key:'record_count_dq_fail', right:true},
-    {label:'Published', key:'record_count_published', right:true},
+    {label:'Published', key:'record_count_target', right:true},
     {label:'Topic', key:'kafka_topic', truncate:true},
     {label:'Run', html:true, value:r => r.run_id ? `<a class="link mono" href="#" onclick="openRun('${esc(r.run_id)}')">${shortId(r.run_id)}</a>` : '-'},
     {label:'File', html:true, value:r => r.file_id ? `<a class="link mono" href="#" onclick="openFile('${esc(r.file_id)}')">${shortId(r.file_id)}</a>` : '-'},
@@ -2131,7 +2131,7 @@ async function loadDirectPostgres() {
     {label:'Date', html:true, value:r => dt(r.business_date)},
     {label:'Status', html:true, value:r => badge(r.status)},
     {label:'Source', key:'record_count_source', right:true},
-    {label:'Published', key:'record_count_published', right:true},
+    {label:'Published', key:'record_count_target', right:true},
     {label:'Started', html:true, value:r => dt(r.started_at)},
     {label:'Ended', html:true, value:r => dt(r.ended_at)},
     {label:'Error', key:'error_summary', truncate:true},
@@ -2219,7 +2219,7 @@ async function loadDirectKafka() {
     {label:'Status', html:true, value:r => badge(r.status)},
     {label:'Started', html:true, value:r => dt(r.started_at)},
     {label:'Source', key:'record_count_source', right:true},
-    {label:'Published', key:'record_count_published', right:true},
+    {label:'Published', key:'record_count_target', right:true},
     {label:'Topic', key:'kafka_topic', truncate:true},
     {label:'Offset End', key:'kafka_offset_end', right:true},
     {label:'Error', key:'error_summary', truncate:true},
@@ -2253,7 +2253,7 @@ async function loadDirectKafka() {
     {label:'Domain / Dataset', value:r => `${r.domain} / ${r.dataset}`},
     {label:'Status', html:true, value:r => badge(r.status)},
     {label:'Source', key:'source_count', right:true},
-    {label:'Kafka', key:'kafka_count', right:true},
+    {label:'Kafka', key:'accounted_count', right:true},
     {label:'Diff', key:'discrepancy_count', right:true},
     {label:'Detail', key:'detail', truncate:true},
   ], 'No api_pull_publish_count reconciliation rows.');

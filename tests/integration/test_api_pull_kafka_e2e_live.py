@@ -367,7 +367,7 @@ def test_e2e_direct_kafka_publish_and_jdbc_sink(
     assert {r[0] for r in rows} == {"lowlat-r1", "lowlat-r2", "lowlat-r3"}
     assert {r[1] for r in rows} == {11.1, 22.2, 33.3}
 
-    # Watermark promote: this run's offsets are sunk → simulate the
+    # Watermark promote: this run's offsets are loaded → simulate the
     # finalise_watermark sensor's work and prove committed advances.
     store = WatermarkStore(pg_conn)
     store.read(domain=DOMAIN, dataset=DATASET,

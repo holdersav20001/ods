@@ -97,7 +97,7 @@ Example row:
 | `file_size_bytes` | file size from the landed file |
 | `source_row_count` | count read from the file, if known |
 | `s3_curated_path` | filled after curated write succeeds |
-| `state` | `received`, `ingesting`, `curated`, `sunk`, or `failed` |
+| `state` | `received`, `ingesting`, `curated`, `loaded`, or `failed` |
 | `last_run_id` | most recent run that touched this file |
 
 Important: `file_id` represents the original received file. It is the value
@@ -280,7 +280,7 @@ After a successful direct-Postgres route:
 |---|---|
 | S3 raw | Original file exists permanently. |
 | S3 curated | Validated output exists for the run/date. |
-| `pipeline.file_catalogue` | One row for the file, `state='sunk'`, with raw and curated paths. |
+| `pipeline.file_catalogue` | One row for the file, `state='loaded'`, with raw and curated paths. |
 | `pipeline.run_log` | Route, ingestion, and direct-Postgres runs are terminal. |
 | `pipeline.run_stage_log` | Stage rows show what started, completed, warned, skipped, or failed. |
 | `pipeline.lineage_edge` | Edges link raw to curated and curated to Postgres. |
@@ -323,7 +323,7 @@ sequenceDiagram
 
     Airflow->>Raw: Copy policies_20260521.csv
     Airflow->>CT: file_catalogue file_id=11111111..., state=received
-    Airflow->>CT: run_log route_run_id=22222222..., pipeline_type=s3_batch
+    Airflow->>CT: run_log route_run_id=22222222..., pipeline_type=orchestration
     Airflow->>CT: run_log ingestion_run_id=33333333..., parent=22222222...
     Airflow->>GI: Start ingestion Glue job with file_id and ingestion_run_id
 
@@ -359,7 +359,7 @@ sequenceDiagram
     GP->>CT: run_stage_log postgres_write completed, record_count_out=2
     GP->>CT: lineage_edge curated_to_postgres, consumer_run_id=44444444...
     GP->>CT: reconciliation_log direct_postgres_count, run_id=44444444...
-    GP->>CT: file_catalogue state=sunk, last_run_id=44444444...
+    GP->>CT: file_catalogue state=loaded, last_run_id=44444444...
     GP->>CT: run_log postgres_run_id=44444444... status=succeeded
     deactivate GP
     end
@@ -399,7 +399,7 @@ flowchart LR
         C8["run_stage_log<br/>curated_read / postgres_write"]
         C9["lineage_edge<br/>curated_to_postgres"]
         C10["reconciliation_log<br/>direct_postgres_count"]
-        C11["file_catalogue<br/>state=sunk<br/>last_run_id=44444444..."]
+        C11["file_catalogue<br/>state=loaded<br/>last_run_id=44444444..."]
     end
 
     subgraph L3["S3 lane"]
@@ -473,7 +473,7 @@ flowchart LR
 
 | file_id | domain | dataset | business_date | sftp_path | s3_raw_path | s3_staging_parquet_path | s3_curated_path | file_size_bytes | source_row_count | file_md5 | state | state_updated_at | first_seen_at | last_run_id |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 11111111-1111-1111-1111-111111111111 | insurance | policies | 2026-05-21 | /upload/policies_20260521.csv | s3://ods-raw-local/insurance/policies/date=20260521/policies_20260521.csv | NULL | s3://ods-curated-local/insurance/policies/date=20260521/ | 4096 | 2 | 9f86d081884c7d659a2feaa0c55ad015 | sunk | 2026-05-23 09:07:00 | 2026-05-23 09:01:00 | 44444444-4444-4444-4444-444444444444 |
+| 11111111-1111-1111-1111-111111111111 | insurance | policies | 2026-05-21 | /upload/policies_20260521.csv | s3://ods-raw-local/insurance/policies/date=20260521/policies_20260521.csv | NULL | s3://ods-curated-local/insurance/policies/date=20260521/ | 4096 | 2 | 9f86d081884c7d659a2feaa0c55ad015 | loaded | 2026-05-23 09:07:00 | 2026-05-23 09:01:00 | 44444444-4444-4444-4444-444444444444 |
 
 ### `pipeline.file_processing_attempt`
 
@@ -483,7 +483,7 @@ flowchart LR
 
 ### `pipeline.run_log`
 
-| run_id | pipeline_type | domain | dataset | business_date | file_id | status | started_at | ended_at | record_count_source | record_count_dq_pass | record_count_dq_fail | record_count_published | kafka_topic | kafka_offset_start | kafka_offset_end | config_version_id | schema_version_id | orchestrators | error_summary | created_at | runtime_context |
+| run_id | pipeline_type | domain | dataset | business_date | file_id | status | started_at | ended_at | record_count_source | record_count_dq_pass | record_count_dq_fail | record_count_target | kafka_topic | kafka_offset_start | kafka_offset_end | config_version_id | schema_version_id | orchestrators | error_summary | created_at | runtime_context |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | 22222222-2222-2222-2222-222222222222 | s3_batch | insurance | policies | 2026-05-21 | 11111111-1111-1111-1111-111111111111 | succeeded | 2026-05-23 09:01:00 | 2026-05-23 09:08:00 | 2 | 2 | 0 | 2 | NULL | NULL | NULL | 42 | 1 | NULL | NULL | 2026-05-23 09:01:00 | {"airflow_dag_id":"dag_drop_to_raw","airflow_run_id":"manual__2026-05-23T09:01:00+00:00"} |
 | 33333333-3333-3333-3333-333333333333 | ingestion | insurance | policies | 2026-05-21 | 11111111-1111-1111-1111-111111111111 | succeeded | 2026-05-23 09:02:00 | 2026-05-23 09:05:00 | 2 | 2 | 0 | 2 | NULL | NULL | NULL | 42 | 1 | [{"run_id":"22222222-2222-2222-2222-222222222222","edge_type":"orchestrates"}] | NULL | 2026-05-23 09:02:00 | {"platform":"glue","glue_job_name":"ods_ingestion","glue_job_run_id":"jr_ingest_001","spark_app_id":"application_001"} |
@@ -509,7 +509,7 @@ flowchart LR
 
 ### `pipeline.reconciliation_log`
 
-| id | check_type | run_id | domain | dataset | business_date | window_start | window_end | source_count | kafka_count | postgres_count | discrepancy_count | discrepancy_pct | status | detail | created_at |
+| id | check_type | run_id | domain | dataset | business_date | window_start | window_end | source_count | accounted_count | postgres_count | discrepancy_count | discrepancy_pct | status | detail | created_at |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | 8001 | ingestion_count | 33333333-3333-3333-3333-333333333333 | insurance | policies | 2026-05-21 | NULL | NULL | 2 | NULL | NULL | 0 | 0.0000 | ok | raw=2, curated=2 | 2026-05-23 09:04:30 |
 | 8002 | direct_postgres_count | 44444444-4444-4444-4444-444444444444 | insurance | policies | 2026-05-21 | NULL | NULL | 2 | NULL | 2 | 0 | 0.0000 | ok | curated=2, postgres=2 | 2026-05-23 09:06:30 |

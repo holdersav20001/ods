@@ -66,7 +66,7 @@
         <mxCell id="r2c1" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#CCCCCC;" vertex="1" parent="1">
           <mxGeometry x="240" y="250" width="220" height="100" as="geometry"/>
         </mxCell>
-        <mxCell id="r2c2" value="INSERT&#10;run_id=17&#10;pipeline_type=s3_batch&#10;status=running&#10;file_id=11" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;align=left;spacingLeft=8;fontFamily=Courier New;fontSize=10;" vertex="1" parent="1">
+        <mxCell id="r2c2" value="INSERT&#10;run_id=17&#10;pipeline_type=orchestration&#10;status=running&#10;file_id=11" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;align=left;spacingLeft=8;fontFamily=Courier New;fontSize=10;" vertex="1" parent="1">
           <mxGeometry x="460" y="250" width="220" height="100" as="geometry"/>
         </mxCell>
         <mxCell id="r2c3" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#CCCCCC;" vertex="1" parent="1">
@@ -109,10 +109,10 @@
         <mxCell id="r4l" value="Steps 6-7&#10;Load task&#10;(direct_postgres)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF4E5;strokeColor=#E65100;fontStyle=1;align=center;" vertex="1" parent="1">
           <mxGeometry x="40" y="530" width="200" height="200" as="geometry"/>
         </mxCell>
-        <mxCell id="r4c1" value="UPDATE file_id=11&#10;state=sunk&#10;last_run_id=28" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E3F2FD;strokeColor=#1565C0;align=left;spacingLeft=8;fontFamily=Courier New;fontSize=10;" vertex="1" parent="1">
+        <mxCell id="r4c1" value="UPDATE file_id=11&#10;state=loaded&#10;last_run_id=28" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E3F2FD;strokeColor=#1565C0;align=left;spacingLeft=8;fontFamily=Courier New;fontSize=10;" vertex="1" parent="1">
           <mxGeometry x="240" y="530" width="220" height="200" as="geometry"/>
         </mxCell>
-        <mxCell id="r4c2" value="INSERT&#10;run_id=28&#10;pipeline_type=&#10;  direct_postgres&#10;orchestrators=[17, orchestrates]&#10;file_id=11&#10;&#10;UPDATE → succeeded&#10;record_count_published=100" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;align=left;spacingLeft=8;fontFamily=Courier New;fontSize=10;" vertex="1" parent="1">
+        <mxCell id="r4c2" value="INSERT&#10;run_id=28&#10;pipeline_type=&#10;  direct_postgres&#10;orchestrators=[17, orchestrates]&#10;file_id=11&#10;&#10;UPDATE → succeeded&#10;record_count_target=100" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;align=left;spacingLeft=8;fontFamily=Courier New;fontSize=10;" vertex="1" parent="1">
           <mxGeometry x="460" y="530" width="220" height="200" as="geometry"/>
         </mxCell>
         <mxCell id="r4c3" value="INSERT × N rows&#10;run_id=28&#10;stages:&#10;  postgres_write&#10;(start + finish)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#F3E5F5;strokeColor=#6A1B9A;align=left;spacingLeft=8;fontFamily=Courier New;fontSize=10;" vertex="1" parent="1">

@@ -43,7 +43,7 @@ run_001 | recon_message     | stage_completed | succeeded  | NULL
 
 #### `pipeline.reconciliation_log`
 ```
-run_id  | check_type            | status | source_count | kafka_count
+run_id  | check_type            | status | source_count | accounted_count
 run_001 | message_batch_count   | ok     | 1            | 1
 detail: {"source_count":1,"published_count":1,"archive_count":1,"archive_discrepancy":0}
 ```
@@ -186,9 +186,9 @@ reconciliation.write_check(
     check_type="recon_t2_postgres_count",     # stable name; dashboard groups by it
     run_id=run_id, domain=domain, dataset=dataset,
     business_date=business_date,
-    source_count=kafka_count, target_count=postgres_count,
-    status="ok" if kafka_count == postgres_count else "failed",
-    detail=json.dumps({"diff": kafka_count - postgres_count}),
+    source_count=accounted_count, target_count=postgres_count,
+    status="ok" if accounted_count == postgres_count else "failed",
+    detail=json.dumps({"diff": accounted_count - postgres_count}),
 )
 ```
 
@@ -265,7 +265,7 @@ After triggering your ingestion:
 
 ```sql
 -- Did the run finish?
-SELECT status, record_count_source, record_count_published, error_summary
+SELECT status, record_count_source, record_count_target, error_summary
   FROM pipeline.run_log WHERE run_id = '<your-run>';
 
 -- What stages ran?

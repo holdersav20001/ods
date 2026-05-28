@@ -189,7 +189,7 @@
         <mxCell id="wa4a" style="endArrow=classic;html=1;dashed=1;strokeColor=#1565C0;exitX=0.1;exitY=1;entryX=0.9;entryY=0;" edge="1" parent="1" source="t4" target="c1">
           <mxGeometry relative="1" as="geometry"/>
         </mxCell>
-        <mxCell id="wa4albl" value="state=sunk" style="text;html=1;align=center;fontSize=9;fontColor=#1565C0;fontStyle=2;" vertex="1" parent="1">
+        <mxCell id="wa4albl" value="state=loaded" style="text;html=1;align=center;fontSize=9;fontColor=#1565C0;fontStyle=2;" vertex="1" parent="1">
           <mxGeometry x="650" y="475" width="100" height="15" as="geometry"/>
         </mxCell>
         <mxCell id="wa4b" style="endArrow=classic;html=1;dashed=1;strokeColor=#2E7D32;exitX=0.2;exitY=1;entryX=0.9;entryY=0;" edge="1" parent="1" source="t4" target="c2">

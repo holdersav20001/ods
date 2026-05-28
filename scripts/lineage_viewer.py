@@ -468,7 +468,7 @@ function render(data) {
       icon: '📡',
       label: 'Kafka',
       sub: publishRun ? (publishRun.kafka_topic || '—') : 'not published',
-      count: publishRun ? fmt(publishRun.record_count_published) : '—',
+      count: publishRun ? fmt(publishRun.record_count_target) : '—',
       countLabel: 'messages',
       status: publishRun ? publishRun.status : 'skipped',
       extra: publishRun && publishRun.kafka_offset_start != null
@@ -661,7 +661,7 @@ function render(data) {
           <td class="py-4 pr-6 text-slate-500 whitespace-nowrap">${fmtDt(r.started_at)}</td>
           <td class="py-4 pr-6 text-right text-slate-500 whitespace-nowrap">${fmtDuration(r.started_at, r.ended_at)}</td>
           <td class="py-4 pr-4 text-right"><span class="text-xs text-slate-400">src </span><span class="font-semibold">${fmt(r.record_count_source)}</span></td>
-          <td class="py-4 text-right"><span class="text-xs text-slate-400">pub </span><span class="font-semibold text-indigo-700">${fmt(r.record_count_published)}</span></td>
+          <td class="py-4 text-right"><span class="text-xs text-slate-400">pub </span><span class="font-semibold text-indigo-700">${fmt(r.record_count_target)}</span></td>
         </tr>
         ${stageRows}
       `;

@@ -23,16 +23,16 @@ def isolated_run(pg_conn):
 
 def test_insert_run_header_and_update(pg_conn, isolated_run):
     rid = isolated_run
-    ods_pipeline.runs.start(pg_conn, run_id=rid, pipeline_type='s3_batch',
+    ods_pipeline.runs.start(pg_conn, run_id=rid, pipeline_type='orchestration',
                             domain='insurance', dataset='policies',
                             business_date='2026-04-28', file_id=None,
                             config_version_id=1)
     ods_pipeline.runs.update(pg_conn, rid, status='succeeded',
-                             record_count_source=10, record_count_published=10,
+                             record_count_source=10, record_count_target=10,
                              kafka_offset_start=0, kafka_offset_end=10,
                              kafka_topic='ods.insurance.policies')
     with pg_conn.cursor() as cur:
-        cur.execute("SELECT status, record_count_published, ended_at FROM pipeline.run_log WHERE run_id=%s", (rid,))
+        cur.execute("SELECT status, record_count_target, ended_at FROM pipeline.run_log WHERE run_id=%s", (rid,))
         s, n, ended = cur.fetchone()
     assert s == 'succeeded'
     assert n == 10
@@ -40,7 +40,7 @@ def test_insert_run_header_and_update(pg_conn, isolated_run):
 
 def test_write_stage(pg_conn, isolated_run):
     rid = isolated_run
-    ods_pipeline.runs.start(pg_conn, run_id=rid, pipeline_type='s3_batch',
+    ods_pipeline.runs.start(pg_conn, run_id=rid, pipeline_type='orchestration',
                             domain='insurance', dataset='policies',
                             business_date='2026-04-28', file_id=None,
                             config_version_id=1)
@@ -58,7 +58,7 @@ def test_write_stage(pg_conn, isolated_run):
 
 def test_write_stage_started_keeps_ended_at_null(pg_conn, isolated_run):
     rid = isolated_run
-    ods_pipeline.runs.start(pg_conn, run_id=rid, pipeline_type='s3_batch',
+    ods_pipeline.runs.start(pg_conn, run_id=rid, pipeline_type='orchestration',
                             domain='insurance', dataset='policies',
                             business_date='2026-04-28', file_id=None,
                             config_version_id=1)
@@ -76,7 +76,7 @@ def test_write_stage_started_keeps_ended_at_null(pg_conn, isolated_run):
 
 def test_stage_start_and_finish_closes_open_row(pg_conn, isolated_run):
     rid = isolated_run
-    ods_pipeline.runs.start(pg_conn, run_id=rid, pipeline_type='s3_batch',
+    ods_pipeline.runs.start(pg_conn, run_id=rid, pipeline_type='orchestration',
                             domain='insurance', dataset='policies',
                             business_date='2026-04-28', file_id=None,
                             config_version_id=1)
@@ -108,14 +108,14 @@ def test_stage_start_and_finish_closes_open_row(pg_conn, isolated_run):
 
 def test_write_recon_discrepancy_calculation(pg_conn, isolated_run):
     rid = isolated_run
-    ods_pipeline.runs.start(pg_conn, run_id=rid, pipeline_type='s3_batch',
+    ods_pipeline.runs.start(pg_conn, run_id=rid, pipeline_type='orchestration',
                             domain='insurance', dataset='policies',
                             business_date='2026-04-28', file_id=None,
                             config_version_id=1)
     ods_pipeline.reconciliation.write_check(
         pg_conn, check_type='t0_publish_count', run_id=rid,
         domain='insurance', dataset='policies', business_date='2026-04-28',
-        source_count=10, kafka_count=9, postgres_count=None,
+        source_count=10, accounted_count=9, postgres_count=None,
         status='failed', detail='offset delta < source',
     )
     with pg_conn.cursor() as cur:
@@ -126,7 +126,7 @@ def test_write_recon_discrepancy_calculation(pg_conn, isolated_run):
 
 def test_update_run_header_rejects_unknown_field(pg_conn, isolated_run):
     rid = isolated_run
-    ods_pipeline.runs.start(pg_conn, run_id=rid, pipeline_type='s3_batch',
+    ods_pipeline.runs.start(pg_conn, run_id=rid, pipeline_type='orchestration',
                             domain='insurance', dataset='policies',
                             business_date='2026-04-28', file_id=None,
                             config_version_id=1)
@@ -163,7 +163,7 @@ def test_start_run_allows_matching_duplicate_metadata(pg_conn, isolated_run):
 
 def test_update_run_header_terminal_sets_ended_at_only_for_terminal_status(pg_conn, isolated_run):
     rid = isolated_run
-    ods_pipeline.runs.start(pg_conn, run_id=rid, pipeline_type='s3_batch',
+    ods_pipeline.runs.start(pg_conn, run_id=rid, pipeline_type='orchestration',
                             domain='insurance', dataset='policies',
                             business_date='2026-04-28', file_id=None,
                             config_version_id=1)

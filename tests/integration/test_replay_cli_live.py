@@ -35,7 +35,7 @@ def _seed_run(pg_conn, *, run_id: str, file_id: str, pipeline_type: str, started
             INSERT INTO pipeline.file_catalogue
                 (file_id, domain, dataset, business_date, s3_raw_path, file_md5, state)
             VALUES (%s::uuid, 'insurance', 'policies', '2026-05-03',
-                    's3://ods-raw-local/replay-cli-test.csv', %s, 'sunk')
+                    's3://ods-raw-local/replay-cli-test.csv', %s, 'loaded')
             ON CONFLICT (file_id) DO NOTHING
             """,
             (file_id, uuid.uuid4().hex),
@@ -75,7 +75,7 @@ def test_replay_file_dry_run_uses_one_parent_candidate_and_does_not_insert_runs(
     _cleanup(pg_conn, file_id)
     try:
         _seed_run(pg_conn, run_id=consumer_run_id, file_id=file_id, pipeline_type="publish", started_rank=20)
-        _seed_run(pg_conn, run_id=upstream_run_id, file_id=file_id, pipeline_type="s3_batch", started_rank=10)
+        _seed_run(pg_conn, run_id=upstream_run_id, file_id=file_id, pipeline_type="orchestration", started_rank=10)
 
         ops = _RunsOps(pg_conn=pg_conn, airflow=None)
         result = ops.replay_file(file_id, dry_run=True)

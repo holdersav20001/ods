@@ -112,7 +112,7 @@ def finalise(conn, run_id: str, *, commit: bool = True) -> None:
     """Validate lineage closure invariants before marking a run succeeded.
 
     Asserts:
-      1. If ``record_count_published > 0``, at least one ``lineage_edge`` row
+      1. If ``record_count_target > 0``, at least one ``lineage_edge`` row
          exists with ``consumer_run_id = run_id`` (no orphan published runs).
       2. No non-terminal ``run_stage_log`` rows exist for ``run_id`` — every
          opened stage must have been closed.
@@ -125,7 +125,7 @@ def finalise(conn, run_id: str, *, commit: bool = True) -> None:
     with conn.cursor() as cur:
         cur.execute(
             """
-            SELECT COALESCE(record_count_published, 0)
+            SELECT COALESCE(record_count_target, 0)
               FROM pipeline.run_log
              WHERE run_id = %s
             """,

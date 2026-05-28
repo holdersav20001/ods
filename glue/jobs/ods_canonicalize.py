@@ -398,7 +398,7 @@ def run(
             dataset=dataset,
             business_date=business_date,
             source_count=expected,
-            kafka_count=canonical_count,
+            accounted_count=canonical_count,
             status=status,
             detail=(
                 f"raw_consumed={raw_count}; dlq_count={fail_count}"
@@ -438,7 +438,7 @@ def run(
             record_count_source=raw_count,
             record_count_dq_pass=pass_count,
             record_count_dq_fail=fail_count,
-            record_count_published=canonical_count,
+            record_count_target=canonical_count,
             kafka_topic=canonical_topic,
             kafka_offset_start=sum(canonical_start.values()),
             kafka_offset_end=sum(canonical_end.values()),
@@ -456,7 +456,7 @@ def run(
             kafka_topic=canonical_topic,
             kafka_offset_start=sum(canonical_start.values()),
             kafka_offset_end=sum(canonical_end.values()),
-            record_count_published=canonical_count,
+            record_count_target=canonical_count,
         )
         return 0 if status == "ok" else 1
     except Exception as exc:

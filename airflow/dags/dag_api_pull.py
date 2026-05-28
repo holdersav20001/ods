@@ -275,7 +275,7 @@ def _poll_one_direct_kafka(cfg: dict) -> dict | None:
                 run_id,
                 status="succeeded",
                 record_count_source=0,
-                record_count_published=0,
+                record_count_target=0,
             )
             ods_pipeline.events.produce(
                 "api_pull.skipped_no_changes",
@@ -334,7 +334,7 @@ def _poll_one_direct_kafka(cfg: dict) -> dict | None:
             dataset=dataset,
             business_date=business_date,
             source_count=published.record_count,
-            kafka_count=offset_delta,
+            accounted_count=offset_delta,
             postgres_count=None,
             status="ok" if offset_delta == published.record_count else "failed",
             detail=json.dumps({
@@ -362,7 +362,7 @@ def _poll_one_direct_kafka(cfg: dict) -> dict | None:
             conn,
             run_id,
             record_count_source=published.record_count,
-            record_count_published=published.record_count,
+            record_count_target=published.record_count,
         )
         ods_pipeline.events.produce(
             "api_pull.archived",
@@ -517,7 +517,7 @@ def poll_one(cfg: dict) -> dict | None:
                 run_id,
                 status="succeeded",
                 record_count_source=0,
-                record_count_published=0,
+                record_count_target=0,
             )
             ods_pipeline.events.produce(
                 "api_pull.skipped_no_changes",
@@ -575,7 +575,7 @@ def poll_one(cfg: dict) -> dict | None:
             dataset=dataset,
             business_date=business_date,
             source_count=archive.record_count,
-            kafka_count=None,
+            accounted_count=None,
             postgres_count=None,
             status="ok",
             detail=json.dumps({

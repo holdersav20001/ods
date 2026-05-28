@@ -101,7 +101,7 @@ CREATE TABLE pipeline.run_log (
     record_count_source     BIGINT,
     record_count_dq_pass    BIGINT,
     record_count_dq_fail    BIGINT,
-    record_count_published  BIGINT,
+    record_count_target  BIGINT,
     kafka_topic             VARCHAR,
     kafka_offset_start      BIGINT,
     kafka_offset_end        BIGINT,
@@ -197,7 +197,7 @@ CREATE TABLE pipeline.reconciliation_log (
     window_start      TIMESTAMP,
     window_end        TIMESTAMP,
     source_count      BIGINT,
-    kafka_count       BIGINT,
+    accounted_count       BIGINT,
     postgres_count    BIGINT,
     discrepancy_count BIGINT,
     discrepancy_pct   NUMERIC(8,4),
@@ -221,7 +221,7 @@ CREATE TABLE IF NOT EXISTS pipeline.run_events (
     dataset                VARCHAR NOT NULL,
     business_date          VARCHAR NOT NULL,
     status                 VARCHAR NOT NULL,
-    record_count_published INTEGER,
+    record_count_target INTEGER,
     kafka_topic            VARCHAR,
     kafka_offset_end       BIGINT,
     occurred_at            TIMESTAMP NOT NULL,
@@ -298,7 +298,7 @@ and Python wrappers:
   `run_id is required`, `domain is required`, or `status is required`.
 - Status and state fields are checked against the values used by the pipeline:
   run statuses `running`, `succeeded`, `failed`, `partial`; file catalogue
-  states `received`, `ingesting`, `curated`, `staged`, `sunk`, `completed`,
+  states `received`, `ingesting`, `curated`, `staged`, `loaded`, `completed`,
   `failed`; file-state statuses `new`, `processing`, `completed`, `failed`;
   and stage event values such as `stage_started`, `stage_completed`,
   `stage_failed`, `stage_skipped`, `stage_warned`, `stage_heartbeat`.
@@ -513,7 +513,7 @@ BEGIN
         p_record_count_dq_fail
     );
     PERFORM pipeline.control_assert_nonnegative(
-        'record_count_published',
+        'record_count_target',
         p_record_count_published
     );
     PERFORM pipeline.control_assert_nonnegative(
@@ -537,9 +537,9 @@ BEGIN
            record_count_source = COALESCE(p_record_count_source, record_count_source),
            record_count_dq_pass = COALESCE(p_record_count_dq_pass, record_count_dq_pass),
            record_count_dq_fail = COALESCE(p_record_count_dq_fail, record_count_dq_fail),
-           record_count_published = COALESCE(
+           record_count_target = COALESCE(
                p_record_count_published,
-               record_count_published
+               record_count_target
            ),
            kafka_topic = COALESCE(p_kafka_topic, kafka_topic),
            kafka_offset_start = COALESCE(p_kafka_offset_start, kafka_offset_start),
@@ -594,7 +594,7 @@ BEGIN
         'record_count_source',
         'record_count_dq_pass',
         'record_count_dq_fail',
-        'record_count_published',
+        'record_count_target',
         'kafka_topic',
         'kafka_offset_start',
         'kafka_offset_end',
@@ -641,10 +641,10 @@ BEGIN
             (p_fields->>'record_count_dq_fail')::bigint
         );
     END IF;
-    IF p_fields ? 'record_count_published' AND p_fields->>'record_count_published' IS NOT NULL THEN
+    IF p_fields ? 'record_count_target' AND p_fields->>'record_count_target' IS NOT NULL THEN
         PERFORM pipeline.control_assert_nonnegative(
-            'record_count_published',
-            (p_fields->>'record_count_published')::bigint
+            'record_count_target',
+            (p_fields->>'record_count_target')::bigint
         );
     END IF;
     IF p_fields ? 'kafka_offset_start' AND p_fields->>'kafka_offset_start' IS NOT NULL THEN
@@ -690,10 +690,10 @@ BEGIN
                    THEN (p_fields->>'record_count_dq_fail')::bigint
                ELSE record_count_dq_fail
            END,
-           record_count_published = CASE
-               WHEN p_fields ? 'record_count_published'
-                   THEN (p_fields->>'record_count_published')::bigint
-               ELSE record_count_published
+           record_count_target = CASE
+               WHEN p_fields ? 'record_count_target'
+                   THEN (p_fields->>'record_count_target')::bigint
+               ELSE record_count_target
            END,
            kafka_topic = CASE
                WHEN p_fields ? 'kafka_topic' THEN p_fields->>'kafka_topic'
@@ -782,7 +782,7 @@ BEGIN
     PERFORM pipeline.control_assert_allowed(
         'state',
         p_state,
-        ARRAY['received', 'ingesting', 'curated', 'staged', 'sunk', 'completed', 'failed']
+        ARRAY['received', 'ingesting', 'curated', 'staged', 'loaded', 'completed', 'failed']
     );
     PERFORM pipeline.control_assert_nonnegative('file_size_bytes', p_file_size_bytes);
     PERFORM pipeline.control_assert_nonnegative('source_row_count', p_source_row_count);
@@ -868,7 +868,7 @@ BEGIN
     PERFORM pipeline.control_assert_allowed(
         'state',
         p_state,
-        ARRAY['received', 'ingesting', 'curated', 'staged', 'sunk', 'completed', 'failed']
+        ARRAY['received', 'ingesting', 'curated', 'staged', 'loaded', 'completed', 'failed']
     );
     PERFORM pipeline.control_assert_nonnegative('source_row_count', p_source_row_count);
 
@@ -1260,7 +1260,7 @@ BEGIN
         ARRAY['ok', 'failed', 'pending', 'passed', 'skipped', 'warned']
     );
     PERFORM pipeline.control_assert_nonnegative('source_count', p_source_count);
-    PERFORM pipeline.control_assert_nonnegative('kafka_count', p_kafka_count);
+    PERFORM pipeline.control_assert_nonnegative('accounted_count', p_kafka_count);
     PERFORM pipeline.control_assert_nonnegative('postgres_count', p_postgres_count);
 
     IF p_window_start IS NOT NULL
@@ -1284,7 +1284,7 @@ BEGIN
 
     INSERT INTO pipeline.reconciliation_log
         (check_type, run_id, domain, dataset, business_date,
-         window_start, window_end, source_count, kafka_count, postgres_count,
+         window_start, window_end, source_count, accounted_count, postgres_count,
          discrepancy_count, discrepancy_pct, status, detail)
     VALUES
         (p_check_type, p_run_id, p_domain, p_dataset, p_business_date,
@@ -1350,7 +1350,7 @@ BEGIN
         p_record_count_dq_fail
     );
     PERFORM pipeline.control_assert_nonnegative(
-        'record_count_published',
+        'record_count_target',
         p_record_count_published
     );
     PERFORM pipeline.control_assert_nonnegative(
@@ -1376,7 +1376,7 @@ BEGIN
     INSERT INTO pipeline.run_events
         (run_id, event_type, pipeline_type, domain, dataset, business_date,
          status, record_count_source, record_count_dq_pass,
-         record_count_dq_fail, record_count_published,
+         record_count_dq_fail, record_count_target,
          kafka_topic, kafka_offset_end, error_summary, occurred_at,
          file_id, s3_raw_path, s3_curated_path, file_md5,
          kafka_offset_start, stages)
@@ -1728,7 +1728,7 @@ BEGIN
 
     PERFORM pipeline.control_update_file_catalogue(
         p_file_id => v_file_id,
-        p_state => 'sunk',
+        p_state => 'loaded',
         p_last_run_id => v_postgres_run_id
     );
 
@@ -1945,7 +1945,7 @@ def mark_success(conn: Any, args: JobArgs, *, source_count: int, loaded_count: i
     ods_pipeline.files.update_catalogue(
         conn,
         file_id=args.file_id,
-        state="sunk",
+        state="loaded",
         last_run_id=args.run_id,
     )
     ods_pipeline.runs.update(
@@ -1953,7 +1953,7 @@ def mark_success(conn: Any, args: JobArgs, *, source_count: int, loaded_count: i
         args.run_id,
         status="succeeded" if status == "ok" else "partial",
         record_count_source=source_count,
-        record_count_published=loaded_count,
+        record_count_target=loaded_count,
     )
 
 
@@ -2010,7 +2010,7 @@ WHERE domain = 'insurance'
 ORDER BY state_updated_at DESC;
 
 SELECT run_id, pipeline_type, status, record_count_source,
-       record_count_dq_pass, record_count_dq_fail, record_count_published
+       record_count_dq_pass, record_count_dq_fail, record_count_target
 FROM pipeline.run_log
 WHERE domain = 'insurance'
   AND dataset = 'policies'
@@ -2036,7 +2036,7 @@ WHERE child.domain = 'insurance'
   AND child.business_date = DATE '2026-04-11'
 ORDER BY le.created_at;
 
-SELECT check_type, status, source_count, kafka_count, postgres_count,
+SELECT check_type, status, source_count, accounted_count, postgres_count,
        discrepancy_count, discrepancy_pct, detail
 FROM pipeline.reconciliation_log
 WHERE domain = 'insurance'

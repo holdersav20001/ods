@@ -114,7 +114,7 @@ def _drive_one_run(
         dataset=DATASET,
         business_date=business_date,
         source_count=iteration + 1,
-        kafka_count=iteration + 1,
+        accounted_count=iteration + 1,
         status="ok",
         detail=json.dumps({"iteration": iteration}, sort_keys=True),
     )
@@ -126,7 +126,7 @@ def _drive_one_run(
     else:
         ods_pipeline.runs.update(
             pg_conn, run_id, status="succeeded",
-            record_count_published=iteration + 1,
+            record_count_target=iteration + 1,
         )
     return run_id, file_id
 

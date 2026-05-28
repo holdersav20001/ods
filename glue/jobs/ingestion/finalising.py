@@ -64,7 +64,7 @@ def finalise_success(
         dataset=dataset,
         business_date=business_date,
         source_count=source_count,
-        kafka_count=accounted_count,
+        accounted_count=accounted_count,
         status="ok" if accounted_count == source_count else "failed",
         detail=None
         if accounted_count == source_count

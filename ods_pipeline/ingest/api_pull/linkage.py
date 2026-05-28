@@ -79,7 +79,7 @@ def ingest_status_for_api_pull_run(
                 SELECT status
                   FROM pipeline.run_log
                  WHERE run_id = %s::uuid
-                   AND pipeline_type = 's3_batch'
+                   AND pipeline_type='orchestration'
                    AND orchestrators @> %s::jsonb
                 """,
                 (expected_parent_run_id, needle),
@@ -93,7 +93,7 @@ def ingest_status_for_api_pull_run(
             """
             SELECT status
               FROM pipeline.run_log
-             WHERE pipeline_type = 's3_batch'
+             WHERE pipeline_type='orchestration'
                AND orchestrators @> %s::jsonb
              ORDER BY started_at DESC NULLS LAST, run_id::text DESC
              LIMIT 2

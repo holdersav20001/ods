@@ -178,7 +178,7 @@ def test_stages_start_idempotent_under_migration_19(pg_conn, isolated_run):
     """
     rid = isolated_run
     runs.start(
-        pg_conn, run_id=rid, pipeline_type="s3_batch",
+        pg_conn, run_id=rid, pipeline_type="orchestration",
         domain="insurance", dataset="policies",
         business_date="2026-04-28", file_id=None, config_version_id=1,
     )
@@ -212,7 +212,7 @@ def test_start_then_finish_produces_two_rows_under_migration_19(pg_conn, isolate
     """
     rid = isolated_run
     runs.start(
-        pg_conn, run_id=rid, pipeline_type="s3_batch",
+        pg_conn, run_id=rid, pipeline_type="orchestration",
         domain="insurance", dataset="policies",
         business_date="2026-04-28", file_id=None, config_version_id=1,
     )

@@ -239,10 +239,10 @@ def test_publish_happy_path(s3, pg):
 
     cur = pg.cursor()
 
-    # ── run_log: record_count_published + offset fields populated ───────
+    # ── run_log: record_count_target + offset fields populated ───────
     cur.execute(
         """
-        SELECT record_count_published, kafka_offset_start, kafka_offset_end,
+        SELECT record_count_target, kafka_offset_start, kafka_offset_end,
                kafka_topic, status
         FROM pipeline.run_log
         WHERE run_id = %s
@@ -251,8 +251,8 @@ def test_publish_happy_path(s3, pg):
     )
     row = cur.fetchone()
     assert row is not None, "No row in pipeline.run_log for pub_run_id"
-    record_count_published, offset_start, offset_end, kafka_topic, status = row
-    assert record_count_published == 2, f"expected 2, got {record_count_published}"
+    record_count_target, offset_start, offset_end, kafka_topic, status = row
+    assert record_count_target == 2, f"expected 2, got {record_count_target}"
     assert offset_start is not None, "kafka_offset_start should be populated"
     assert offset_end is not None, "kafka_offset_end should be populated"
     assert offset_end > offset_start, "offset_end should be > offset_start after producing"
@@ -275,7 +275,7 @@ def test_publish_happy_path(s3, pg):
     # ── reconciliation_log: t0_publish_count row with status=ok ─────────
     cur.execute(
         """
-        SELECT status, source_count, kafka_count, discrepancy_count
+        SELECT status, source_count, accounted_count, discrepancy_count
         FROM pipeline.reconciliation_log
         WHERE run_id = %s AND check_type = 't0_publish_count'
         """,
@@ -283,10 +283,10 @@ def test_publish_happy_path(s3, pg):
     )
     recon_row = cur.fetchone()
     assert recon_row is not None, "No t0_publish_count recon row found"
-    recon_status, source_count, kafka_count, discrepancy = recon_row
+    recon_status, source_count, accounted_count, discrepancy = recon_row
     assert recon_status == "ok", f"T0 check status: {recon_status}"
     assert source_count == 2
-    assert kafka_count == 2
+    assert accounted_count == 2
     assert discrepancy == 0
 
     # ── file_state: completed ────────────────────────────────────────────

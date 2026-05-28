@@ -760,7 +760,7 @@ SCHEMA_STR = json.dumps({
         {"name": "record_count_source",    "type": ["null", "int"],     "default": None},
         {"name": "record_count_dq_pass",   "type": ["null", "int"],     "default": None},
         {"name": "record_count_dq_fail",   "type": ["null", "int"],     "default": None},
-        {"name": "record_count_published", "type": ["null", "int"],     "default": None},
+        {"name": "record_count_target", "type": ["null", "int"],     "default": None},
         {"name": "kafka_topic",            "type": ["null", "string"],  "default": None},
         {"name": "kafka_offset_end",       "type": ["null", "long"],    "default": None},
         {"name": "error_summary",          "type": ["null", "string"],  "default": None},
@@ -787,7 +787,7 @@ def produce(
     record_count_source: int | None = None,
     record_count_dq_pass: int | None = None,
     record_count_dq_fail: int | None = None,
-    record_count_published: int | None = None,
+    record_count_target: int | None = None,
     kafka_topic: str | None = None,
     kafka_offset_end: int | None = None,
     error_summary: str | None = None,
@@ -810,7 +810,7 @@ def produce(
         "record_count_source":    int(record_count_source)    if record_count_source    is not None else None,
         "record_count_dq_pass":   int(record_count_dq_pass)   if record_count_dq_pass   is not None else None,
         "record_count_dq_fail":   int(record_count_dq_fail)   if record_count_dq_fail   is not None else None,
-        "record_count_published": int(record_count_published) if record_count_published is not None else None,
+        "record_count_target": int(record_count_target) if record_count_target is not None else None,
         "kafka_topic":            kafka_topic,
         "kafka_offset_end":       int(kafka_offset_end)       if kafka_offset_end       is not None else None,
         "error_summary":          error_summary,
@@ -907,7 +907,7 @@ def _write_pg(payload: dict) -> None:
                 record_count_source=payload["record_count_source"],
                 record_count_dq_pass=payload["record_count_dq_pass"],
                 record_count_dq_fail=payload["record_count_dq_fail"],
-                record_count_published=payload["record_count_published"],
+                record_count_target=payload["record_count_target"],
                 kafka_topic=payload["kafka_topic"],
                 kafka_offset_end=payload["kafka_offset_end"],
                 error_summary=payload["error_summary"],
@@ -1611,7 +1611,7 @@ def ingest_status_for_api_pull_run(
                 SELECT status
                   FROM pipeline.run_log
                  WHERE run_id = %s::uuid
-                   AND pipeline_type = 's3_batch'
+                   AND pipeline_type='orchestration'
                    AND orchestrators @> %s::jsonb
                 """,
                 (expected_parent_run_id, needle),
@@ -1625,7 +1625,7 @@ def ingest_status_for_api_pull_run(
             """
             SELECT status
               FROM pipeline.run_log
-             WHERE pipeline_type = 's3_batch'
+             WHERE pipeline_type='orchestration'
                AND orchestrators @> %s::jsonb
              ORDER BY started_at DESC NULLS LAST, run_id::text DESC
              LIMIT 2
@@ -3022,7 +3022,7 @@ def record_result(
         dataset=dataset,
         business_date=business_date,
         source_count=accepted_count,
-        kafka_count=published_count,
+        accounted_count=published_count,
         status="ok" if ok else "failed",
         detail=json.dumps(detail, sort_keys=True),
         commit=True,
@@ -3046,7 +3046,7 @@ def record_result(
         status=status,
         record_count_source=source_count,
         record_count_dq_fail=validation_fail_count + dlq_count,
-        record_count_published=published_count,
+        record_count_target=published_count,
         kafka_topic=kafka_topic,
         error_summary=None if ok else "message/API reconciliation failed",
     )
@@ -3448,7 +3448,7 @@ ALLOWED_RUN_FIELDS: frozenset[str] = frozenset({
     "record_count_source",
     "record_count_dq_pass",
     "record_count_dq_fail",
-    "record_count_published",
+    "record_count_target",
     "kafka_topic",
     "kafka_offset_start",
     "kafka_offset_end",
@@ -4539,7 +4539,7 @@ def write_check(
     dataset: str,
     business_date: str,
     source_count: int | None = None,
-    kafka_count: int | None = None,
+    accounted_count: int | None = None,
     postgres_count: int | None = None,
     status: str,
     detail: str | None = None,
@@ -4550,20 +4550,20 @@ def write_check(
     """Insert a row into ``pipeline.reconciliation_log``.
 
     Computes ``discrepancy_count`` and ``discrepancy_pct`` automatically:
-      * If *source_count* and *kafka_count* both supplied:
-        ``discrepancy = kafka_count - source_count``
-      * If *kafka_count* and *postgres_count* both supplied:
-        ``discrepancy = postgres_count - kafka_count``
+      * If *source_count* and *accounted_count* both supplied:
+        ``discrepancy = accounted_count - source_count``
+      * If *accounted_count* and *postgres_count* both supplied:
+        ``discrepancy = postgres_count - accounted_count``
 
     ``commit``: when True (default), the helper commits its own transaction.
     When False, the caller owns the surrounding tx (used by atomic
     ``record_result`` flow â€” B4).
     """
     discrepancy: int | None = None
-    if source_count is not None and kafka_count is not None:
-        discrepancy = (kafka_count or 0) - (source_count or 0)
-    elif kafka_count is not None and postgres_count is not None:
-        discrepancy = (postgres_count or 0) - (kafka_count or 0)
+    if source_count is not None and accounted_count is not None:
+        discrepancy = (accounted_count or 0) - (source_count or 0)
+    elif accounted_count is not None and postgres_count is not None:
+        discrepancy = (postgres_count or 0) - (accounted_count or 0)
 
     pct: float | None = None
     if discrepancy is not None and source_count:
@@ -4577,7 +4577,7 @@ def write_check(
         dataset=dataset,
         business_date=None if business_date is None else str(business_date),
         source_count=source_count,
-        kafka_count=kafka_count,
+        accounted_count=accounted_count,
         postgres_count=postgres_count,
         status=status,
         detail=detail,
@@ -5003,7 +5003,7 @@ def finalise(conn, run_id: str, *, commit: bool = True) -> None:
     """Validate lineage closure invariants before marking a run succeeded.
 
     Asserts:
-      1. If ``record_count_published > 0``, at least one ``lineage_edge`` row
+      1. If ``record_count_target > 0``, at least one ``lineage_edge`` row
          exists with ``consumer_run_id = run_id`` (no orphan published runs).
       2. No non-terminal ``run_stage_log`` rows exist for ``run_id`` â€” every
          opened stage must have been closed.
@@ -5016,7 +5016,7 @@ def finalise(conn, run_id: str, *, commit: bool = True) -> None:
     with conn.cursor() as cur:
         cur.execute(
             """
-            SELECT COALESCE(record_count_published, 0)
+            SELECT COALESCE(record_count_target, 0)
               FROM pipeline.run_log
              WHERE run_id = %s
             """,

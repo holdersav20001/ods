@@ -112,7 +112,7 @@ erDiagram
         text dataset
         date business_date
         bigint source_count
-        bigint kafka_count
+        bigint accounted_count
         bigint postgres_count
         text status
     }
@@ -179,7 +179,7 @@ dataset_config
   -> file_catalogue
   -> run_log / run_stage_log
   -> file_state / lineage_edge / reconciliation_log
-  -> file_catalogue state=sunk
+  -> file_catalogue state=loaded
 ```
 
 The control-table path is the same for canonical and non-canonical datasets. The difference is where the row shape is transformed before Postgres.
@@ -295,7 +295,7 @@ Control-table impact:
 | Ingestion starts | `run_log.pipeline_type='ingestion'`, `file_catalogue.state='ingesting'` |
 | Curated write succeeds | `file_catalogue.state='curated'`, `lineage_edge.edge_type='raw_to_curated'` |
 | Direct-Postgres run starts | `run_log.pipeline_type='direct_postgres'`, stage rows begin for curated-to-target work |
-| Postgres load succeeds | `reconciliation_log.check_type='direct_postgres_count'`, `lineage_edge.edge_type='curated_to_postgres'`, `file_catalogue.state='sunk'` |
+| Postgres load succeeds | `reconciliation_log.check_type='direct_postgres_count'`, `lineage_edge.edge_type='curated_to_postgres'`, `file_catalogue.state='loaded'` |
 
 ### Non-Canonical Dataset
 
@@ -317,7 +317,7 @@ Control-table impact:
 | Ingestion succeeds | Same as canonical. The curated data may still be source-shaped. |
 | Direct-Postgres run starts | Same as canonical. The `direct_postgres` run owns target preparation and load. |
 | Transform runs before load | No separate control table row today; it is part of `direct_postgres` processing. |
-| Postgres load succeeds | Same as canonical: `direct_postgres_count`, `curated_to_postgres`, `sunk`. |
+| Postgres load succeeds | Same as canonical: `direct_postgres_count`, `curated_to_postgres`, `loaded`. |
 
 The non-canonical transform must not create or overwrite route metadata columns. Those metadata details are documented separately. This document only shows the control-table writes and the source-to-target data shape.
 
@@ -341,7 +341,7 @@ Developers should normally populate only configuration. If you are changing rout
 | Write curated data | `s3_curated_path` in dataset config. | `file_catalogue.state='curated'`, `lineage_edge.raw_to_curated`, `reconciliation_log.t0_ingestion_count`, `file_state.status='completed'`, terminal ingestion `run_log.status`. |
 | Start direct-Postgres run | Nothing manually; it starts after ingestion succeeds. | `run_log.pipeline_type='direct_postgres'` and stage-start rows for curated-to-target work. |
 | Transform non-canonical rows | `is_canonical=false` and `transform_yaml_path`. | No separate table today; transform prepares target-shaped rows before the Postgres load. Failures mark the run/stage failed. |
-| Load Postgres | Existing target table, valid `write_mode`, matching `key_fields` for upsert. | Stage-start and stage-finish rows for the load, `reconciliation_log.direct_postgres_count`, `lineage_edge.curated_to_postgres`, `file_catalogue.state='sunk'`, terminal direct-Postgres `run_log.status`. |
+| Load Postgres | Existing target table, valid `write_mode`, matching `key_fields` for upsert. | Stage-start and stage-finish rows for the load, `reconciliation_log.direct_postgres_count`, `lineage_edge.curated_to_postgres`, `file_catalogue.state='loaded'`, terminal direct-Postgres `run_log.status`. |
 | Finish route | Nothing manually. | Terminal route `run_log.status='succeeded'` when both child runs succeed. |
 
 ## Write Contract Style
@@ -648,7 +648,7 @@ Required data:
 | Field | Route run | Ingestion run | Direct-Postgres run |
 |---|---|---|---|
 | `run_id` | A generated UUID for this route run. | A generated UUID for this ingestion run. | A generated UUID for this direct-Postgres run. |
-| `pipeline_type` | `s3_batch` | `ingestion` | `direct_postgres` |
+| `pipeline_type` | `orchestration` | `ingestion` | `direct_postgres` |
 | `domain` | `insurance` | `insurance` | `insurance` |
 | `dataset` | `country_codes` | `country_codes` | `country_codes` |
 | `business_date` | `2026-05-21` | `2026-05-21` | `2026-05-21` |
@@ -671,7 +671,7 @@ Preferred helper sequence:
 ods_pipeline.runs.start(
     conn,
     run_id=route_run_id,
-    pipeline_type="s3_batch",
+    pipeline_type="orchestration",
     domain="insurance",
     dataset="country_codes",
     business_date="2026-05-21",
@@ -730,7 +730,7 @@ ods_pipeline.runs.update(
     postgres_run_id,
     status="succeeded",
     record_count_source=100,
-    record_count_published=100,
+    record_count_target=100,
 )
 ```
 
@@ -911,12 +911,12 @@ ods_pipeline.reconciliation.write_check(
     dataset="country_codes",
     business_date="2026-05-21",
     source_count=100,
-    kafka_count=100,
+    accounted_count=100,
     status="ok",
 )
 ```
 
-The `kafka_count` column name is generic legacy storage here. For `t0_ingestion_count`, it means accounted rows, not Kafka messages.
+The `accounted_count` column name is generic legacy storage here. For `t0_ingestion_count`, it means accounted rows, not Kafka messages.
 
 Finally the ingestion run is marked terminal:
 
@@ -1081,7 +1081,7 @@ ods_pipeline.lineage.write_edge(
 )
 ```
 
-The file is marked sunk after the Postgres load and reconciliation succeed.
+The file is marked loaded after the Postgres load and reconciliation succeed.
 
 Preferred helper:
 
@@ -1091,7 +1091,7 @@ import ods_pipeline
 ods_pipeline.files.update_catalogue(
     conn,
     file_id=file_id,
-    state="sunk",
+    state="loaded",
     last_run_id=postgres_run_id,
 )
 ```
@@ -1101,7 +1101,7 @@ Expected effect:
 ```text
 table        pipeline.file_catalogue
 file_id      <file-id>
-state        sunk
+state        loaded
 last_run_id  <postgres-run-id>
 ```
 
@@ -1113,11 +1113,11 @@ ods_pipeline.runs.update(
     postgres_run_id,
     status="succeeded",
     record_count_source=100,
-    record_count_published=100,
+    record_count_target=100,
 )
 ```
 
-`record_count_published` means "rows written to the delivery target" on this route. It does not mean Kafka publish.
+`record_count_target` means "rows written to the delivery target" on this route. It does not mean Kafka publish.
 
 ## Example 8 - Route Finalises
 
@@ -1183,7 +1183,7 @@ For one successful file:
 ```sql
 SELECT pipeline_type, status, record_count_source,
        record_count_dq_pass, record_count_dq_fail,
-       record_count_published
+       record_count_target
 FROM pipeline.run_log
 WHERE file_id = '<file-id>'
 ORDER BY started_at;
@@ -1209,13 +1209,13 @@ WHERE file_id = '<file-id>';
 Expected:
 
 ```text
-state = sunk
+state=loaded
 ```
 
 And:
 
 ```sql
-SELECT check_type, source_count, kafka_count, postgres_count, status
+SELECT check_type, source_count, accounted_count, postgres_count, status
 FROM pipeline.reconciliation_log
 WHERE run_id IN (
     SELECT run_id FROM pipeline.run_log WHERE file_id = '<file-id>'
@@ -1226,7 +1226,7 @@ ORDER BY created_at;
 Expected:
 
 ```text
-check_type              source_count  kafka_count  postgres_count  status
+check_type              source_count  accounted_count  postgres_count  status
 t0_ingestion_count      100           100          NULL            ok
 direct_postgres_count   100           NULL         100             ok
 ```
@@ -1236,7 +1236,7 @@ direct_postgres_count   100           NULL         100             ok
 | Rule | Meaning |
 |---|---|
 | Use helpers in code. | They handle commits, idempotency, timestamps, and allowed fields. |
-| `file_catalogue.state` is the route state. | For direct Postgres the successful end state is `sunk`. |
+| `file_catalogue.state` is the route state. | For direct Postgres the successful end state is `loaded`. |
 | `file_state.status` is the idempotency state. | `completed` here only means the raw S3 path has already been curated. |
 | Runtime helpers commit independently. | This is intentional for stateless progress, observability, and restart safety. |
 | `direct_postgres` has no Kafka fields. | No `target_topic`, no offsets, no `publish_stage`. |

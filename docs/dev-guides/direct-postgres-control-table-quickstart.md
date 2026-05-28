@@ -85,7 +85,7 @@ run UUIDs at DAG start, and do not call `runs.start(...)` for future work.
 11. load Postgres
 12. write direct_postgres reconciliation
 13. write curated-to-Postgres lineage
-14. mark file sunk
+14. mark file loaded
 15. close direct_postgres run
 ```
 
@@ -233,7 +233,7 @@ ods_pipeline.reconciliation.write_check(
     dataset="country_codes",
     business_date="2026-05-21",
     source_count=100,
-    kafka_count=None,
+    accounted_count=None,
     status="ok",
 )
 ```
@@ -310,7 +310,7 @@ ods_pipeline.stages.finish(
 )
 ```
 
-### 10. Mark the file sunk
+### 10. Mark the file loaded
 
 Do this only after the target table has been written.
 
@@ -318,7 +318,7 @@ Do this only after the target table has been written.
 ods_pipeline.files.update_catalogue(
     conn,
     file_id=file_uuid,
-    state="sunk",
+    state="loaded",
     last_run_id=child_run_uuid,
 )
 ```
@@ -368,7 +368,7 @@ ods_pipeline.runs.update(
     child_run_uuid,
     status="succeeded",
     record_count_source=100,
-    record_count_published=100,
+    record_count_target=100,
 )
 ```
 
@@ -476,7 +476,7 @@ ORDER BY started_at;
 Reconciliation passed:
 
 ```sql
-SELECT check_type, source_count, kafka_count, postgres_count, status
+SELECT check_type, source_count, accounted_count, postgres_count, status
 FROM pipeline.reconciliation_log
 WHERE run_id IN (
     SELECT run_id FROM pipeline.run_log WHERE file_id = '<file-uuid>'
@@ -505,8 +505,8 @@ WHERE t.country_code = 'GB';
 | Rule | Meaning |
 |---|---|
 | Use `ods_pipeline.*` helpers in route code. | They handle commits, timestamps, and the expected table shape. |
-| `file_catalogue.state='sunk'` means the file reached the Postgres target. | It is the successful end state for this route. |
-| `record_count_published` means rows written to Postgres. | It does not mean Kafka publish on this route. |
+| `file_catalogue.state='loaded'` means the file reached the Postgres target. | It is the successful end state for this route. |
+| `record_count_target` means rows written to Postgres. | It does not mean Kafka publish on this route. |
 | `_ods_file_id` points to the source file. | It is not a new id for the load. |
 | `_ods_run_id` points to the direct-Postgres child run UUID. | It is not the ingestion child run UUID or an orchestration UUID. |
 
@@ -568,7 +568,7 @@ flowchart TD
     O["reconciliation_log\ndirect_postgres_count"]
     P["lineage_edge\ncurated_to_postgres"]
     P_ID["[consumer_run_id]\n33333333-3333-3333-3333-333333333333\n[upstream_run_id]\n22222222-2222-2222-2222-222222222222"]
-    Q["file_catalogue\nstate = sunk"]
+    Q["file_catalogue\nstate=loaded"]
 
     A --> B --> C
     C --> D --> E --> F --> G --> H --> I

@@ -39,13 +39,13 @@ def test_finalise_passes_on_run_with_no_publishes_and_closed_stages(pg_conn, run
 
 
 def test_finalise_raises_when_published_but_no_lineage(pg_conn, run_id):
-    runs.update(pg_conn, run_id, record_count_published=42)
+    runs.update(pg_conn, run_id, record_count_target=42)
     with pytest.raises(LineageInvariantError, match="orphaned run"):
         runs.finalise(pg_conn, run_id)
 
 
 def test_finalise_marks_run_failed_on_violation(pg_conn, run_id):
-    runs.update(pg_conn, run_id, record_count_published=42)
+    runs.update(pg_conn, run_id, record_count_target=42)
     with pytest.raises(LineageInvariantError):
         runs.finalise(pg_conn, run_id)
     with pg_conn.cursor() as cur:
@@ -59,7 +59,7 @@ def test_finalise_marks_run_failed_on_violation(pg_conn, run_id):
 
 
 def test_finalise_passes_when_published_and_lineage_exists(pg_conn, run_id):
-    runs.update(pg_conn, run_id, record_count_published=42)
+    runs.update(pg_conn, run_id, record_count_target=42)
     with pg_conn.cursor() as cur:
         cur.execute(
             """

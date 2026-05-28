@@ -221,7 +221,7 @@ def mark_success(
     ods_pipeline.files.update_catalogue(
         conn,
         file_id=args.file_id,
-        state="sunk",
+        state="loaded",
         last_run_id=args.run_id,
     )
     ods_pipeline.runs.update(
@@ -229,7 +229,7 @@ def mark_success(
         args.run_id,
         status="succeeded",
         record_count_source=source_count,
-        record_count_published=target_count,
+        record_count_target=target_count,
     )
 
 

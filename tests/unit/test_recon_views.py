@@ -16,7 +16,7 @@ def pg_conn():
 VIEWS_AND_COLUMNS = {
     "ods.v_recon_latest_failed": {
         "run_id", "check_type", "domain", "dataset", "business_date",
-        "source_count", "kafka_count", "postgres_count",
+        "source_count", "accounted_count", "postgres_count",
         "discrepancy_count", "discrepancy_pct", "detail", "created_at",
     },
     "ods.v_recon_t0_t1_t2_trend": {
@@ -25,7 +25,7 @@ VIEWS_AND_COLUMNS = {
     },
     "ods.v_recon_dlq_adjusted": {
         "run_id", "domain", "dataset", "business_date",
-        "record_count_source", "dlq_count", "record_count_published",
+        "record_count_source", "dlq_count", "record_count_target",
         "adjusted_delta", "status", "started_at", "ended_at",
     },
     "ods.v_current_history_consistency": {

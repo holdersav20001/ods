@@ -473,14 +473,14 @@ def run(*, run_id: str, domain: str, dataset: str, s3_input_path: str,
 
         if file_id:
             ods_pipeline.files.update_catalogue(
-                conn, file_id, state="sunk", last_run_id=run_id,
+                conn, file_id, state="loaded", last_run_id=run_id,
             )
 
         ods_pipeline.runs.update(
             conn, run_id,
             status="succeeded" if ok else "failed",
             record_count_source=curated_count,
-            record_count_published=postgres_count,
+            record_count_target=postgres_count,
             error_summary=None if ok else "direct_postgres reconciliation failed",
         )
 

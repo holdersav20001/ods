@@ -59,7 +59,7 @@ def lineage(conn) -> str:
     out += _query(conn, """
         SELECT run_id::text, domain, dataset, business_date, status,
                record_count_source, record_count_dq_pass,
-               record_count_published, kafka_offset_start, kafka_offset_end
+               record_count_target, kafka_offset_start, kafka_offset_end
           FROM pipeline.run_log
          ORDER BY started_at DESC LIMIT 10
     """)
@@ -107,7 +107,7 @@ def reconciliation(conn) -> str:
     out = _section("RECONCILIATION — reconciliation_log")
     out += _query(conn, """
         SELECT created_at, check_type, domain, dataset, business_date,
-               source_count, kafka_count, postgres_count,
+               source_count, accounted_count, postgres_count,
                discrepancy_count, discrepancy_pct, status
           FROM pipeline.reconciliation_log
          ORDER BY created_at DESC LIMIT 30

@@ -100,7 +100,7 @@
         <mxCell id="P-a11" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="P-publish" target="P-t0" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
 
         <!-- T0 reconciliation -->
-        <mxCell id="P-t0" value="t0_check_publish&#10;offset delta = kafka_count − source_count&#10;→ pipeline.reconciliation_log" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#FFF8E1;strokeColor=#F57F17;" vertex="1" parent="1">
+        <mxCell id="P-t0" value="t0_check_publish&#10;offset delta = accounted_count − source_count&#10;→ pipeline.reconciliation_log" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#FFF8E1;strokeColor=#F57F17;" vertex="1" parent="1">
           <mxGeometry x="380" y="950" width="220" height="55" as="geometry"/>
         </mxCell>
         <mxCell id="P-a12" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="P-t0" target="P-cd" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>

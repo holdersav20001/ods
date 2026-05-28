@@ -170,7 +170,7 @@ def direct_dashboard_rows(pg_conn):
             """
             INSERT INTO pipeline.run_log
                 (run_id, pipeline_type, domain, dataset, business_date, status,
-                 started_at, ended_at, record_count_source, record_count_published,
+                 started_at, ended_at, record_count_source, record_count_target,
                  error_summary)
             VALUES (%s, 'direct_postgres', %s, %s, %s, 'succeeded',
                     NOW() - INTERVAL '5 minutes', NOW() - INTERVAL '4 minutes',
@@ -222,7 +222,7 @@ def direct_dashboard_rows(pg_conn):
             """
             INSERT INTO pipeline.run_log
                 (run_id, pipeline_type, domain, dataset, business_date, status,
-                 started_at, ended_at, record_count_source, record_count_published,
+                 started_at, ended_at, record_count_source, record_count_target,
                  kafka_topic, kafka_offset_start, kafka_offset_end, error_summary)
             VALUES (%s, 'api_pull', %s, %s, %s, 'succeeded',
                     NOW() - INTERVAL '6 minutes', NOW() - INTERVAL '5 minutes',
@@ -266,7 +266,7 @@ def direct_dashboard_rows(pg_conn):
             """
             INSERT INTO pipeline.reconciliation_log
                 (check_type, run_id, domain, dataset, business_date,
-                 source_count, kafka_count, discrepancy_count, status, detail)
+                 source_count, accounted_count, discrepancy_count, status, detail)
             VALUES ('api_pull_publish_count', %s, %s, %s, %s, 11, 11, 0, 'ok', %s)
             """,
             (
@@ -348,7 +348,7 @@ def test_direct_kafka_dashboard_endpoint(direct_dashboard_rows):
     )
     assert any(
         rec["check_type"] == "api_pull_publish_count"
-        and rec["kafka_count"] == 11
+        and rec["accounted_count"] == 11
         for rec in data["reconciliations"]
     )
     # sink_lag panel was disabled -> empty list, not absent.

@@ -110,7 +110,7 @@ def test_run_log_table_exists(conn):
         cols = {r[0]: r[1] for r in cur.fetchall()}
     assert 'run_id' in cols and cols['run_id'] == 'uuid'
     assert 'pipeline_type' in cols
-    assert 'record_count_published' in cols
+    assert 'record_count_target' in cols
     assert 'kafka_offset_start' in cols and cols['kafka_offset_start'] == 'bigint'
     assert 'orchestrators' in cols and cols['orchestrators'] == 'jsonb'
     assert 'runtime_context' in cols and cols['runtime_context'] == 'jsonb'

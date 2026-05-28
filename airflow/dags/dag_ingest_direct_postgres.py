@@ -129,7 +129,7 @@ def init_run() -> dict:
         ods_pipeline.runs.start(
             conn,
             run_id=upstream_run_id,
-            pipeline_type="s3_batch",
+            pipeline_type="orchestration",
             domain=conf["domain"],
             dataset=conf["dataset"],
             business_date=conf["business_date"],
@@ -224,7 +224,7 @@ def finalise(ctx: dict) -> None:
             ods_pipeline.runs.update(conn, ctx["run_id"], status="succeeded")
             ods_pipeline.files.update_catalogue(
                 conn, ctx["file_id"],
-                state="sunk",
+                state="loaded",
                 last_run_id=ctx["pg_write_run_id"],
             )
             final_status = "succeeded"

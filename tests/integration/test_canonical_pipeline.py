@@ -260,7 +260,7 @@ def test_risk_canonicalize_job_writes_t1_recon(pg):
     with pg.cursor() as cur:
         cur.execute(
             """
-            SELECT status, source_count, kafka_count, discrepancy_count
+            SELECT status, source_count, accounted_count, discrepancy_count
               FROM pipeline.reconciliation_log
              WHERE run_id=%s AND check_type='t1_canonicalize_count'
             """,

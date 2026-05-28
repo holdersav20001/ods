@@ -141,7 +141,7 @@
         </mxCell>
         <mxCell id="GDa3" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="GD-recon" target="GD-lin" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
 
-        <mxCell id="GD-fin" value="finalise&#10;run_log=succeeded · file_catalogue=sunk" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#C8E6C9;strokeColor=#2E7D32;" vertex="1" parent="1">
+        <mxCell id="GD-fin" value="finalise&#10;run_log=succeeded · file_catalogue=loaded" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;fillColor=#C8E6C9;strokeColor=#2E7D32;" vertex="1" parent="1">
           <mxGeometry x="370" y="1345" width="300" height="50" as="geometry"/>
         </mxCell>
         <mxCell id="GDa4" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="GD-lin" target="GD-fin" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
@@ -303,7 +303,7 @@
         <mxCell id="S-sep3" value="finalise" style="text;html=1;strokeColor=#C8E6C9;fillColor=#E8F5E9;align=left;verticalAlign=middle;fontSize=9;fontStyle=1;fontColor=#2E7D32;" vertex="1" parent="1"><mxGeometry x="55" y="1128" width="1490" height="17" as="geometry"/></mxCell>
 
         <mxCell id="Sm31" value="UPDATE run_log (status=succeeded)"                        style="endArrow=block;endFill=1;fontSize=9;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="125" y="1158" as="sourcePoint"/><mxPoint x="1355" y="1158" as="targetPoint"/></mxGeometry></mxCell>
-        <mxCell id="Sm32" value="UPDATE file_catalogue (state=sunk)"                       style="endArrow=block;endFill=1;fontSize=9;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="125" y="1188" as="sourcePoint"/><mxPoint x="1355" y="1188" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="Sm32" value="UPDATE file_catalogue (state=loaded)"                       style="endArrow=block;endFill=1;fontSize=9;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="125" y="1188" as="sourcePoint"/><mxPoint x="1355" y="1188" as="targetPoint"/></mxGeometry></mxCell>
 
         <!-- Final note -->
         <mxCell id="S-done" value="✓  Postgres ODS = current state (upserted, one row per key)  ·  S3 medallion layers = full history (immutable partitions, query via Athena)" style="text;html=1;strokeColor=#00695C;fillColor=#E0F2F1;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=10;fontStyle=1;fontColor=#00695C;" vertex="1" parent="1">
