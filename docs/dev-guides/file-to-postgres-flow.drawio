@@ -1,0 +1,498 @@
+<mxfile host="app.diagrams.net">
+  <diagram name="File-to-Postgres Flow" id="f2p">
+    <mxGraphModel dx="1600" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="1150" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <!-- Title -->
+        <mxCell id="title" value="File → Postgres route — stages, configs, and the control-table paper trail" style="text;html=1;align=center;fontSize=15;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="20" width="1620" height="28" as="geometry"/>
+        </mxCell>
+        <mxCell id="legend" value="orange = stage / task    blue = data artifact (S3 / Postgres)    yellow = YAML config    green = DAG boundary    pink = reconciliation    grey = control-plane table" style="text;html=1;align=center;fontSize=11;fontStyle=2;fillColor=#F5F5F5;strokeColor=#999;" vertex="1" parent="1">
+          <mxGeometry x="40" y="55" width="1620" height="22" as="geometry"/>
+        </mxCell>
+
+        <!-- ===== CONFIGURATION LANE (NOW ABOVE DAG) ===== -->
+        <mxCell id="lane_cfg" value="CONFIGURATION  (YAML inputs that drive each stage)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF8E1;strokeColor=#FFB300;fontStyle=1;align=left;verticalAlign=top;spacingLeft=12;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="40" y="95" width="1620" height="130" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="cfg_schema" value="schema.yaml&#10;(expected columns,&#10;types, required)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF8E1;strokeColor=#F9A825;align=center;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="250" y="135" width="140" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="cfg_dq" value="dq_rules.yaml&#10;(hard_blocks,&#10;soft_warns)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF8E1;strokeColor=#F9A825;align=center;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="430" y="135" width="140" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="cfg_xform" value="transform.yaml&#10;(field mappings,&#10;type coercions)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF8E1;strokeColor=#F9A825;align=center;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="610" y="135" width="140" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="cfg_recon" value="dataset_config&#10;(recon_tolerance_records,&#10;recon_tolerance_pct)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF8E1;strokeColor=#F9A825;align=center;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="990" y="135" width="160" height="70" as="geometry"/>
+        </mxCell>
+
+        <!-- ===== DAG LANE ===== -->
+        <mxCell id="lane_data" value="DAG  (tasks + data artifacts they read/write)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#BDBDBD;fontStyle=1;align=left;verticalAlign=top;spacingLeft=12;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="40" y="245" width="1620" height="220" as="geometry"/>
+        </mxCell>
+
+        <!-- DAG start -->
+        <mxCell id="dag_start" value="&lt;b style=&quot;font-size:22px;color:#1B5E20&quot;&gt;1&lt;/b&gt;&amp;nbsp; DAG start&#10;(orchestration run)" style="rhombus;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;align=center;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="60" y="280" width="130" height="50" as="geometry"/>
+        </mxCell>
+
+        <!-- S3 raw -->
+        <mxCell id="s3raw" value="📄 S3 raw&#10;(immutable source file)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E3F2FD;strokeColor=#1565C0;align=center;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="70" y="350" width="140" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- raw_read + schema_validate (combined into step 2) -->
+        <mxCell id="schema" value="&lt;b style=&quot;font-size:22px;color:#BF360C&quot;&gt;2&lt;/b&gt;&amp;nbsp; raw_read&#10;+ schema_validate" style="shape=process;rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4E5;strokeColor=#E65100;align=center;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="250" y="350" width="140" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- dq_check -->
+        <mxCell id="dq" value="&lt;b style=&quot;font-size:22px;color:#BF360C&quot;&gt;3&lt;/b&gt;&amp;nbsp; dq_check&#10;(row-level)" style="shape=process;rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4E5;strokeColor=#E65100;align=center;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="430" y="350" width="140" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- curated_write incl. inline enrich -->
+        <mxCell id="transform" value="&lt;b style=&quot;font-size:22px;color:#BF360C&quot;&gt;4&lt;/b&gt;&amp;nbsp; curated_write&#10;(enrich inline,&#10;no stage row)" style="shape=process;rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4E5;strokeColor=#E65100;align=center;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="610" y="350" width="140" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- S3 curated -->
+        <mxCell id="s3cur" value="📦 S3 curated&#10;(good rows, Parquet)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E3F2FD;strokeColor=#1565C0;align=center;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="790" y="320" width="140" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- S3 DLQ -->
+        <mxCell id="s3dlq" value="🗑 S3 DLQ&#10;(rejected rows + reasons)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFEBEE;strokeColor=#C62828;align=center;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="790" y="400" width="140" height="55" as="geometry"/>
+        </mxCell>
+
+        <!-- load -->
+        <mxCell id="load" value="&lt;b style=&quot;font-size:22px;color:#BF360C&quot;&gt;6&lt;/b&gt;&amp;nbsp; load to postgres&#10;(stamps _ods_*)" style="shape=process;rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4E5;strokeColor=#E65100;align=center;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="990" y="350" width="160" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- postgres target -->
+        <mxCell id="pg" value="💾 ods.&lt;target&gt;&#10;(_ods_file_id, _ods_run_id)" style="shape=cylinder3;whiteSpace=wrap;html=1;backgroundOutline=1;size=15;fillColor=#E0F2F1;strokeColor=#00695C;align=center;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1200" y="340" width="160" height="80" as="geometry"/>
+        </mxCell>
+
+        <!-- DAG end -->
+        <mxCell id="dag_end" value="&lt;b style=&quot;font-size:22px;color:#1B5E20&quot;&gt;8&lt;/b&gt;&amp;nbsp; DAG end&#10;(close orchestration)" style="rhombus;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;align=center;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1500" y="360" width="130" height="50" as="geometry"/>
+        </mxCell>
+
+        <!-- Config → stage arrows (downward) -->
+        <mxCell id="cfg_e1" style="endArrow=classic;html=1;strokeColor=#F9A825;dashed=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="cfg_schema" target="schema"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="cfg_e2" style="endArrow=classic;html=1;strokeColor=#F9A825;dashed=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="cfg_dq" target="dq"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="cfg_e3" style="endArrow=classic;html=1;strokeColor=#F9A825;dashed=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="cfg_xform" target="transform"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="cfg_e4" style="endArrow=classic;html=1;strokeColor=#F9A825;dashed=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="cfg_recon" target="load"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- DAG start → first data step -->
+        <mxCell id="dag_start_arrow" style="endArrow=classic;html=1;strokeColor=#2E7D32;strokeWidth=1;dashed=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="dag_start" target="s3raw"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- last step → DAG end -->
+        <mxCell id="dag_end_arrow" style="endArrow=classic;html=1;strokeColor=#2E7D32;strokeWidth=1;dashed=1;" edge="1" parent="1" source="pg" target="dag_end"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- DAG horizontal data flow edges -->
+        <mxCell id="ed1" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#1565C0;" edge="1" parent="1" source="s3raw" target="schema"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="ed2" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#1565C0;" edge="1" parent="1" source="schema" target="dq"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="ed3" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#1565C0;" edge="1" parent="1" source="dq" target="transform"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="ed3b" value="good rows" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#1565C0;exitX=1;exitY=0.3;exitDx=0;exitDy=0;" edge="1" parent="1" source="transform" target="s3cur"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="ed4" value="bad rows" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#C62828;exitX=1;exitY=0.7;exitDx=0;exitDy=0;dashed=1;" edge="1" parent="1" source="dq" target="s3dlq"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="ed5" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#1565C0;" edge="1" parent="1" source="s3cur" target="load"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="ed6" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#1565C0;" edge="1" parent="1" source="load" target="pg"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- ===== RECONCILIATION LANE ===== -->
+        <mxCell id="lane_recon" value="RECONCILIATION  (counts the stages, writes verdict row)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FCE4EC;strokeColor=#AD1457;fontStyle=1;align=left;verticalAlign=top;spacingLeft=12;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="40" y="485" width="1620" height="160" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="recon_t0" value="&lt;b style=&quot;font-size:22px;color:#880E4F&quot;&gt;5&lt;/b&gt;&amp;nbsp; reconcile&#10;t0_ingestion_count&#10;(source vs accounted)" style="shape=process;rounded=1;whiteSpace=wrap;html=1;fillColor=#FCE4EC;strokeColor=#AD1457;align=center;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="610" y="540" width="160" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="recon_pg" value="&lt;b style=&quot;font-size:22px;color:#880E4F&quot;&gt;7&lt;/b&gt;&amp;nbsp; reconcile&#10;direct_postgres_count&#10;(curated vs target rows)" style="shape=process;rounded=1;whiteSpace=wrap;html=1;fillColor=#FCE4EC;strokeColor=#AD1457;align=center;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="990" y="540" width="180" height="70" as="geometry"/>
+        </mxCell>
+
+        <!-- recon reads counts from curated & target (upward, dashed pink) -->
+        <mxCell id="re1" style="endArrow=classic;html=1;strokeColor=#AD1457;dashed=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="recon_t0" target="s3cur"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="re1lbl" value="counts" style="text;html=1;align=center;fontSize=9;fontStyle=2;fontColor=#AD1457;" vertex="1" parent="1">
+          <mxGeometry x="700" y="490" width="60" height="18" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="re2" style="endArrow=classic;html=1;strokeColor=#AD1457;dashed=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="recon_pg" target="pg"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="re2lbl" value="counts" style="text;html=1;align=center;fontSize=9;fontStyle=2;fontColor=#AD1457;" vertex="1" parent="1">
+          <mxGeometry x="1090" y="490" width="60" height="18" as="geometry"/>
+        </mxCell>
+
+        <!-- ===== CONTROL-TABLE LANE ===== -->
+        <mxCell id="lane_ctrl" value="CONTROL-PLANE WRITES  (the paper trail)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ECEFF1;strokeColor=#37474F;fontStyle=1;align=left;verticalAlign=top;spacingLeft=12;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="40" y="665" width="1620" height="400" as="geometry"/>
+        </mxCell>
+
+        <!-- six control tables -->
+        <mxCell id="ct_fc" value="pipeline.file_catalogue&#10;━━━━━━━━━━━━━━━━&#10;state: received → curated → loaded&#10;file_id, sftp_path, s3_raw_path,&#10;s3_curated_path, last_run_id" style="shape=cylinder3;whiteSpace=wrap;html=1;backgroundOutline=1;size=12;fillColor=#FFFFFF;strokeColor=#37474F;align=left;spacingLeft=8;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="80" y="715" width="240" height="110" as="geometry"/>
+        </mxCell>
+        <mxCell id="ct_rl" value="pipeline.run_log&#10;━━━━━━━━━━━━━━━━&#10;3 rows per file:&#10; • orchestration (DAG)&#10; • ingestion&#10; • direct_postgres&#10;orchestrators[] = scheduler link" style="shape=cylinder3;whiteSpace=wrap;html=1;backgroundOutline=1;size=12;fillColor=#FFFFFF;strokeColor=#37474F;align=left;spacingLeft=8;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="340" y="715" width="240" height="110" as="geometry"/>
+        </mxCell>
+        <mxCell id="ct_sl" value="pipeline.run_stage_log&#10;━━━━━━━━━━━━━━━━&#10;2 rows per stage&#10;(start, finish)&#10;event_type, status, attempt_number" style="shape=cylinder3;whiteSpace=wrap;html=1;backgroundOutline=1;size=12;fillColor=#FFFFFF;strokeColor=#37474F;align=left;spacingLeft=8;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="600" y="715" width="240" height="110" as="geometry"/>
+        </mxCell>
+        <mxCell id="ct_le" value="pipeline.lineage_edge&#10;━━━━━━━━━━━━━━━━&#10;2 rows per file:&#10; • raw_to_curated&#10; • curated_to_postgres&#10;consumer_run_id, upstream_run_id,&#10;source_file_id" style="shape=cylinder3;whiteSpace=wrap;html=1;backgroundOutline=1;size=12;fillColor=#FFFFFF;strokeColor=#37474F;align=left;spacingLeft=8;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="860" y="715" width="260" height="120" as="geometry"/>
+        </mxCell>
+        <mxCell id="ct_rc" value="pipeline.reconciliation_log&#10;━━━━━━━━━━━━━━━━&#10;2 rows per file:&#10; • t0_ingestion_count&#10; • direct_postgres_count&#10;source_count, accounted_count,&#10;postgres_count, status" style="shape=cylinder3;whiteSpace=wrap;html=1;backgroundOutline=1;size=12;fillColor=#FFFFFF;strokeColor=#37474F;align=left;spacingLeft=8;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1140" y="715" width="260" height="120" as="geometry"/>
+        </mxCell>
+        <mxCell id="ct_pa" value="pipeline.file_processing_attempt&#10;━━━━━━━━━━━━━━━━&#10;(idempotency ledger&#10;for retries)" style="shape=cylinder3;whiteSpace=wrap;html=1;backgroundOutline=1;size=12;fillColor=#FFFFFF;strokeColor=#37474F;align=left;spacingLeft=8;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1420" y="715" width="220" height="110" as="geometry"/>
+        </mxCell>
+
+        <!-- Stage → control table writes (dashed dark grey) -->
+        <mxCell id="w_dq_sl" style="endArrow=classic;html=1;dashed=1;strokeColor=#37474F;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="dq" target="ct_sl"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="w_schema_sl" style="endArrow=classic;html=1;dashed=1;strokeColor=#37474F;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.25;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="schema" target="ct_sl"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="w_xform_sl" style="endArrow=classic;html=1;dashed=1;strokeColor=#37474F;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.75;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="transform" target="ct_sl"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <mxCell id="w_land_fc" style="endArrow=classic;html=1;dashed=1;strokeColor=#37474F;exitX=0;exitY=1;exitDx=0;exitDy=0;entryX=0.2;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="s3raw" target="ct_fc"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <mxCell id="w_xform_le" style="endArrow=classic;html=1;dashed=1;strokeColor=#37474F;exitX=0.7;exitY=1;exitDx=0;exitDy=0;entryX=0.15;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="transform" target="ct_le"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="w_xform_fc" style="endArrow=classic;html=1;dashed=1;strokeColor=#37474F;exitX=0.3;exitY=1;exitDx=0;exitDy=0;entryX=0.8;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="transform" target="ct_fc"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <mxCell id="w_recon_rc1" style="endArrow=classic;html=1;dashed=1;strokeColor=#37474F;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.3;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="recon_t0" target="ct_rc"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="w_recon_rc2" style="endArrow=classic;html=1;dashed=1;strokeColor=#37474F;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.7;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="recon_pg" target="ct_rc"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <mxCell id="w_load_le" style="endArrow=classic;html=1;dashed=1;strokeColor=#37474F;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.85;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="load" target="ct_le"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="w_load_sl" style="endArrow=classic;html=1;dashed=1;strokeColor=#37474F;exitX=0.3;exitY=1;exitDx=0;exitDy=0;entryX=0.95;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="load" target="ct_sl"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="w_load_rl" style="endArrow=classic;html=1;dashed=1;strokeColor=#37474F;exitX=0.4;exitY=1;exitDx=0;exitDy=0;entryX=0.6;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="load" target="ct_rl"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="w_load_fc" style="endArrow=classic;html=1;dashed=1;strokeColor=#37474F;exitX=0.2;exitY=1;exitDx=0;exitDy=0;entryX=0.95;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="load" target="ct_fc"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- DAG start / end → run_log (green) -->
+        <mxCell id="w_dag_start" style="endArrow=classic;html=1;dashed=1;strokeColor=#2E7D32;exitX=0;exitY=1;exitDx=0;exitDy=0;entryX=0.1;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="dag_start" target="ct_rl"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="w_dag_start_lbl" value="INSERT orchestration row&#10;status=running" style="text;html=1;align=center;fontSize=9;fontStyle=2;fontColor=#2E7D32;" vertex="1" parent="1">
+          <mxGeometry x="170" y="650" width="180" height="30" as="geometry"/>
+        </mxCell>
+        <mxCell id="w_dag_end" style="endArrow=classic;html=1;dashed=1;strokeColor=#2E7D32;exitX=0;exitY=1;exitDx=0;exitDy=0;entryX=0.9;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="dag_end" target="ct_rl"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="w_dag_end_lbl" value="UPDATE status=succeeded&#10;ended_at=NOW()" style="text;html=1;align=center;fontSize=9;fontStyle=2;fontColor=#2E7D32;" vertex="1" parent="1">
+          <mxGeometry x="1410" y="650" width="180" height="30" as="geometry"/>
+        </mxCell>
+
+        <!-- Which stage writes which table -->
+        <mxCell id="writes_box" value="Which stage writes which table" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#37474F;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="80" y="855" width="1560" height="28" as="geometry"/>
+        </mxCell>
+        <mxCell id="writes_table" value="DAG start          →  run_log (orchestration, status=running)&#10;Landing            →  file_catalogue (state=received)&#10;Ingestion starts   →  run_log (ingestion)&#10;Each stage         →  run_stage_log (start + finish), all attempts&#10;DQ check           →  S3 DLQ + run_stage_log; record_count_dq_fail on run_log&#10;Transform finishes →  file_catalogue (state=curated), lineage_edge (raw_to_curated), reconciliation_log (t0_ingestion_count), run_log (succeeded)&#10;Load starts        →  run_log (direct_postgres)&#10;Load finishes      →  ods.&lt;target&gt; rows with _ods_file_id + _ods_run_id, lineage_edge (curated_to_postgres), reconciliation_log (direct_postgres_count), file_catalogue (state=loaded), run_log (succeeded)&#10;DAG end            →  run_log (orchestration UPDATE status=succeeded)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#37474F;fontFamily=Courier New;fontSize=10;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="80" y="890" width="1560" height="170" as="geometry"/>
+        </mxCell>
+
+        <!-- Footer note -->
+        <mxCell id="footer" value="Dashed yellow = config-feeds-stage    Dashed pink = reconcile reads counts    Dashed dark grey = stage writes control table    Dashed green = DAG boundary" style="text;html=1;align=center;fontSize=10;fontStyle=2;fontColor=#555;" vertex="1" parent="1">
+          <mxGeometry x="40" y="1075" width="1620" height="20" as="geometry"/>
+        </mxCell>
+
+        <!-- Real-code stage callout -->
+        <mxCell id="stages_callout" value="REAL CODE → STAGE ROWS&#10;━━━━━━━━━━━━━━━━━━━━━━&#10;Ingestion Glue job (one Spark process under stage_ingest task) emits FOUR run_stage_log stage rows in this order:&#10;     1) raw_read           — load source file from S3 raw into a DataFrame&#10;     2) schema_validate    — file-level check vs schema.yaml; mismatch aborts the WHOLE file&#10;     3) dq_check           — row-level rules; bad rows → S3 DLQ, good rows continue&#10;     4) curated_write      — applies the inline enrich (transform.yaml field mappings) AND writes the Parquet&#10;Note:  enrich is pure Python inside curated_write — it is NOT its own stage_log row.&#10;Load Glue job (one Spark process under stage_postgres_write task) emits ONE stage row: postgres_write." style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF8E1;strokeColor=#E65100;fontSize=11;align=left;spacingLeft=12;spacingRight=12;spacingTop=8;" vertex="1" parent="1">
+          <mxGeometry x="40" y="1100" width="1620" height="180" as="geometry"/>
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+
+  <!-- ==================== STEP-BY-STEP CUMULATIVE PAGES ==================== -->
+  <!-- Each page shows: row of step pills (past/current/future) + the         -->
+  <!-- cumulative content of every control table after that step.             -->
+  <!-- UUIDs: F=file_id, R=route_run_id, I=ingestion_run_id, P=pg_write_run_id -->
+
+  <diagram name="Step 1 — DAG start" id="s1">
+    <mxGraphModel dx="1400" dy="900" grid="0" page="1" pageScale="1" pageWidth="1700" pageHeight="900">
+      <root>
+        <mxCell id="0"/><mxCell id="1" parent="0"/>
+        <mxCell id="t" value="After Step 1 — DAG start (orchestration run created)" style="text;html=1;align=center;fontSize=16;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="20" width="1620" height="30" as="geometry"/></mxCell>
+        <mxCell id="uu" value="UUIDs equal step numbers: orchestration=1, ingestion=2, load=6.  file_id=F." style="text;html=1;align=center;fontSize=11;fontFamily=Courier New;fillColor=#F5F5F5;strokeColor=#999;" vertex="1" parent="1"><mxGeometry x="40" y="55" width="1620" height="22" as="geometry"/></mxCell>
+        <mxCell id="p1" value="&lt;b style=&quot;font-size:18px&quot;&gt;1&lt;/b&gt; DAG start" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;fontStyle=1;fontSize=11;" vertex="1" parent="1"><mxGeometry x="40" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p2" value="2 validate schema" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#BBBBBB;fontColor=#999;fontSize=11;" vertex="1" parent="1"><mxGeometry x="230" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p3" value="3 DQ check" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#BBBBBB;fontColor=#999;fontSize=11;" vertex="1" parent="1"><mxGeometry x="420" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p4" value="4 transform" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#BBBBBB;fontColor=#999;fontSize=11;" vertex="1" parent="1"><mxGeometry x="610" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p5" value="5 reconcile t0" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#BBBBBB;fontColor=#999;fontSize=11;" vertex="1" parent="1"><mxGeometry x="800" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p6" value="6 load to postgres" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#BBBBBB;fontColor=#999;fontSize=11;" vertex="1" parent="1"><mxGeometry x="990" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p7" value="7 reconcile pg" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#BBBBBB;fontColor=#999;fontSize=11;" vertex="1" parent="1"><mxGeometry x="1180" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p8" value="8 DAG end" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#BBBBBB;fontColor=#999;fontSize=11;" vertex="1" parent="1"><mxGeometry x="1370" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="lbl_fc" value="pipeline.file_catalogue" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#37474F;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="40" y="170" width="260" height="40" as="geometry"/></mxCell>
+        <mxCell id="d_fc" value="(empty)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#999;fontFamily=Courier New;fontSize=10;align=center;fontColor=#888;" vertex="1" parent="1"><mxGeometry x="40" y="215" width="260" height="60" as="geometry"/></mxCell>
+        <mxCell id="lbl_rl" value="pipeline.run_log" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#37474F;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="320" y="170" width="430" height="40" as="geometry"/></mxCell>
+        <mxCell id="d_rl" value="&lt;b&gt;1 | orchestration | NULL  | running   | orchestrators=[]&lt;/b&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF8E1;strokeColor=#37474F;fontFamily=Courier New;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="320" y="215" width="430" height="60" as="geometry"/></mxCell>
+        <mxCell id="lbl_sl" value="pipeline.run_stage_log" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#37474F;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="770" y="170" width="260" height="40" as="geometry"/></mxCell>
+        <mxCell id="d_sl" value="(empty)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#999;fontFamily=Courier New;fontSize=10;align=center;fontColor=#888;" vertex="1" parent="1"><mxGeometry x="770" y="215" width="260" height="60" as="geometry"/></mxCell>
+        <mxCell id="lbl_le" value="pipeline.lineage_edge" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#37474F;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="1050" y="170" width="280" height="40" as="geometry"/></mxCell>
+        <mxCell id="d_le" value="(empty)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#999;fontFamily=Courier New;fontSize=10;align=center;fontColor=#888;" vertex="1" parent="1"><mxGeometry x="1050" y="215" width="280" height="60" as="geometry"/></mxCell>
+        <mxCell id="lbl_rc" value="pipeline.reconciliation_log" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#37474F;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="1350" y="170" width="310" height="40" as="geometry"/></mxCell>
+        <mxCell id="d_rc" value="(empty)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#999;fontFamily=Courier New;fontSize=10;align=center;fontColor=#888;" vertex="1" parent="1"><mxGeometry x="1350" y="215" width="310" height="60" as="geometry"/></mxCell>
+        <mxCell id="lbl_tgt" value="ods.&lt;target&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#00695C;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="40" y="295" width="260" height="40" as="geometry"/></mxCell>
+        <mxCell id="d_tgt" value="(empty)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#999;fontFamily=Courier New;fontSize=10;align=center;fontColor=#888;" vertex="1" parent="1"><mxGeometry x="40" y="340" width="260" height="60" as="geometry"/></mxCell>
+        <mxCell id="note" value="WHAT JUST HAPPENED&#10;━━━━━━━━━━━━━━━━━━━━━━━&#10;DAG run minted run_id=1. INSERTED run_log row with pipeline_type='orchestration', status='running'.&#10;orchestrators=[] (the DAG itself has no upstream orchestrator).&#10;file_id F is NOT yet created — the landing task that registers the file runs next, conceptually inside ingestion." style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;fontSize=11;align=left;spacingLeft=12;spacingRight=12;spacingTop=8;" vertex="1" parent="1"><mxGeometry x="40" y="430" width="1620" height="110" as="geometry"/></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+
+  <diagram name="Step 2 — validate schema" id="s2">
+    <mxGraphModel dx="1400" dy="900" grid="0" page="1" pageScale="1" pageWidth="1700" pageHeight="900">
+      <root>
+        <mxCell id="0"/><mxCell id="1" parent="0"/>
+        <mxCell id="t" value="After Step 2 — validate schema (ingestion run started + first stage written)" style="text;html=1;align=center;fontSize=16;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="20" width="1620" height="30" as="geometry"/></mxCell>
+        <mxCell id="uu" value="UUIDs equal step numbers: orchestration=1, ingestion=2, load=6.  file_id=F." style="text;html=1;align=center;fontSize=11;fontFamily=Courier New;fillColor=#F5F5F5;strokeColor=#999;" vertex="1" parent="1"><mxGeometry x="40" y="55" width="1620" height="22" as="geometry"/></mxCell>
+        <mxCell id="p1" value="1 DAG start" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;fontSize=11;" vertex="1" parent="1"><mxGeometry x="40" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p2" value="&lt;b style=&quot;font-size:18px&quot;&gt;2&lt;/b&gt; validate schema" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4E5;strokeColor=#E65100;fontStyle=1;fontSize=11;" vertex="1" parent="1"><mxGeometry x="230" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p3" value="3 DQ check" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#BBBBBB;fontColor=#999;fontSize=11;" vertex="1" parent="1"><mxGeometry x="420" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p4" value="4 transform" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#BBBBBB;fontColor=#999;fontSize=11;" vertex="1" parent="1"><mxGeometry x="610" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p5" value="5 reconcile t0" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#BBBBBB;fontColor=#999;fontSize=11;" vertex="1" parent="1"><mxGeometry x="800" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p6" value="6 load to postgres" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#BBBBBB;fontColor=#999;fontSize=11;" vertex="1" parent="1"><mxGeometry x="990" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p7" value="7 reconcile pg" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#BBBBBB;fontColor=#999;fontSize=11;" vertex="1" parent="1"><mxGeometry x="1180" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p8" value="8 DAG end" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#BBBBBB;fontColor=#999;fontSize=11;" vertex="1" parent="1"><mxGeometry x="1370" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="lbl_fc" value="pipeline.file_catalogue" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#37474F;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="40" y="170" width="260" height="40" as="geometry"/></mxCell>
+        <mxCell id="d_fc" value="&lt;b&gt;F | received | sftp_path=...&#10;     s3_raw_path=...&#10;     last_run_id=NULL&lt;/b&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF8E1;strokeColor=#37474F;fontFamily=Courier New;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="40" y="215" width="260" height="70" as="geometry"/></mxCell>
+        <mxCell id="lbl_rl" value="pipeline.run_log" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#37474F;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="320" y="170" width="430" height="40" as="geometry"/></mxCell>
+        <mxCell id="d_rl" value="1 | orchestration | NULL  | running   | orchestrators=[]&#10;&lt;b&gt;2 | ingestion       | F      | running   | orchestrators=[{1, orchestrates}]&lt;/b&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF8E1;strokeColor=#37474F;fontFamily=Courier New;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="320" y="215" width="430" height="70" as="geometry"/></mxCell>
+        <mxCell id="lbl_sl" value="pipeline.run_stage_log" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#37474F;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="770" y="170" width="260" height="40" as="geometry"/></mxCell>
+        <mxCell id="d_sl" value="&lt;b&gt;2 | validate_schema | stage_started   | running&#10;2 | validate_schema | stage_completed | succeeded&lt;/b&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF8E1;strokeColor=#37474F;fontFamily=Courier New;fontSize=9;align=left;spacingLeft=6;" vertex="1" parent="1"><mxGeometry x="770" y="215" width="260" height="70" as="geometry"/></mxCell>
+        <mxCell id="lbl_le" value="pipeline.lineage_edge" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#37474F;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="1050" y="170" width="280" height="40" as="geometry"/></mxCell>
+        <mxCell id="d_le" value="(empty)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#999;fontFamily=Courier New;fontSize=10;align=center;fontColor=#888;" vertex="1" parent="1"><mxGeometry x="1050" y="215" width="280" height="70" as="geometry"/></mxCell>
+        <mxCell id="lbl_rc" value="pipeline.reconciliation_log" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#37474F;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="1350" y="170" width="310" height="40" as="geometry"/></mxCell>
+        <mxCell id="d_rc" value="(empty)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#999;fontFamily=Courier New;fontSize=10;align=center;fontColor=#888;" vertex="1" parent="1"><mxGeometry x="1350" y="215" width="310" height="70" as="geometry"/></mxCell>
+        <mxCell id="lbl_tgt" value="ods.&lt;target&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#00695C;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="40" y="305" width="260" height="40" as="geometry"/></mxCell>
+        <mxCell id="d_tgt" value="(empty)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#999;fontFamily=Courier New;fontSize=10;align=center;fontColor=#888;" vertex="1" parent="1"><mxGeometry x="40" y="350" width="260" height="60" as="geometry"/></mxCell>
+        <mxCell id="note" value="WHAT JUST HAPPENED&#10;━━━━━━━━━━━━━━━━━━━━━━━&#10;1) Landing task created file_id F in file_catalogue (state='received').&#10;2) Ingestion task started → minted ingestion_run_id=2, INSERTED run_log row (pipeline_type='ingestion'), with orchestrators=[{1, orchestrates}].&#10;3) First stage validate_schema: stages.start + stages.finish = 2 rows in run_stage_log, both with run_id=2, attempt_number=1.&#10;Schema OK → file proceeds. (If schema mismatch the whole file would abort here — see Appendix in guide.)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF4E5;strokeColor=#E65100;fontSize=11;align=left;spacingLeft=12;spacingRight=12;spacingTop=8;" vertex="1" parent="1"><mxGeometry x="40" y="430" width="1620" height="130" as="geometry"/></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+
+  <diagram name="Step 3 — DQ check" id="s3">
+    <mxGraphModel dx="1400" dy="900" grid="0" page="1" pageScale="1" pageWidth="1700" pageHeight="900">
+      <root>
+        <mxCell id="0"/><mxCell id="1" parent="0"/>
+        <mxCell id="t" value="After Step 3 — DQ check (row-level rejection; bad rows to DLQ)" style="text;html=1;align=center;fontSize=16;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="20" width="1620" height="30" as="geometry"/></mxCell>
+        <mxCell id="uu" value="UUIDs equal step numbers: orchestration=1, ingestion=2, load=6.  file_id=F." style="text;html=1;align=center;fontSize=11;fontFamily=Courier New;fillColor=#F5F5F5;strokeColor=#999;" vertex="1" parent="1"><mxGeometry x="40" y="55" width="1620" height="22" as="geometry"/></mxCell>
+        <mxCell id="p1" value="1 DAG start" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;fontSize=11;" vertex="1" parent="1"><mxGeometry x="40" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p2" value="2 validate schema" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4E5;strokeColor=#E65100;fontSize=11;" vertex="1" parent="1"><mxGeometry x="230" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p3" value="&lt;b style=&quot;font-size:18px&quot;&gt;3&lt;/b&gt; DQ check" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4E5;strokeColor=#E65100;fontStyle=1;fontSize=11;" vertex="1" parent="1"><mxGeometry x="420" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p4" value="4 transform" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#BBBBBB;fontColor=#999;fontSize=11;" vertex="1" parent="1"><mxGeometry x="610" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p5" value="5 reconcile t0" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#BBBBBB;fontColor=#999;fontSize=11;" vertex="1" parent="1"><mxGeometry x="800" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p6" value="6 load to postgres" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#BBBBBB;fontColor=#999;fontSize=11;" vertex="1" parent="1"><mxGeometry x="990" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p7" value="7 reconcile pg" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#BBBBBB;fontColor=#999;fontSize=11;" vertex="1" parent="1"><mxGeometry x="1180" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p8" value="8 DAG end" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#BBBBBB;fontColor=#999;fontSize=11;" vertex="1" parent="1"><mxGeometry x="1370" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="lbl_fc" value="pipeline.file_catalogue" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#37474F;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="40" y="170" width="260" height="40" as="geometry"/></mxCell>
+        <mxCell id="d_fc" value="F | received | sftp_path=...&#10;     s3_raw_path=...&#10;     last_run_id=NULL" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF;strokeColor=#37474F;fontFamily=Courier New;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="40" y="215" width="260" height="70" as="geometry"/></mxCell>
+        <mxCell id="lbl_rl" value="pipeline.run_log" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#37474F;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="320" y="170" width="430" height="40" as="geometry"/></mxCell>
+        <mxCell id="d_rl" value="1 | orchestration | NULL  | running   | orchestrators=[]&#10;2 | ingestion       | F      | running   | orchestrators=[{1, orchestrates}]" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF;strokeColor=#37474F;fontFamily=Courier New;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="320" y="215" width="430" height="70" as="geometry"/></mxCell>
+        <mxCell id="lbl_sl" value="pipeline.run_stage_log" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#37474F;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="770" y="170" width="260" height="40" as="geometry"/></mxCell>
+        <mxCell id="d_sl" value="2 | validate_schema | started   | running&#10;2 | validate_schema | completed | succeeded&#10;&lt;b&gt;2 | dq_check        | started   | running&#10;2 | dq_check        | completed | succeeded&#10;       record_count_out=100, dq_fail=2&lt;/b&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF8E1;strokeColor=#37474F;fontFamily=Courier New;fontSize=9;align=left;spacingLeft=6;" vertex="1" parent="1"><mxGeometry x="770" y="215" width="260" height="100" as="geometry"/></mxCell>
+        <mxCell id="lbl_le" value="pipeline.lineage_edge" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#37474F;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="1050" y="170" width="280" height="40" as="geometry"/></mxCell>
+        <mxCell id="d_le" value="(empty)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#999;fontFamily=Courier New;fontSize=10;align=center;fontColor=#888;" vertex="1" parent="1"><mxGeometry x="1050" y="215" width="280" height="70" as="geometry"/></mxCell>
+        <mxCell id="lbl_rc" value="pipeline.reconciliation_log" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#37474F;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="1350" y="170" width="310" height="40" as="geometry"/></mxCell>
+        <mxCell id="d_rc" value="(empty)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#999;fontFamily=Courier New;fontSize=10;align=center;fontColor=#888;" vertex="1" parent="1"><mxGeometry x="1350" y="215" width="310" height="70" as="geometry"/></mxCell>
+        <mxCell id="lbl_dlq" value="S3 DLQ (rejected rows)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFEBEE;strokeColor=#C62828;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="40" y="330" width="260" height="40" as="geometry"/></mxCell>
+        <mxCell id="d_dlq" value="&lt;b&gt;s3://ods-dlq/.../run_id=2/&#10;2 rows + reason column&lt;/b&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFEBEE;strokeColor=#C62828;fontFamily=Courier New;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="40" y="375" width="260" height="50" as="geometry"/></mxCell>
+        <mxCell id="note" value="WHAT JUST HAPPENED&#10;━━━━━━━━━━━━━━━━━━━━━━━&#10;DQ check ran 100 rows. 98 passed, 2 hit hard_blocks → DLQ.&#10;run_stage_log gained 2 more rows (dq_check started + completed) under same run_id=2.&#10;The bad rows landed in S3 DLQ tagged with run_id=2. Counts are tracked on the stage row (record_count_out, dq_fail) and will be summed onto run_log at finalise.&#10;Note: schema validation cannot DLQ (file-level reject); only DQ check produces DLQ rows." style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF4E5;strokeColor=#E65100;fontSize=11;align=left;spacingLeft=12;spacingRight=12;spacingTop=8;" vertex="1" parent="1"><mxGeometry x="40" y="450" width="1620" height="130" as="geometry"/></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+
+  <diagram name="Step 4 — transform" id="s4">
+    <mxGraphModel dx="1400" dy="900" grid="0" page="1" pageScale="1" pageWidth="1700" pageHeight="900">
+      <root>
+        <mxCell id="0"/><mxCell id="1" parent="0"/>
+        <mxCell id="t" value="After Step 4 — transform (non-canonical field-mapping; produces curated Parquet)" style="text;html=1;align=center;fontSize=16;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="20" width="1620" height="30" as="geometry"/></mxCell>
+        <mxCell id="uu" value="UUIDs equal step numbers: orchestration=1, ingestion=2, load=6.  file_id=F." style="text;html=1;align=center;fontSize=11;fontFamily=Courier New;fillColor=#F5F5F5;strokeColor=#999;" vertex="1" parent="1"><mxGeometry x="40" y="55" width="1620" height="22" as="geometry"/></mxCell>
+        <mxCell id="p1" value="1 DAG start" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;fontSize=11;" vertex="1" parent="1"><mxGeometry x="40" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p2" value="2 validate schema" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4E5;strokeColor=#E65100;fontSize=11;" vertex="1" parent="1"><mxGeometry x="230" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p3" value="3 DQ check" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4E5;strokeColor=#E65100;fontSize=11;" vertex="1" parent="1"><mxGeometry x="420" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p4" value="&lt;b style=&quot;font-size:18px&quot;&gt;4&lt;/b&gt; transform" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4E5;strokeColor=#E65100;fontStyle=1;fontSize=11;" vertex="1" parent="1"><mxGeometry x="610" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p5" value="5 reconcile t0" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#BBBBBB;fontColor=#999;fontSize=11;" vertex="1" parent="1"><mxGeometry x="800" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p6" value="6 load to postgres" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#BBBBBB;fontColor=#999;fontSize=11;" vertex="1" parent="1"><mxGeometry x="990" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p7" value="7 reconcile pg" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#BBBBBB;fontColor=#999;fontSize=11;" vertex="1" parent="1"><mxGeometry x="1180" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p8" value="8 DAG end" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#BBBBBB;fontColor=#999;fontSize=11;" vertex="1" parent="1"><mxGeometry x="1370" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="lbl_fc" value="pipeline.file_catalogue" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#37474F;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="40" y="170" width="260" height="40" as="geometry"/></mxCell>
+        <mxCell id="d_fc" value="F | received | last_run_id=NULL&#10;     (state not yet curated;&#10;     flips at step 5)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF;strokeColor=#37474F;fontFamily=Courier New;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="40" y="215" width="260" height="70" as="geometry"/></mxCell>
+        <mxCell id="lbl_rl" value="pipeline.run_log" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#37474F;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="320" y="170" width="430" height="40" as="geometry"/></mxCell>
+        <mxCell id="d_rl" value="1 | orchestration | NULL  | running   | orchestrators=[]&#10;2 | ingestion       | F      | running   | orchestrators=[{1, orchestrates}]" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF;strokeColor=#37474F;fontFamily=Courier New;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="320" y="215" width="430" height="70" as="geometry"/></mxCell>
+        <mxCell id="lbl_sl" value="pipeline.run_stage_log" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#37474F;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="770" y="170" width="260" height="40" as="geometry"/></mxCell>
+        <mxCell id="d_sl" value="2 | validate_schema | start+done&#10;2 | dq_check        | start+done&#10;&lt;b&gt;2 | transform       | start+done&#10;     record_count_in=98, out=98&lt;/b&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF8E1;strokeColor=#37474F;fontFamily=Courier New;fontSize=9;align=left;spacingLeft=6;" vertex="1" parent="1"><mxGeometry x="770" y="215" width="260" height="90" as="geometry"/></mxCell>
+        <mxCell id="lbl_le" value="pipeline.lineage_edge" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#37474F;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="1050" y="170" width="280" height="40" as="geometry"/></mxCell>
+        <mxCell id="d_le" value="&lt;b&gt;consumer=2, upstream=NULL, source_file=F&#10;edge=raw_to_curated&#10;source_ref=s3://ods-raw/.../country_codes_20260521.csv&#10;target_ref=s3://ods-curated/.../date=20260521/&#10;record_count=98&lt;/b&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF8E1;strokeColor=#37474F;fontFamily=Courier New;fontSize=9;align=left;spacingLeft=6;" vertex="1" parent="1"><mxGeometry x="1050" y="215" width="280" height="90" as="geometry"/></mxCell>
+        <mxCell id="lbl_rc" value="pipeline.reconciliation_log" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#37474F;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="1350" y="170" width="310" height="40" as="geometry"/></mxCell>
+        <mxCell id="d_rc" value="(empty)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#999;fontFamily=Courier New;fontSize=10;align=center;fontColor=#888;" vertex="1" parent="1"><mxGeometry x="1350" y="215" width="310" height="70" as="geometry"/></mxCell>
+        <mxCell id="lbl_cur" value="S3 curated (Parquet)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E3F2FD;strokeColor=#1565C0;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="40" y="320" width="260" height="40" as="geometry"/></mxCell>
+        <mxCell id="d_cur" value="&lt;b&gt;s3://ods-curated/.../&#10;98 rows in target shape&lt;/b&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E3F2FD;strokeColor=#1565C0;fontFamily=Courier New;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="40" y="365" width="260" height="55" as="geometry"/></mxCell>
+        <mxCell id="note" value="WHAT JUST HAPPENED&#10;━━━━━━━━━━━━━━━━━━━━━━━&#10;Transform applied field mappings + type coercions per transform.yaml. 98 rows produced curated Parquet at S3 curated path.&#10;run_stage_log gained 2 more rows (transform started + completed) under run_id=2.&#10;file_catalogue.state has NOT moved to 'curated' yet — that happens at step 5 when ingestion finalises and writes lineage + recon together.&#10;If the dataset is canonical (is_canonical=true) this step is skipped entirely; curated Parquet is the canonical shape from DQ check directly." style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF4E5;strokeColor=#E65100;fontSize=11;align=left;spacingLeft=12;spacingRight=12;spacingTop=8;" vertex="1" parent="1"><mxGeometry x="40" y="450" width="1620" height="140" as="geometry"/></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+
+  <diagram name="Step 5 — reconcile t0 + ingestion finalise" id="s5">
+    <mxGraphModel dx="1400" dy="900" grid="0" page="1" pageScale="1" pageWidth="1700" pageHeight="900">
+      <root>
+        <mxCell id="0"/><mxCell id="1" parent="0"/>
+        <mxCell id="t" value="After Step 5 — t0_ingestion_count + ingestion run closed; file_catalogue → curated; raw_to_curated lineage written" style="text;html=1;align=center;fontSize=14;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="20" width="1620" height="30" as="geometry"/></mxCell>
+        <mxCell id="uu" value="UUIDs equal step numbers: orchestration=1, ingestion=2, load=6.  file_id=F." style="text;html=1;align=center;fontSize=11;fontFamily=Courier New;fillColor=#F5F5F5;strokeColor=#999;" vertex="1" parent="1"><mxGeometry x="40" y="55" width="1620" height="22" as="geometry"/></mxCell>
+        <mxCell id="p1" value="1 DAG start" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;fontSize=11;" vertex="1" parent="1"><mxGeometry x="40" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p2" value="2 validate schema" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4E5;strokeColor=#E65100;fontSize=11;" vertex="1" parent="1"><mxGeometry x="230" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p3" value="3 DQ check" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4E5;strokeColor=#E65100;fontSize=11;" vertex="1" parent="1"><mxGeometry x="420" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p4" value="4 transform" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4E5;strokeColor=#E65100;fontSize=11;" vertex="1" parent="1"><mxGeometry x="610" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p5" value="&lt;b style=&quot;font-size:18px&quot;&gt;5&lt;/b&gt; reconcile t0" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FCE4EC;strokeColor=#AD1457;fontStyle=1;fontSize=11;" vertex="1" parent="1"><mxGeometry x="800" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p6" value="6 load to postgres" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#BBBBBB;fontColor=#999;fontSize=11;" vertex="1" parent="1"><mxGeometry x="990" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p7" value="7 reconcile pg" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#BBBBBB;fontColor=#999;fontSize=11;" vertex="1" parent="1"><mxGeometry x="1180" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p8" value="8 DAG end" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#BBBBBB;fontColor=#999;fontSize=11;" vertex="1" parent="1"><mxGeometry x="1370" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="lbl_fc" value="pipeline.file_catalogue" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#37474F;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="40" y="170" width="280" height="40" as="geometry"/></mxCell>
+        <mxCell id="d_fc" value="&lt;b&gt;F | curated | last_run_id=2&#10;     s3_curated_path=...&#10;     state_updated_at=NOW()&lt;/b&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF8E1;strokeColor=#37474F;fontFamily=Courier New;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="40" y="215" width="280" height="70" as="geometry"/></mxCell>
+        <mxCell id="lbl_rl" value="pipeline.run_log" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#37474F;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="340" y="170" width="430" height="40" as="geometry"/></mxCell>
+        <mxCell id="d_rl" value="1 | orchestration | NULL | running&#10;&lt;b&gt;2 | ingestion       | F     | succeeded  record_count_source=100,&#10;                                       dq_pass=98, dq_fail=2,&#10;                                       ended_at=NOW()&lt;/b&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF8E1;strokeColor=#37474F;fontFamily=Courier New;fontSize=9;align=left;spacingLeft=6;" vertex="1" parent="1"><mxGeometry x="340" y="215" width="430" height="90" as="geometry"/></mxCell>
+        <mxCell id="lbl_sl" value="pipeline.run_stage_log" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#37474F;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="790" y="170" width="240" height="40" as="geometry"/></mxCell>
+        <mxCell id="d_sl" value="2 | validate_schema&#10;2 | dq_check&#10;2 | transform&#10;(start+done each)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF;strokeColor=#37474F;fontFamily=Courier New;fontSize=9;align=left;spacingLeft=6;" vertex="1" parent="1"><mxGeometry x="790" y="215" width="240" height="80" as="geometry"/></mxCell>
+        <mxCell id="lbl_le" value="pipeline.lineage_edge" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#37474F;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="1050" y="170" width="280" height="40" as="geometry"/></mxCell>
+        <mxCell id="d_le" value="consumer=2, upstream=NULL, source_file=F&#10;edge=raw_to_curated&#10;source_ref=s3://ods-raw/.../country_codes_20260521.csv&#10;target_ref=s3://ods-curated/.../date=20260521/&#10;record_count=98" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF;strokeColor=#37474F;fontFamily=Courier New;fontSize=9;align=left;spacingLeft=6;" vertex="1" parent="1"><mxGeometry x="1050" y="215" width="280" height="90" as="geometry"/></mxCell>
+        <mxCell id="lbl_rc" value="pipeline.reconciliation_log" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#37474F;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="1350" y="170" width="310" height="40" as="geometry"/></mxCell>
+        <mxCell id="d_rc" value="&lt;b&gt;run=2 | t0_ingestion_count&#10;       source_count=100&#10;       accounted_count=98&#10;       status=ok&lt;/b&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF8E1;strokeColor=#37474F;fontFamily=Courier New;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="1350" y="215" width="310" height="90" as="geometry"/></mxCell>
+        <mxCell id="note" value="WHAT JUST HAPPENED  (the busiest step — ingestion finalise)&#10;━━━━━━━━━━━━━━━━━━━━━━━&#10;Ingestion task wrote FOUR things atomically:&#10;  1) reconciliation_log row: source_count=100, accounted_count = dq_pass + dq_fail = 98 + 2 = 100. tol passes → status='ok'.&#10;  2) lineage_edge row: consumer=2, source_file=F, edge_type='raw_to_curated', source_ref=raw, target_ref=curated, record_count=98.&#10;  3) file_catalogue UPDATE: state='curated', s3_curated_path set, last_run_id=2.&#10;  4) run_log UPDATE: status='succeeded', record_count_source=100, dq_pass=98, dq_fail=2, ended_at=NOW().&#10;Note: upstream_run_id on the lineage_edge is NULL — the FILE is the data source, not a prior run." style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FCE4EC;strokeColor=#AD1457;fontSize=11;align=left;spacingLeft=12;spacingRight=12;spacingTop=8;" vertex="1" parent="1"><mxGeometry x="40" y="325" width="1620" height="200" as="geometry"/></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+
+  <diagram name="Step 6 — load to postgres" id="s6">
+    <mxGraphModel dx="1400" dy="900" grid="0" page="1" pageScale="1" pageWidth="1700" pageHeight="900">
+      <root>
+        <mxCell id="0"/><mxCell id="1" parent="0"/>
+        <mxCell id="t" value="After Step 6 — load task started + wrote target rows (run open, not yet closed)" style="text;html=1;align=center;fontSize=15;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="20" width="1620" height="30" as="geometry"/></mxCell>
+        <mxCell id="uu" value="UUIDs equal step numbers: orchestration=1, ingestion=2, load=6.  file_id=F." style="text;html=1;align=center;fontSize=11;fontFamily=Courier New;fillColor=#F5F5F5;strokeColor=#999;" vertex="1" parent="1"><mxGeometry x="40" y="55" width="1620" height="22" as="geometry"/></mxCell>
+        <mxCell id="p1" value="1 DAG start" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;fontSize=11;" vertex="1" parent="1"><mxGeometry x="40" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p2" value="2 validate schema" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4E5;strokeColor=#E65100;fontSize=11;" vertex="1" parent="1"><mxGeometry x="230" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p3" value="3 DQ check" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4E5;strokeColor=#E65100;fontSize=11;" vertex="1" parent="1"><mxGeometry x="420" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p4" value="4 transform" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4E5;strokeColor=#E65100;fontSize=11;" vertex="1" parent="1"><mxGeometry x="610" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p5" value="5 reconcile t0" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FCE4EC;strokeColor=#AD1457;fontSize=11;" vertex="1" parent="1"><mxGeometry x="800" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p6" value="&lt;b style=&quot;font-size:18px&quot;&gt;6&lt;/b&gt; load to postgres" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4E5;strokeColor=#E65100;fontStyle=1;fontSize=11;" vertex="1" parent="1"><mxGeometry x="990" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p7" value="7 reconcile pg" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#BBBBBB;fontColor=#999;fontSize=11;" vertex="1" parent="1"><mxGeometry x="1180" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p8" value="8 DAG end" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#BBBBBB;fontColor=#999;fontSize=11;" vertex="1" parent="1"><mxGeometry x="1370" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="lbl_fc" value="pipeline.file_catalogue" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#37474F;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="40" y="170" width="280" height="40" as="geometry"/></mxCell>
+        <mxCell id="d_fc" value="F | curated | last_run_id=2&#10;     (state still curated;&#10;     flips to loaded at step 7)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF;strokeColor=#37474F;fontFamily=Courier New;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="40" y="215" width="280" height="70" as="geometry"/></mxCell>
+        <mxCell id="lbl_rl" value="pipeline.run_log" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#37474F;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="340" y="170" width="430" height="40" as="geometry"/></mxCell>
+        <mxCell id="d_rl" value="1 | orchestration   | NULL | running&#10;2 | ingestion         | F     | succeeded&#10;&lt;b&gt;6 | direct_postgres   | F     | running  orchestrators=[{1, orchestrates}]&lt;/b&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF8E1;strokeColor=#37474F;fontFamily=Courier New;fontSize=9;align=left;spacingLeft=6;" vertex="1" parent="1"><mxGeometry x="340" y="215" width="430" height="80" as="geometry"/></mxCell>
+        <mxCell id="lbl_sl" value="pipeline.run_stage_log" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#37474F;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="790" y="170" width="240" height="40" as="geometry"/></mxCell>
+        <mxCell id="d_sl" value="2 × validate_schema, dq_check, transform&#10;&lt;b&gt;6 | postgres_write | started   | running&#10;6 | postgres_write | completed | succeeded&#10;     record_count_in=98, out=98&lt;/b&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF8E1;strokeColor=#37474F;fontFamily=Courier New;fontSize=9;align=left;spacingLeft=6;" vertex="1" parent="1"><mxGeometry x="790" y="215" width="240" height="100" as="geometry"/></mxCell>
+        <mxCell id="lbl_le" value="pipeline.lineage_edge" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#37474F;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="1050" y="170" width="280" height="40" as="geometry"/></mxCell>
+        <mxCell id="d_le" value="row1: consumer=2, source_file=F, raw_to_curated&#10;       source_ref=s3://ods-raw/.../...csv&#10;       target_ref=s3://ods-curated/.../&#10;&lt;b&gt;row2: consumer=6, upstream=2, source_file=F, curated_to_postgres&#10;       source_ref=s3://ods-curated/.../   ← this is the curated file that was loaded&#10;       target_ref=jdbc:postgresql://.../ods.insurance_country_code&#10;       record_count=98&lt;/b&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF8E1;strokeColor=#37474F;fontFamily=Courier New;fontSize=9;align=left;spacingLeft=4;" vertex="1" parent="1"><mxGeometry x="1050" y="215" width="280" height="140" as="geometry"/></mxCell>
+        <mxCell id="lbl_rc" value="pipeline.reconciliation_log" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#37474F;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="1350" y="170" width="310" height="40" as="geometry"/></mxCell>
+        <mxCell id="d_rc" value="run=2 | t0_ingestion_count | ok&#10;(direct_postgres_count pending step 7)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF;strokeColor=#37474F;fontFamily=Courier New;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="1350" y="215" width="310" height="70" as="geometry"/></mxCell>
+        <mxCell id="lbl_tgt" value="ods.&lt;target&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#E0F2F1;strokeColor=#00695C;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="40" y="325" width="280" height="40" as="geometry"/></mxCell>
+        <mxCell id="d_tgt" value="&lt;b&gt;98 rows, each stamped:&#10;  _ods_file_id = F&#10;  _ods_run_id  = 6    ← load run, NOT 2&lt;/b&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E0F2F1;strokeColor=#00695C;fontFamily=Courier New;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="40" y="370" width="280" height="80" as="geometry"/></mxCell>
+        <mxCell id="note" value="WHAT JUST HAPPENED&#10;━━━━━━━━━━━━━━━━━━━━━━━&#10;Load task started → minted pg_write_run_id 6, INSERTED run_log row (pipeline_type='direct_postgres'), orchestrators=[{1, orchestrates}].&#10;Stage postgres_write: start + done = 2 rows in run_stage_log under 6.&#10;98 rows written to ods.&lt;target&gt;. Every row stamped _ods_file_id=F and _ods_run_id=6. (Rule: _ods_run_id = the WRITER, not the ingestion run that produced curated.)&#10;run_log 6 is still 'running' — the finalising writes (lineage, recon, file state, status) happen at step 7." style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF4E5;strokeColor=#E65100;fontSize=11;align=left;spacingLeft=12;spacingRight=12;spacingTop=8;" vertex="1" parent="1"><mxGeometry x="340" y="465" width="1320" height="140" as="geometry"/></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+
+  <diagram name="Step 7 — reconcile direct_postgres + load finalise" id="s7">
+    <mxGraphModel dx="1400" dy="900" grid="0" page="1" pageScale="1" pageWidth="1700" pageHeight="900">
+      <root>
+        <mxCell id="0"/><mxCell id="1" parent="0"/>
+        <mxCell id="t" value="After Step 7 — direct_postgres_count + load finalise; curated_to_postgres lineage; file_catalogue → loaded" style="text;html=1;align=center;fontSize=14;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="20" width="1620" height="30" as="geometry"/></mxCell>
+        <mxCell id="uu" value="UUIDs equal step numbers: orchestration=1, ingestion=2, load=6.  file_id=F." style="text;html=1;align=center;fontSize=11;fontFamily=Courier New;fillColor=#F5F5F5;strokeColor=#999;" vertex="1" parent="1"><mxGeometry x="40" y="55" width="1620" height="22" as="geometry"/></mxCell>
+        <mxCell id="p1" value="1 DAG start" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;fontSize=11;" vertex="1" parent="1"><mxGeometry x="40" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p2" value="2 validate schema" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4E5;strokeColor=#E65100;fontSize=11;" vertex="1" parent="1"><mxGeometry x="230" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p3" value="3 DQ check" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4E5;strokeColor=#E65100;fontSize=11;" vertex="1" parent="1"><mxGeometry x="420" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p4" value="4 transform" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4E5;strokeColor=#E65100;fontSize=11;" vertex="1" parent="1"><mxGeometry x="610" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p5" value="5 reconcile t0" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FCE4EC;strokeColor=#AD1457;fontSize=11;" vertex="1" parent="1"><mxGeometry x="800" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p6" value="6 load to postgres" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4E5;strokeColor=#E65100;fontSize=11;" vertex="1" parent="1"><mxGeometry x="990" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p7" value="&lt;b style=&quot;font-size:18px&quot;&gt;7&lt;/b&gt; reconcile pg" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FCE4EC;strokeColor=#AD1457;fontStyle=1;fontSize=11;" vertex="1" parent="1"><mxGeometry x="1180" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p8" value="8 DAG end" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#BBBBBB;fontColor=#999;fontSize=11;" vertex="1" parent="1"><mxGeometry x="1370" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="lbl_fc" value="pipeline.file_catalogue" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#37474F;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="40" y="170" width="280" height="40" as="geometry"/></mxCell>
+        <mxCell id="d_fc" value="&lt;b&gt;F | loaded | last_run_id=6&#10;     state_updated_at=NOW()&lt;/b&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF8E1;strokeColor=#37474F;fontFamily=Courier New;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="40" y="215" width="280" height="60" as="geometry"/></mxCell>
+        <mxCell id="lbl_rl" value="pipeline.run_log" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#37474F;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="340" y="170" width="430" height="40" as="geometry"/></mxCell>
+        <mxCell id="d_rl" value="1 | orchestration   | NULL | running&#10;2 | ingestion         | F     | succeeded&#10;&lt;b&gt;6 | direct_postgres   | F     | succeeded  record_count_source=98,&#10;                                       record_count_target=98,&#10;                                       ended_at=NOW()&lt;/b&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF8E1;strokeColor=#37474F;fontFamily=Courier New;fontSize=9;align=left;spacingLeft=6;" vertex="1" parent="1"><mxGeometry x="340" y="215" width="430" height="100" as="geometry"/></mxCell>
+        <mxCell id="lbl_sl" value="pipeline.run_stage_log" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#37474F;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="790" y="170" width="240" height="40" as="geometry"/></mxCell>
+        <mxCell id="d_sl" value="2 × validate_schema, dq_check, transform&#10;6 × postgres_write&#10;(8 rows total = 4 stages × 2)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF;strokeColor=#37474F;fontFamily=Courier New;fontSize=9;align=left;spacingLeft=6;" vertex="1" parent="1"><mxGeometry x="790" y="215" width="240" height="80" as="geometry"/></mxCell>
+        <mxCell id="lbl_le" value="pipeline.lineage_edge" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#37474F;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="1050" y="170" width="280" height="40" as="geometry"/></mxCell>
+        <mxCell id="d_le" value="row1: consumer=2, source_file=F, raw_to_curated&#10;       source_ref=s3://ods-raw/.../...csv&#10;       target_ref=s3://ods-curated/.../&#10;row2: consumer=6, upstream=2, source_file=F, curated_to_postgres&#10;       source_ref=s3://ods-curated/.../&#10;       target_ref=jdbc:postgresql://.../ods.insurance_country_code" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF;strokeColor=#37474F;fontFamily=Courier New;fontSize=9;align=left;spacingLeft=4;" vertex="1" parent="1"><mxGeometry x="1050" y="215" width="280" height="120" as="geometry"/></mxCell>
+        <mxCell id="lbl_rc" value="pipeline.reconciliation_log" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#37474F;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="1350" y="170" width="310" height="40" as="geometry"/></mxCell>
+        <mxCell id="d_rc" value="run=2 | t0_ingestion_count    | source=100, accounted=98, ok&#10;&lt;b&gt;run=6 | direct_postgres_count | source=98, postgres=98, ok&lt;/b&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF8E1;strokeColor=#37474F;fontFamily=Courier New;fontSize=9;align=left;spacingLeft=4;" vertex="1" parent="1"><mxGeometry x="1350" y="215" width="310" height="80" as="geometry"/></mxCell>
+        <mxCell id="note" value="WHAT JUST HAPPENED  (load finalise — symmetric to step 5)&#10;━━━━━━━━━━━━━━━━━━━━━━━&#10;Load task wrote FOUR things atomically:&#10;  1) reconciliation_log row: source_count=98 (curated), postgres_count=98 (target table), status='ok'.&#10;  2) lineage_edge row: consumer=6, upstream=2, source_file=F, edge_type='curated_to_postgres' — BOTH parents set (data parent + file parent).&#10;  3) file_catalogue UPDATE: state='loaded' (terminal success), last_run_id=6.&#10;  4) run_log P UPDATE: status='succeeded', record_count_source=98, record_count_target=98, ended_at=NOW().&#10;The full lineage chain now exists: file F → run I → run P → ods.&lt;target&gt;." style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FCE4EC;strokeColor=#AD1457;fontSize=11;align=left;spacingLeft=12;spacingRight=12;spacingTop=8;" vertex="1" parent="1"><mxGeometry x="40" y="335" width="1620" height="200" as="geometry"/></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+
+  <diagram name="Step 8 — DAG end" id="s8">
+    <mxGraphModel dx="1400" dy="900" grid="0" page="1" pageScale="1" pageWidth="1700" pageHeight="900">
+      <root>
+        <mxCell id="0"/><mxCell id="1" parent="0"/>
+        <mxCell id="t" value="After Step 8 — DAG end (orchestration run closed; file fully processed)" style="text;html=1;align=center;fontSize=16;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="20" width="1620" height="30" as="geometry"/></mxCell>
+        <mxCell id="uu" value="UUIDs equal step numbers: orchestration=1, ingestion=2, load=6.  file_id=F." style="text;html=1;align=center;fontSize=11;fontFamily=Courier New;fillColor=#F5F5F5;strokeColor=#999;" vertex="1" parent="1"><mxGeometry x="40" y="55" width="1620" height="22" as="geometry"/></mxCell>
+        <mxCell id="p1" value="1 DAG start" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;fontSize=11;" vertex="1" parent="1"><mxGeometry x="40" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p2" value="2 validate schema" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4E5;strokeColor=#E65100;fontSize=11;" vertex="1" parent="1"><mxGeometry x="230" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p3" value="3 DQ check" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4E5;strokeColor=#E65100;fontSize=11;" vertex="1" parent="1"><mxGeometry x="420" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p4" value="4 transform" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4E5;strokeColor=#E65100;fontSize=11;" vertex="1" parent="1"><mxGeometry x="610" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p5" value="5 reconcile t0" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FCE4EC;strokeColor=#AD1457;fontSize=11;" vertex="1" parent="1"><mxGeometry x="800" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p6" value="6 load to postgres" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4E5;strokeColor=#E65100;fontSize=11;" vertex="1" parent="1"><mxGeometry x="990" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p7" value="7 reconcile pg" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FCE4EC;strokeColor=#AD1457;fontSize=11;" vertex="1" parent="1"><mxGeometry x="1180" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="p8" value="&lt;b style=&quot;font-size:18px&quot;&gt;8&lt;/b&gt; DAG end" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;fontStyle=1;fontSize=11;" vertex="1" parent="1"><mxGeometry x="1370" y="95" width="180" height="40" as="geometry"/></mxCell>
+        <mxCell id="lbl_fc" value="pipeline.file_catalogue" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#37474F;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="40" y="170" width="280" height="40" as="geometry"/></mxCell>
+        <mxCell id="d_fc" value="F | loaded | last_run_id=6" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF;strokeColor=#37474F;fontFamily=Courier New;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="40" y="215" width="280" height="50" as="geometry"/></mxCell>
+        <mxCell id="lbl_rl" value="pipeline.run_log" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#37474F;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="340" y="170" width="430" height="40" as="geometry"/></mxCell>
+        <mxCell id="d_rl" value="&lt;b&gt;1 | orchestration   | NULL | succeeded  ended_at=NOW()&lt;/b&gt;&#10;2 | ingestion         | F     | succeeded&#10;6 | direct_postgres   | F     | succeeded" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF8E1;strokeColor=#37474F;fontFamily=Courier New;fontSize=9;align=left;spacingLeft=6;" vertex="1" parent="1"><mxGeometry x="340" y="215" width="430" height="80" as="geometry"/></mxCell>
+        <mxCell id="lbl_sl" value="pipeline.run_stage_log" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#37474F;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="790" y="170" width="240" height="40" as="geometry"/></mxCell>
+        <mxCell id="d_sl" value="8 rows (4 stages × 2 events each)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF;strokeColor=#37474F;fontFamily=Courier New;fontSize=10;align=left;spacingLeft=6;" vertex="1" parent="1"><mxGeometry x="790" y="215" width="240" height="50" as="geometry"/></mxCell>
+        <mxCell id="lbl_le" value="pipeline.lineage_edge" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#37474F;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="1050" y="170" width="280" height="40" as="geometry"/></mxCell>
+        <mxCell id="d_le" value="raw_to_curated, curated_to_postgres&#10;(2 rows)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF;strokeColor=#37474F;fontFamily=Courier New;fontSize=10;align=left;spacingLeft=6;" vertex="1" parent="1"><mxGeometry x="1050" y="215" width="280" height="60" as="geometry"/></mxCell>
+        <mxCell id="lbl_rc" value="pipeline.reconciliation_log" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#37474F;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="1350" y="170" width="310" height="40" as="geometry"/></mxCell>
+        <mxCell id="d_rc" value="t0_ingestion_count=ok&#10;direct_postgres_count=ok" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF;strokeColor=#37474F;fontFamily=Courier New;fontSize=10;align=left;spacingLeft=6;" vertex="1" parent="1"><mxGeometry x="1350" y="215" width="310" height="60" as="geometry"/></mxCell>
+        <mxCell id="lbl_tgt" value="ods.&lt;target&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#E0F2F1;strokeColor=#00695C;fontStyle=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="40" y="295" width="280" height="40" as="geometry"/></mxCell>
+        <mxCell id="d_tgt" value="98 rows, _ods_file_id=F, _ods_run_id=6" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E0F2F1;strokeColor=#00695C;fontFamily=Courier New;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="40" y="340" width="280" height="50" as="geometry"/></mxCell>
+        <mxCell id="note" value="WHAT JUST HAPPENED  (route complete)&#10;━━━━━━━━━━━━━━━━━━━━━━━&#10;DAG end task UPDATED the orchestration run_log row R: status='succeeded', ended_at=NOW(). No other writes.&#10;Total per file: 1 file_catalogue row, 3 run_log rows, 8 run_stage_log rows, 2 lineage_edge rows, 2 reconciliation_log rows, N target rows in ods.&lt;target&gt;.&#10;Every target row can be walked back to its source file via _ods_file_id, and to the writing run via _ods_run_id. Every run can be walked back to upstream runs via lineage_edge." style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;fontSize=11;align=left;spacingLeft=12;spacingRight=12;spacingTop=8;" vertex="1" parent="1"><mxGeometry x="340" y="305" width="1320" height="160" as="geometry"/></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+
+
+  <diagram name="Airflow DAG topology" id="airflow">
+    <mxGraphModel dx="1400" dy="900" grid="0" page="1" pageScale="1" pageWidth="1700" pageHeight="900">
+      <root>
+        <mxCell id="0"/><mxCell id="1" parent="0"/>
+        <mxCell id="t" value="Airflow DAG topology — how the 8 conceptual steps map to 4 real Airflow tasks" style="text;html=1;align=center;fontSize=16;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="20" width="1620" height="30" as="geometry"/></mxCell>
+        <mxCell id="sub" value="dag_ingest_direct_postgres   (Airflow scheduler runs this on every file)" style="text;html=1;align=center;fontSize=12;fontStyle=2;" vertex="1" parent="1"><mxGeometry x="40" y="55" width="1620" height="22" as="geometry"/></mxCell>
+
+        <!-- The 4 Airflow tasks -->
+        <mxCell id="t_init" value="&lt;b style=&quot;font-size:14px&quot;&gt;init_run&lt;/b&gt;&#10;@task (Python)&#10;runs in airflow-scheduler" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="60" y="120" width="220" height="80" as="geometry"/></mxCell>
+        <mxCell id="t_ingest" value="&lt;b style=&quot;font-size:14px&quot;&gt;stage_ingest&lt;/b&gt;&#10;Airflow task&#10;submits the ingestion Glue job&#10;(ods_ingestion.py — Spark)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4E5;strokeColor=#E65100;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="370" y="120" width="330" height="80" as="geometry"/></mxCell>
+        <mxCell id="t_pg" value="&lt;b style=&quot;font-size:14px&quot;&gt;stage_postgres_write&lt;/b&gt;&#10;Airflow task (long-running)&#10;submits the load Glue job&#10;(ods_postgres_write.py — Spark)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4E5;strokeColor=#E65100;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="790" y="120" width="370" height="80" as="geometry"/></mxCell>
+        <mxCell id="t_fin" value="&lt;b style=&quot;font-size:14px&quot;&gt;finalise&lt;/b&gt;&#10;@task (Python)&#10;trigger_rule=ALL_DONE&#10;runs even if upstream failed" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="1250" y="120" width="240" height="80" as="geometry"/></mxCell>
+
+        <!-- Arrows -->
+        <mxCell id="a1" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="t_init" target="t_ingest"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="a2" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="t_ingest" target="t_pg"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="a3" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="t_pg" target="t_fin"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- Mapping rows: which conceptual step happens inside which Airflow task -->
+        <mxCell id="m_init" value="conceptual step ① DAG start" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#F1F8E9;strokeColor=#2E7D32;fontFamily=Courier New;fontSize=10;align=center;" vertex="1" parent="1"><mxGeometry x="60" y="220" width="220" height="40" as="geometry"/></mxCell>
+        <mxCell id="m_ingest" value="conceptual steps ② validate_schema · ③ DQ check · ④ transform · ⑤ reconcile t0_ingestion_count" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF8E1;strokeColor=#E65100;fontFamily=Courier New;fontSize=10;align=center;spacingLeft=4;spacingRight=4;" vertex="1" parent="1"><mxGeometry x="370" y="220" width="330" height="40" as="geometry"/></mxCell>
+        <mxCell id="m_pg" value="conceptual steps ⑥ load to postgres · ⑦ reconcile direct_postgres_count" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF8E1;strokeColor=#E65100;fontFamily=Courier New;fontSize=10;align=center;spacingLeft=4;spacingRight=4;" vertex="1" parent="1"><mxGeometry x="790" y="220" width="370" height="40" as="geometry"/></mxCell>
+        <mxCell id="m_fin" value="conceptual step ⑧ DAG end" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#F1F8E9;strokeColor=#2E7D32;fontFamily=Courier New;fontSize=10;align=center;" vertex="1" parent="1"><mxGeometry x="1250" y="220" width="240" height="40" as="geometry"/></mxCell>
+
+        <!-- run_id ownership -->
+        <mxCell id="r_init" value="creates run_id=1 (orchestration)&#10;creates run_id=2 (ingestion, pre-allocated)&#10;creates run_id=6 (direct_postgres, pre-allocated)&#10;passes all 3 + file_id via XCom" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#37474F;fontFamily=Courier New;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="60" y="280" width="220" height="100" as="geometry"/></mxCell>
+        <mxCell id="r_ingest" value="uses run_id=2 (passed via --run_id arg)&#10;writes 6 rows to run_stage_log (3 stages × 2 events)&#10;writes lineage_edge raw_to_curated&#10;writes reconciliation_log t0_ingestion_count&#10;updates file_catalogue state='curated'&#10;updates run_log row 2 status='succeeded'" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#37474F;fontFamily=Courier New;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="370" y="280" width="330" height="100" as="geometry"/></mxCell>
+        <mxCell id="r_pg" value="uses run_id=6 (passed via --run_id arg)&#10;writes 2 rows to run_stage_log (postgres_write × 2)&#10;writes 98 target rows with _ods_run_id=6&#10;writes lineage_edge curated_to_postgres (upstream=2)&#10;writes reconciliation_log direct_postgres_count&#10;updates file_catalogue state='loaded'&#10;updates run_log row 6 status='succeeded'" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#37474F;fontFamily=Courier New;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="790" y="280" width="370" height="120" as="geometry"/></mxCell>
+        <mxCell id="r_fin" value="updates run_log row 1 (orchestration)&#10;status=succeeded if all child runs succeeded;&#10;status=failed if any child failed.&#10;ended_at=NOW()" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#37474F;fontFamily=Courier New;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="1250" y="280" width="240" height="100" as="geometry"/></mxCell>
+
+        <!-- Key facts -->
+        <mxCell id="facts" value="AIRFLOW HIERARCHY  +  KEY FACTS&#10;━━━━━━━━━━━━━━━━━━━━━━━&#10;• Airflow hierarchy:   DAG  →  DagRun  →  TaskInstance.&#10;     – DAG  = the workflow definition (this Python file: dag_ingest_direct_postgres).&#10;     – DagRun  = one execution of the DAG for one file (unique dag_run_id, scheduled or manually triggered).&#10;     – TaskInstance  = one execution of a single task within that DagRun. Below = 4 task instances per DagRun.&#10;• 4 Airflow tasks, NOT 8. Conceptual stages 2–5 all run inside the one stage_ingest task (one Glue/Spark job). Stages 6–7 run inside stage_postgres_write.&#10;• 2 Glue jobs in total. Each one Spark job performs MULTIPLE stages internally. Stages are run_stage_log rows, not Airflow tasks.&#10;• 3 run_log rows, allocated by init_run UPFRONT (this DAG pre-mints UUIDs). The Glue jobs receive their run_id via Airflow XCom + a --run_id CLI arg. (Other DAGs mint run_ids inside the Glue job; both patterns are valid.)&#10;• finalise uses trigger_rule=ALL_DONE so it always runs — even if a Glue job failed — to close the orchestration row with the right status." style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ECEFF1;strokeColor=#37474F;fontSize=11;align=left;spacingLeft=12;spacingRight=12;spacingTop=8;" vertex="1" parent="1"><mxGeometry x="40" y="430" width="1620" height="220" as="geometry"/></mxCell>
+
+        <!-- Inside the Glue container -->
+        <mxCell id="inside_lbl" value="INSIDE the Glue job (run by stage_ingest) — stages are Python function calls, not Airflow tasks" style="text;html=1;align=center;fontSize=12;fontStyle=1;fontColor=#E65100;" vertex="1" parent="1"><mxGeometry x="40" y="670" width="1620" height="22" as="geometry"/></mxCell>
+        <mxCell id="inside" value="ods_ingestion.py (the Spark job that stage_ingest submits):&#10;    ods_pipeline.stages.start(conn, run_id=2, stage='validate_schema', ...)&#10;    # ... validate schema ...&#10;    ods_pipeline.stages.finish(conn, run_id=2, stage='validate_schema', status='succeeded', event_type='stage_completed')&#10;    ods_pipeline.stages.start(conn, run_id=2, stage='dq_check', ...)&#10;    # ... run DQ rules, split good/bad rows, write bad rows to S3 DLQ ...&#10;    ods_pipeline.stages.finish(conn, run_id=2, stage='dq_check', ...)&#10;    ods_pipeline.stages.start(conn, run_id=2, stage='transform', ...)&#10;    # ... apply transform.yaml mappings ...&#10;    ods_pipeline.stages.finish(conn, run_id=2, stage='transform', ...)&#10;    # ── ingestion finalise ──&#10;    ods_pipeline.lineage.write_edge(conn, consumer_run_id=2, source_file_id=F, edge_type='raw_to_curated', ...)&#10;    ods_pipeline.reconciliation.write_check(conn, check_type='t0_ingestion_count', run_id=2, source_count=100, accounted_count=98, status='ok')&#10;    ods_pipeline.files.update_catalogue(conn, file_id=F, state='curated', last_run_id=2)&#10;    ods_pipeline.runs.update(conn, run_id=2, status='succeeded', record_count_source=100, record_count_dq_pass=98, record_count_dq_fail=2)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#E65100;fontFamily=Courier New;fontSize=10;align=left;spacingLeft=10;" vertex="1" parent="1"><mxGeometry x="40" y="695" width="1620" height="210" as="geometry"/></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+
+</mxfile>
