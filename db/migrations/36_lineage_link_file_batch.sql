@@ -43,8 +43,23 @@ COMMENT ON TABLE pipeline.lineage_link IS
 --    use bare write_edge without a link.  A future migration will make it
 --    NOT NULL globally.
 ALTER TABLE pipeline.lineage_edge
-    ADD COLUMN lineage_link_id UUID REFERENCES pipeline.lineage_link(lineage_link_id),
+    ADD COLUMN lineage_link_id UUID REFERENCES pipeline.lineage_link(lineage_link_id) ON DELETE CASCADE,
     ADD COLUMN slot_name       TEXT;
+
+-- Cascade existing pipeline.run_log child FKs so wiping a run cleans up
+-- lineage_edge / run_stage_log automatically (no orphan rows after rerun
+-- or test teardown).
+ALTER TABLE pipeline.lineage_edge
+    DROP CONSTRAINT IF EXISTS lineage_edge_child_run_id_fkey,
+    ADD  CONSTRAINT lineage_edge_child_run_id_fkey
+        FOREIGN KEY (consumer_run_id)
+        REFERENCES pipeline.run_log(run_id) ON DELETE CASCADE;
+
+ALTER TABLE pipeline.run_stage_log
+    DROP CONSTRAINT IF EXISTS run_stage_log_run_id_fkey,
+    ADD  CONSTRAINT run_stage_log_run_id_fkey
+        FOREIGN KEY (run_id)
+        REFERENCES pipeline.run_log(run_id) ON DELETE CASCADE;
 
 CREATE INDEX idx_lineage_edge_link ON pipeline.lineage_edge(lineage_link_id);
 
@@ -160,8 +175,9 @@ BEGIN
             'ods.insurance_file_direct_pg_upsert_demo',
             'ods.insurance_file_direct_pg_risk_demo',
             'ods.policies_enriched',
-            'pipeline.slot_staging_core',
-            'pipeline.slot_staging_enrichment',
+            -- pipeline.slot_staging_* are UPSTREAM/staging tables, not
+            -- consumer targets — they retain _ods_run_id / _ods_file_id so
+            -- the merge step can join contributions back to source runs.
             'pipeline_test.dual_current',
             'pipeline_test.dual_history'
         ])

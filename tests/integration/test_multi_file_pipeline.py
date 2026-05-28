@@ -5,7 +5,7 @@ Scenarios:
   1. Happy path              — both slots stage + merge → 4 wide rows, full lineage
   2. Partial arrival         — only core staged → no merge triggered
   3. Slot rerun              — re-stage core → merge re-runs → updated values
-  4. Merge restart           — inject failed merge_run_log → rerun succeeds idempotently
+  4. Merge restart           — inject failed merge run_log row → rerun succeeds idempotently
   5. Lineage trace           — POL001 traceable per-column back to both S3 raw paths
   6. Merge idempotency       — second merge call exits 0, row count unchanged
   7. Stage idempotency       — re-stage same path → exits 0, already-staged note
@@ -108,16 +108,8 @@ def reset_state(pg, s3):
 
 def _wipe(pg):
     cur = pg.cursor()
-    cur.execute(
-        "DELETE FROM pipeline.merge_contribution_log mc "
-        "USING pipeline.merge_run_log mr "
-        "WHERE mc.merge_run_id=mr.merge_run_id "
-        "AND mr.domain='insurance' AND mr.dataset='policies_enriched'"
-    )
-    cur.execute(
-        "DELETE FROM pipeline.merge_run_log "
-        "WHERE domain='insurance' AND dataset='policies_enriched'"
-    )
+    # lineage_link FK on run_log is ON DELETE CASCADE — wiping run_log
+    # below also drops the link rows (and lineage_edge by FK).
     cur.execute(
         "DELETE FROM pipeline.run_stage_log s USING pipeline.run_log r "
         "WHERE s.run_id=r.run_id AND r.domain='insurance' "
@@ -223,16 +215,22 @@ def test_1_happy_path(s3, pg):
     cur.execute("SELECT status FROM ods.policies_enriched WHERE policy_id='POL004'")
     assert cur.fetchone()[0] is None
 
-    # merge_run_log succeeded
-    cur.execute("SELECT status, record_count_out FROM pipeline.merge_run_log WHERE merge_run_id=%s",
-                (merge_run_id,))
+    # run_log carries the merge run (pipeline_type='merge')
+    cur.execute(
+        "SELECT status, record_count_target FROM pipeline.run_log "
+        "WHERE run_id=%s AND pipeline_type='merge'",
+        (merge_run_id,),
+    )
     mrow = cur.fetchone()
     assert mrow[0] == "succeeded"
     assert mrow[1] == 4
 
-    # merge_contribution_log: 2 rows (one per slot)
-    cur.execute("SELECT slot_name FROM pipeline.merge_contribution_log WHERE merge_run_id=%s ORDER BY slot_name",
-                (merge_run_id,))
+    # lineage_edge: one row per slot, all sharing the same lineage_link
+    cur.execute(
+        "SELECT slot_name FROM pipeline.lineage_edge "
+        "WHERE consumer_run_id=%s ORDER BY slot_name",
+        (merge_run_id,),
+    )
     slots = [r[0] for r in cur.fetchall()]
     assert slots == ["core", "enrichment"]
 
@@ -289,21 +287,29 @@ def test_3_slot_rerun(s3, pg):
                 "WHERE policy_id='POL001' AND _ods_business_date='2026-06-01'")
     assert cur.fetchone()[0] == "AGT42"
 
-    # Re-merge: use new deterministic ID (same — ensures idempotency re-run)
-    # But first reset the merge_run_log so it re-runs
-    cur.execute("DELETE FROM pipeline.merge_contribution_log mc "
-                "USING pipeline.merge_run_log mr WHERE mc.merge_run_id=mr.merge_run_id "
-                "AND mr.merge_run_id=%s", (merge_run_id,))
-    cur.execute("DELETE FROM pipeline.merge_run_log WHERE merge_run_id=%s", (merge_run_id,))
+    # Re-merge: same deterministic id; wipe prior run_log row first so it
+    # doesn't short-circuit on idempotency. CASCADE drops lineage_link/edge.
+    cur.execute(
+        "DELETE FROM pipeline.run_log WHERE run_id=%s AND pipeline_type='merge'",
+        (merge_run_id,),
+    )
     pg.commit()
 
     r3 = _merge(merge_run_id)
     assert r3.returncode == 0, r3.stderr
 
-    cur.execute("SELECT status, _ods_run_id_core FROM ods.policies_enriched WHERE policy_id='POL001'")
+    # Per-slot upstream run_id traceable via lineage_link → lineage_edge.
+    cur.execute(
+        "SELECT t.status, le.upstream_run_id "
+        "FROM ods.policies_enriched t "
+        "JOIN pipeline.lineage_edge le "
+        "  ON le.lineage_link_id = t._ods_lineage_link_id "
+        " AND le.slot_name = 'core' "
+        "WHERE t.policy_id='POL001'"
+    )
     row = cur.fetchone()
     assert row[0] == "CANCELLED"
-    assert row[1] == run_core_2
+    assert str(row[1]) == run_core_2
 
     # Enrichment column still set
     cur.execute("SELECT agent_code FROM ods.policies_enriched WHERE policy_id='POL001'")
@@ -321,11 +327,14 @@ def test_4_merge_restart(s3, pg):
 
     merge_run_id = _merge_run_id_for()
 
-    # Inject failed merge_run_log as if a prior run crashed
+    # Inject failed run_log row as if a prior merge crashed.
     cur = pg.cursor()
     cur.execute(
-        "INSERT INTO pipeline.merge_run_log (merge_run_id, domain, dataset, business_date, status, error_summary) "
-        "VALUES (%s, 'insurance', 'policies_enriched', '2026-06-01', 'failed', 'simulated crash')",
+        "INSERT INTO pipeline.run_log "
+        "  (run_id, pipeline_type, domain, dataset, business_date, "
+        "   status, error_summary, started_at) "
+        "VALUES (%s, 'merge', 'insurance', 'policies_enriched', "
+        "        '2026-06-01', 'failed', 'simulated crash', NOW())",
         (merge_run_id,),
     )
     pg.commit()
@@ -333,7 +342,11 @@ def test_4_merge_restart(s3, pg):
     r = _merge(merge_run_id)
     assert r.returncode == 0, r.stderr
 
-    cur.execute("SELECT status FROM pipeline.merge_run_log WHERE merge_run_id=%s", (merge_run_id,))
+    cur.execute(
+        "SELECT status FROM pipeline.run_log "
+        "WHERE run_id=%s AND pipeline_type='merge'",
+        (merge_run_id,),
+    )
     assert cur.fetchone()[0] == "succeeded"
 
     cur.execute("SELECT count(*) FROM ods.policies_enriched WHERE _ods_business_date='2026-06-01'")
@@ -358,21 +371,33 @@ def test_5_lineage_trace(s3, pg):
 
     cur = pg.cursor()
 
-    # Wide row carries merge_run_id + per-slot run_ids
+    # Wide row carries _ods_lineage_link_id → resolves to merge run + per-slot upstreams
     cur.execute(
-        "SELECT _ods_merge_run_id, _ods_run_id_core, _ods_run_id_enrich "
-        "FROM ods.policies_enriched WHERE policy_id='POL001'"
+        "SELECT ll.consumer_run_id::text, "
+        "       MAX(CASE WHEN le.slot_name='core'       "
+        "                THEN le.upstream_run_id::text END), "
+        "       MAX(CASE WHEN le.slot_name='enrichment' "
+        "                THEN le.upstream_run_id::text END) "
+        "FROM ods.policies_enriched t "
+        "JOIN pipeline.lineage_link ll "
+        "  ON ll.lineage_link_id = t._ods_lineage_link_id "
+        "JOIN pipeline.lineage_edge le "
+        "  ON le.lineage_link_id = t._ods_lineage_link_id "
+        "WHERE t.policy_id='POL001' "
+        "GROUP BY ll.consumer_run_id"
     )
     row = cur.fetchone()
-    assert str(row[0]) == merge_run_id
+    assert row is not None
+    assert row[0] == merge_run_id
     assert row[1] is not None
     assert row[2] is not None
 
-    # merge_contribution_log: 2 rows with s3_raw_path and columns_written
+    # lineage_edge: 2 rows (one per slot) carrying source_ref + record_count.
+    # columns_written is no longer captured — that was merge_contribution_log only.
     cur.execute(
-        "SELECT slot_name, s3_raw_path, columns_written, record_count "
-        "FROM pipeline.merge_contribution_log "
-        "WHERE merge_run_id=%s ORDER BY slot_name",
+        "SELECT slot_name, source_ref, record_count "
+        "FROM pipeline.lineage_edge "
+        "WHERE consumer_run_id=%s ORDER BY slot_name",
         (merge_run_id,),
     )
     rows = cur.fetchall()
@@ -381,16 +406,10 @@ def test_5_lineage_trace(s3, pg):
     core_row = next(r for r in rows if r[0] == "core")
     enrich_row = next(r for r in rows if r[0] == "enrichment")
 
-    # Core columns
-    assert "status" in core_row[2]
-    assert "premium" in core_row[2]
-    assert "effective_date" in core_row[2]
-    assert core_row[3] == 3
-
-    # Enrichment columns
-    assert "agent_code" in enrich_row[2]
-    assert "postcode" in enrich_row[2]
-    assert enrich_row[3] == 3
+    assert "policies_core" in (core_row[1] or "")
+    assert core_row[2] == 3
+    assert "policies_enrichment" in (enrich_row[1] or "")
+    assert enrich_row[2] == 3
 
 
 # ── Scenario 6 — Merge idempotency ───────────────────────────────────────────
@@ -417,8 +436,13 @@ def test_6_merge_idempotency(s3, pg):
     cur.execute("SELECT count(*) FROM ods.policies_enriched WHERE _ods_business_date='2026-06-01'")
     assert cur.fetchone()[0] == count_before
 
-    cur.execute("SELECT count(*) FROM pipeline.merge_run_log "
-                "WHERE domain='insurance' AND dataset='policies_enriched' AND business_date='2026-06-01'")
+    cur.execute(
+        "SELECT count(*) FROM pipeline.run_log "
+        "WHERE pipeline_type='merge' "
+        "  AND domain='insurance' "
+        "  AND dataset='policies_enriched' "
+        "  AND business_date='2026-06-01'"
+    )
     assert cur.fetchone()[0] == 1
 
 

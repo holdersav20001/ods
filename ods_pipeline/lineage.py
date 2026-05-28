@@ -117,4 +117,7 @@ def write_link(
             (link_id, consumer_run_id, edge_type, target_ref,
              record_count, json.dumps(payload)),
         )
+    # Stateless control plane: commit per write (matches how the rest of
+    # ods_ingestion_control writes through patch_run / upsert_run_header).
+    conn.commit()
     return link_id

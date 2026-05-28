@@ -99,13 +99,26 @@ def _get_latest_slot_run(conn, domain: str, slot_dataset: str,
 
 def _get_s3_raw_path(conn, run_id: str) -> str | None:
     with conn.cursor() as cur:
+        # Preferred: file_catalogue via run_log.file_id (set when the stage
+        # job registers the file). Fall back to run_stage_log.input_ref —
+        # ods_stage records the s3 path there even when it does not register
+        # the file in file_catalogue (e.g. legacy multi-file merge fixtures).
         cur.execute(
             "SELECT s3_raw_path FROM pipeline.file_catalogue WHERE file_id="
             "(SELECT file_id FROM pipeline.run_log WHERE run_id=%s LIMIT 1)",
             (run_id,),
         )
         row = cur.fetchone()
-    return row[0] if row else f"unknown (run_id={run_id})"
+        if row and row[0]:
+            return row[0]
+        cur.execute(
+            "SELECT input_ref FROM pipeline.run_stage_log "
+            "WHERE run_id=%s AND input_ref IS NOT NULL "
+            "ORDER BY started_at LIMIT 1",
+            (run_id,),
+        )
+        row = cur.fetchone()
+    return row[0] if row and row[0] else f"unknown (run_id={run_id})"
 
 
 def _read_staging(conn, staging_table: str, business_date: str) -> list[dict]:
