@@ -3,8 +3,13 @@
 ODS Glue merge job — staged slot tables → wide Postgres target.
 
 Reads all slot staging tables for a given business_date, performs a
-full-outer join, writes to the wide target table, and records per-column
-lineage in merge_contribution_log.
+full-outer join, writes to the wide target table stamped with a single
+_ods_lineage_link_id, and records one lineage_edge row per contributing
+slot under that lineage_link (each edge carries the slot_name).
+
+After migration 36 the dedicated merge_run_log and merge_contribution_log
+tables are gone — run_log + lineage_link + lineage_edge cover the same
+information uniformly with the rest of the platform.
 
 Usage:
     spark-submit ods_merge.py \
@@ -19,9 +24,12 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import uuid
 
 import psycopg2
 from utils import update_run_fields, upsert_run_header, write_stage_row
+
+import ods_pipeline  # noqa: E402  — lineage_link helper + autonomous run lookup
 
 # Slot definitions: which staging table owns which columns.
 # Derived from dataset_config at runtime; also encoded here as fallback.
@@ -111,7 +119,13 @@ def _read_staging(conn, staging_table: str, business_date: str) -> list[dict]:
 
 
 def _merge_slots(core_rows: list[dict], enrich_rows: list[dict]) -> list[dict]:
-    """Full-outer join on policy_id."""
+    """Full-outer join on policy_id.
+
+    Migration 36: the legacy ``_ods_run_id_core`` / ``_ods_run_id_enrich``
+    columns are gone. Slot contributions are recorded in
+    ``pipeline.lineage_edge`` (one row per slot) under a single
+    ``lineage_link_id`` that is stamped on every output row.
+    """
     core_map = {r["policy_id"]: r for r in core_rows}
     enrich_map = {r["policy_id"]: r for r in enrich_rows}
     all_keys = set(core_map) | set(enrich_map)
@@ -128,121 +142,98 @@ def _merge_slots(core_rows: list[dict], enrich_rows: list[dict]) -> list[dict]:
             "postcode":       e.get("postcode"),
             "risk_score":     e.get("risk_score"),
             "channel":        e.get("channel"),
-            "_ods_run_id_core":   c.get("_ods_run_id"),
-            "_ods_run_id_enrich": e.get("_ods_run_id"),
         })
     return merged
 
 
-def _write_wide(conn, rows: list[dict], merge_run_id: str, business_date: str) -> int:
+def _write_wide(
+    conn,
+    rows: list[dict],
+    lineage_link_id: str,
+    business_date: str,
+) -> int:
+    """Write merged rows to ods.policies_enriched stamped with one
+    lineage_link_id.
+
+    Migration 36 contract: every row carries _ods_lineage_link_id as the
+    sole lineage handle. Walk back to contributing slot runs via
+    pipeline.lineage_edge.lineage_link_id.
+    """
     if not rows:
         return 0
-    cols = [
+    short_cols = [
         "policy_id", "status", "premium", "effective_date",
         "agent_code", "postcode", "risk_score", "channel",
-        "_ods_merge_run_id", "_ods_run_id_core", "_ods_run_id_enrich",
-        "_ods_business_date", "_ods_merged_at",
+        "_ods_lineage_link_id", "_ods_business_date",
     ]
-    placeholders = ", ".join(["%s"] * len(cols))
-    col_list = ", ".join(f'"{c}"' for c in cols)
-    update_set = ", ".join(
-        f'"{c}"=EXCLUDED."{c}"'
-        for c in cols if c != "policy_id"
+    short_ph = ", ".join(["%s"] * len(short_cols))
+    short_col_list = ", ".join(f'"{c}"' for c in short_cols)
+    short_update = ", ".join(
+        f'"{c}"=EXCLUDED."{c}"' for c in short_cols if c != "policy_id"
     )
 
+    data = [
+        (
+            row["policy_id"],
+            row.get("status"),
+            row.get("premium"),
+            row.get("effective_date"),
+            row.get("agent_code"),
+            row.get("postcode"),
+            row.get("risk_score"),
+            row.get("channel"),
+            lineage_link_id,
+            business_date,
+        )
+        for row in rows
+    ]
     with conn.cursor() as cur:
         cur.execute(
             "DELETE FROM ods.policies_enriched WHERE _ods_business_date=%s",
             (business_date,),
         )
-        data = [
-            (
-                row["policy_id"],
-                row.get("status"),
-                row.get("premium"),
-                row.get("effective_date"),
-                row.get("agent_code"),
-                row.get("postcode"),
-                row.get("risk_score"),
-                row.get("channel"),
-                merge_run_id,
-                row.get("_ods_run_id_core"),
-                row.get("_ods_run_id_enrich"),
-                business_date,
-                None,  # _ods_merged_at — DEFAULT NOW()
-            )
-            for row in rows
-        ]
-        # Remove _ods_merged_at from the explicit columns; let DEFAULT handle it
-        short_cols = cols[:-1]
-        short_ph = ", ".join(["%s"] * len(short_cols))
-        short_col_list = ", ".join(f'"{c}"' for c in short_cols)
-        short_update = ", ".join(
-            f'"{c}"=EXCLUDED."{c}"' for c in short_cols if c != "policy_id"
-        )
         cur.executemany(
             f'INSERT INTO ods.policies_enriched ({short_col_list}) '
             f'VALUES ({short_ph}) '
-            f'ON CONFLICT (policy_id) DO UPDATE SET {short_update}, _ods_merged_at=NOW()',
-            [d[:-1] for d in data],
+            f'ON CONFLICT (policy_id) DO UPDATE SET {short_update}, '
+            f'_ods_merged_at=NOW()',
+            data,
         )
     conn.commit()
     return len(data)
 
 
-def _write_contribution(conn, merge_run_id: str, slot_name: str, slot_run_id: str,
-                        file_id: str | None, s3_raw_path: str,
-                        columns_written: list[str], record_count: int) -> None:
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            INSERT INTO pipeline.merge_contribution_log
-                (merge_run_id, slot_name, slot_run_id, file_id, s3_raw_path,
-                 columns_written, record_count)
-            VALUES (%s,%s,%s,%s,%s, %s,%s)
-            """,
-            (merge_run_id, slot_name, slot_run_id,
-             file_id, s3_raw_path, columns_written, record_count),
-        )
-    conn.commit()
+# NOTE: _write_contribution removed in migration 36. The merge_contribution_log
+# table no longer exists. Slot contributions are now recorded as
+# pipeline.lineage_edge rows under one shared lineage_link_id; the slot role
+# travels on lineage_edge.slot_name. See ods_pipeline.lineage.write_link.
 
 
 def run(merge_run_id: str, domain: str, dataset: str, business_date: str) -> int:
+    """Run the multi-source merge.
+
+    Migration 36: merge_run_log and merge_contribution_log are gone. The
+    merge run is a regular run_log row with pipeline_type='merge'.
+    Idempotency is enforced by checking run_log.status for the same
+    merge_run_id (deterministically derived by the caller).
+    """
     pg = _get_pg_conn()
     pg_dsn = _pg_dsn()
 
     # ── Idempotency: already succeeded? ───────────────────────────────────
     with pg.cursor() as cur:
         cur.execute(
-            "SELECT status FROM pipeline.merge_run_log "
-            "WHERE merge_run_id=%s",
+            "SELECT status FROM pipeline.run_log WHERE run_id=%s",
             (merge_run_id,),
         )
         existing = cur.fetchone()
 
     if existing and existing[0] == "succeeded":
-        print(f"Merge {merge_run_id} already succeeded — skipping.", file=sys.stderr)
+        print(f"Merge {merge_run_id} already succeeded — skipping.",
+              file=sys.stderr)
         return 0
 
-    # ── Bootstrap merge_run_log + run_log ────────────────────────────────
-    with pg.cursor() as cur:
-        if existing:
-            cur.execute(
-                "UPDATE pipeline.merge_run_log SET status='running', error_summary=NULL "
-                "WHERE merge_run_id=%s",
-                (merge_run_id,),
-            )
-        else:
-            cur.execute(
-                """
-                INSERT INTO pipeline.merge_run_log
-                    (merge_run_id, domain, dataset, business_date, status)
-                VALUES (%s,%s,%s,%s,'running')
-                """,
-                (merge_run_id, domain, dataset, business_date),
-            )
-    pg.commit()
-
+    # ── Bootstrap run_log only (merge_run_log removed in migration 36) ──
     upsert_run_header(pg_dsn, run_id=merge_run_id, pipeline_type="merge",
                       domain=domain, dataset=dataset, business_date=business_date)
 
@@ -278,35 +269,55 @@ def run(merge_run_id: str, domain: str, dataset: str, business_date: str) -> int
         enrich_rows = slot_data.get("enrichment", [])
         merged = _merge_slots(core_rows, enrich_rows)
 
-        written = _write_wide(pg, merged, merge_run_id, business_date)
+        # Mint the lineage_link_id BEFORE writing rows so every target row
+        # carries the same handle. Helper accepts pre-minted id (see
+        # ods_pipeline.lineage.write_link).
+        lineage_link_id = str(uuid.uuid4())
+        written = _write_wide(pg, merged, lineage_link_id, business_date)
 
         write_stage_row(pg_dsn, run_id=merge_run_id, stage="merge_write",
                         status="succeeded",
                         output_ref="ods.policies_enriched",
                         record_count_out=written)
 
-        # ── Lineage ───────────────────────────────────────────────────
+        # ── Lineage: one lineage_link + N edges (one per slot) ───────
         current_stage = "lineage"
+        contributions = []
         for slot in slot_defs:
             sname = slot["slot_name"]
             meta = slot_meta[sname]
-            columns = SLOT_COLUMNS.get(sname, [])
-            if meta["run_id"]:
-                _write_contribution(
-                    pg, merge_run_id, sname,
-                    meta["run_id"], meta["file_id"],
-                    meta["s3_raw_path"], columns, meta["count"],
-                )
+            if not meta["run_id"]:
+                continue
+            contributions.append({
+                "upstream_run_id": meta["run_id"],
+                "source_file_id":  meta["file_id"],
+                "source_ref":      meta["s3_raw_path"],
+                "slot_name":       sname,
+                "record_count":    meta["count"],
+                "edge_type":       "slot_to_merged",
+            })
 
-        # ── Finalise ──────────────────────────────────────────────────
-        with pg.cursor() as cur:
-            cur.execute(
-                "UPDATE pipeline.merge_run_log "
-                "SET status='succeeded', ended_at=NOW(), record_count_out=%s "
-                "WHERE merge_run_id=%s",
-                (written, merge_run_id),
-            )
-        pg.commit()
+        ods_pipeline.lineage.write_link(
+            pg,
+            lineage_link_id=lineage_link_id,
+            consumer_run_id=merge_run_id,
+            edge_type="merge_to_postgres",
+            target_ref="ods.policies_enriched",
+            record_count=written,
+            contributions=contributions or [{
+                # Defensive: write_link requires >=1 contribution. If no slot
+                # rows exist we still record an "empty" edge to make the
+                # lineage_link discoverable.
+                "upstream_run_id": None,
+                "source_file_id":  None,
+                "source_ref":      None,
+                "slot_name":       "empty",
+                "record_count":    0,
+                "edge_type":       "slot_to_merged",
+            }],
+        )
+
+        # ── Finalise (merge_run_log dropped in migration 36) ─────────
         update_run_fields(pg_dsn, merge_run_id,
                           status="succeeded",
                           record_count_target=written)
@@ -316,15 +327,8 @@ def run(merge_run_id: str, domain: str, dataset: str, business_date: str) -> int
     except Exception as exc:
         msg = str(exc)
         try:
-            with pg.cursor() as cur:
-                cur.execute(
-                    "UPDATE pipeline.merge_run_log "
-                    "SET status='failed', ended_at=NOW(), error_summary=%s "
-                    "WHERE merge_run_id=%s",
-                    (msg, merge_run_id),
-                )
-            pg.commit()
-            update_run_fields(pg_dsn, merge_run_id, status="failed", error_summary=msg)
+            update_run_fields(pg_dsn, merge_run_id, status="failed",
+                              error_summary=msg)
             write_stage_row(pg_dsn, run_id=merge_run_id, stage=current_stage,
                             status="failed", error=msg)
         except Exception:
