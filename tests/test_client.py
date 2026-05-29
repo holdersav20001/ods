@@ -96,11 +96,13 @@ def test_latest_succeeded_run_returns_newest(conn):
     got = runs.latest_succeeded_run(
         conn, domain="sales", dataset="orders",
         business_date=BD, pipeline_type="ingestion")
-    # Discovery index orders by (finished_at DESC NULLS LAST, run_id DESC).
-    # Both runs share finished_at (same txn now()), so the deterministic
-    # tiebreaker is the greater run_id. Assert the documented contract rather
-    # than insertion order.
-    assert got == max(first, second)
+    # Discovery orders by (finished_at DESC NULLS LAST, run_id DESC). Since the
+    # 007 fix, finished_at is stamped with clock_timestamp(), which ADVANCES
+    # within a transaction — so the SECOND run finalised has a strictly newer
+    # finished_at and discovery deterministically returns it (even in-txn),
+    # regardless of the random run_id ordering. (Pre-007 this had to fall back
+    # to max(run_id) because both shared the txn-fixed now().)
+    assert got == second
 
 
 # ---- runs.succeeded_runs ----------------------------------------------------

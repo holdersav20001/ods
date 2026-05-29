@@ -179,11 +179,12 @@ def test_replay_same_correction_twice_is_link_idempotent(committing_conn):
     print("    recon row stable:", recon_first, "==", recon_second)
 
 
-def test_link_then_rows_rows_are_not_idempotent(committing_conn):
-    """DOCUMENTED FINDING: cp.write_link_then_rows reuses the link on a repeat
-    call (link-idempotent) but RE-INSERTS the target rows — so two identical
-    sink writes double the rows. This pins the current behaviour so a future
-    row-idempotency fix is a deliberate, test-visible change."""
+def test_link_then_rows_rows_are_idempotent(committing_conn):
+    """cp.write_link_then_rows is row-idempotent on retry (migration 008,
+    spec decision #5 / QA H1): calling it TWICE with the same consumer_run_id +
+    edge_type + content_hash + rows yields the SAME link AND the SAME target-row
+    count (NOT doubled). The link's content_hash keys idempotency; the rows
+    belong to that link, so once the link has rows a repeat is a no-op."""
     conn = committing_conn
     n = 4
     file_id = runs.register_file(
@@ -196,7 +197,7 @@ def test_link_then_rows_rows_are_not_idempotent(committing_conn):
         trigger_type="replay", file_id=file_id, commit=True)
 
     def _sink_write():
-        lineage.write_link_then_rows(
+        return lineage.write_link_then_rows(
             conn, consumer_run_id=run_id, edge_type="canonical_to_sink",
             target_ref={"path": "postgres://orders", "content_hash": "fix2-sink"},
             record_count=n,
@@ -205,18 +206,19 @@ def test_link_then_rows_rows_are_not_idempotent(committing_conn):
             rows=[{"k": i} for i in range(n)],
             sink_type="postgres", commit=True)
 
-    _sink_write()
+    link1 = _sink_write()
     links1, _ = _link_edge_counts(conn, run_id)
     rows1 = _row_count(conn, run_id)
-    _sink_write()
+    link2 = _sink_write()
     links2, _ = _link_edge_counts(conn, run_id)
     rows2 = _row_count(conn, run_id)
 
-    # Link IS idempotent; rows are NOT (they double).
+    # Same link, link count stable, AND rows NOT doubled.
+    assert link1 == link2, "retry produced a different link"
     assert links1 == links2 == 1, "link should be idempotent across retries"
     assert rows1 == n
-    assert rows2 == 2 * n, (
-        "FINDING regressed: write_link_then_rows row write became idempotent — "
-        "update this test deliberately")
-    print("\n[FINDING] write_link_then_rows: link idempotent (1 link) but rows "
-          f"re-inserted: {rows1} -> {rows2} (NOT idempotent)")
+    assert rows2 == n, (
+        f"write_link_then_rows doubled rows on retry: {rows1} -> {rows2} "
+        "(migration 008 row-idempotency guard missing/broken)")
+    print("\n[IDEMPOTENT ROWS] write_link_then_rows retry: same link, rows "
+          f"stable: {rows1} -> {rows2} (NOT doubled)")
