@@ -113,10 +113,16 @@ CREATE OR REPLACE FUNCTION cp.write_link_then_rows(
 ) RETURNS uuid LANGUAGE plpgsql AS $$
 DECLARE v_link uuid; v_dataset text; v_wfid text; v_row jsonb;
 BEGIN
-    v_link := cp.write_lineage_link(p_consumer_run_id, p_edge_type, p_target_ref,
-                                    p_record_count, p_edges, p_sink_type, p_transform_version);
     SELECT dataset, workflow_run_id INTO v_dataset, v_wfid
     FROM cp.run_log WHERE run_id = p_consumer_run_id;
+    IF v_dataset IS NULL THEN
+        RAISE EXCEPTION 'write_link_then_rows: no run_log row for consumer_run_id %', p_consumer_run_id;
+    END IF;
+    IF to_regclass('ods.' || quote_ident(v_dataset)) IS NULL THEN
+        RAISE EXCEPTION 'write_link_then_rows: target table ods.% does not exist', v_dataset;
+    END IF;
+    v_link := cp.write_lineage_link(p_consumer_run_id, p_edge_type, p_target_ref,
+                                    p_record_count, p_edges, p_sink_type, p_transform_version);
     FOR v_row IN SELECT value FROM jsonb_array_elements(p_rows) LOOP
         EXECUTE format('INSERT INTO ods.%I (payload, _ods_workflow_run_id, _ods_lineage_link_id) VALUES ($1,$2,$3)', v_dataset)
             USING v_row, v_wfid, v_link;

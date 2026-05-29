@@ -146,6 +146,18 @@ def test_write_link_then_rows_stamps_rows(conn):
     assert got[1] == 2
 
 
+def test_write_link_then_rows_unknown_run_raises(conn):
+    bogus = str(uuid4())  # no run_log row -> v_dataset lookup yields NULL
+    edges = [{"edge_type": "raw_to_curated", "source_ref": {"k": 1}, "record_count": 1}]
+    rows = [{"order_id": 1}]
+    with pytest.raises(psycopg.errors.RaiseException, match="no run_log row"):
+        conn.execute(
+            "SELECT cp.write_link_then_rows(%s,'raw_to_curated',%s,%s,%s,%s)",
+            (bogus, json.dumps({"content_hash": "bogus1"}), 1,
+             json.dumps(edges), json.dumps(rows)),
+        )
+
+
 # ---- write_reconciliation_check ---------------------------------------------
 
 @pytest.mark.parametrize(
