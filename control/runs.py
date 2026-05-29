@@ -72,6 +72,20 @@ def latest_succeeded_run(conn, *, domain, dataset, business_date, pipeline_type)
     return str(run_id) if run_id is not None else None
 
 
+def run_output_link(conn, *, run_id, edge_type) -> str | None:
+    """The output link a given run produced for a given edge_type — how a
+    downstream stage names its EXACT upstream output (the input-side
+    disambiguator for run-to-run lineage edges; see migration 009 / decision C3).
+
+    Returns the newest such lineage_link_id (cp.run_output_link orders by
+    created_at DESC, lineage_link_id DESC) or None if the run produced no link
+    of that edge_type. Pure read (matches latest_succeeded_run: no commit)."""
+    link_id = conn.execute(
+        "SELECT cp.run_output_link(%s,%s)", [run_id, edge_type]
+    ).fetchone()[0]
+    return str(link_id) if link_id is not None else None
+
+
 def succeeded_runs(conn, *, domain, dataset, business_date, pipeline_type) -> list[str]:
     """ALL succeeded runs for the slice, newest-first (the merge-hop discovery
     primitive). Where latest_succeeded_run returns the single newest run, this

@@ -1,5 +1,15 @@
 -- trace_row.sql — reconstruct the full provenance chain back to raw for a row/link.
 --
+-- WALK MODEL: LINK->LINK (matches cp.v_provenance since migration 009). The
+--   recursion follows each edge's upstream_lineage_link_id — the EXACT upstream
+--   output — NOT upstream_run_id -> consumer_run_id (run adjacency). Run
+--   adjacency over-claims when a run emits multiple outputs of one edge_type
+--   (the C1/defect-2 hazard); link adjacency names the precise output, so a
+--   downstream link's chain never pulls a sibling output of a multi-output
+--   upstream run. The raw leaf is still reached via source_file_id on the
+--   raw_to_curated edge (those edges carry no upstream_lineage_link_id, so the
+--   walk terminates there at the registered raw file).
+--
 -- USAGE
 --   Given a single lineage_link_id, walk cp.v_provenance (the recursive
 --   provenance view, which only follows is_provenance edges) from that link
@@ -37,7 +47,13 @@ WITH RECURSIVE chain AS (
     FROM cp.v_provenance p
     WHERE p.lineage_link_id = %(link_id)s
   UNION ALL
-    -- recurse: follow upstream_run_id to the link that run produced
+    -- recurse: LINK->LINK. From this hop's link, read its edges to find each
+    -- edge's upstream_lineage_link_id (the EXACT upstream output), then re-anchor
+    -- on THAT link's provenance edges. v_provenance does not expose
+    -- upstream_lineage_link_id (it is the view's internal recursion key), so we
+    -- read it from cp.lineage_edge directly. Edges with a NULL
+    -- upstream_lineage_link_id (the raw_to_curated leaf, quarantine, replay) do
+    -- not recurse — the chain terminates at the raw file via source_file_id.
     SELECT p.lineage_link_id,
            p.edge_type,
            p.consumer_run_id,
@@ -45,9 +61,9 @@ WITH RECURSIVE chain AS (
            p.source_file_id,
            c.hop + 1
     FROM chain c
-    JOIN cp.lineage_link ul ON ul.consumer_run_id = c.upstream_run_id
-    JOIN cp.v_provenance  p  ON p.lineage_link_id = ul.lineage_link_id
-    WHERE c.upstream_run_id IS NOT NULL
+    JOIN cp.lineage_edge ce ON ce.lineage_link_id = c.lineage_link_id
+    JOIN cp.v_provenance  p  ON p.lineage_link_id = ce.upstream_lineage_link_id
+    WHERE ce.upstream_lineage_link_id IS NOT NULL
 )
 -- DISTINCT dedupes the fan-in case: cp.v_provenance is itself recursive, so for
 -- a multi-edge link (e.g. an N-edge merge_to_canonical) the anchor already

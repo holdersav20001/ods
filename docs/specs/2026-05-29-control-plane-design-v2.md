@@ -32,6 +32,18 @@ all 5 CRITICAL + 8 HIGH + the MEDIUM items, with the 4 user decisions resolved.
      `replay` edge, so the refed row still traces to raw (X5). This is a *new execution that supersedes prior
      output*, not a re-run of the old one.
 
+6. **One link per output, never per run (C1 invariant — hardened in migration 009).**
+   `lineage_link_id` identifies **exactly one output / one write-event**. A run that produces K outputs mints
+   **K links**; `run_id` is **never** the implied output id. Consequences, both now tested:
+   - **Output side:** the link dedup/uniqueness key carries **output identity** —
+     `(consumer_run_id, edge_type, COALESCE(sink_type,''), COALESCE(target_ref->>'path',''),
+     COALESCE(target_ref->>'content_hash',''))` (COALESCE folds NULL parts so non-sink links still dedup;
+     NULLs are otherwise distinct in a unique index). Fan-out of identical canonical bytes to two sinks
+     produces **two** `canonical_to_sink` links (same `content_hash`, different `sink_type`/`path`) — not one.
+   - **Input side:** `lineage_edge.upstream_lineage_link_id` names the **exact** upstream output (see the
+     `lineage_edge` row below), and `cp.v_provenance` walks **link→link** on that column — so a consumer of one
+     output of a multi-output upstream run does **not** over-claim the run's other outputs.
+
    **Boundary rule:** same input bytes + same `workflow_run_id` ⇒ restart-task (idempotent dedup). New bytes
    ⇒ refeed under a new `workflow_run_id`. **Mid-run clear-task with *changed* upstream content** (rare —
    parquet rewritten under a live run) produces a **new link** (content_hash differs, `ON CONFLICT` misses);
@@ -77,8 +89,8 @@ appears — never defaulted, never nullable (kills the old `=None` bug).
 | `cp.file_catalogue` | physical file registry / state | `file_id UUID PK`; `s3_raw_path`, `file_md5`, `business_date DATE NOT NULL`, `state` |
 | `cp.run_log` | one row per task execution | `run_id UUID PK`; `workflow_run_id TEXT NOT NULL`, **`trigger_type`**, **`replay_of_run_id UUID→run_log`**, `pipeline_type`, `domain`, `dataset`, `business_date DATE NOT NULL`, `file_id→file_catalogue`, `status`, counts |
 | `cp.run_stage_log` | per stage+attempt (append) | `run_id→run_log`; `stage`, `attempt`, `status`, `record_count_in/out`, `metrics jsonb` |
-| `cp.lineage_link` | the write-event bundle ("1 link per write-event, **N per run**") | `lineage_link_id UUID PK`; `consumer_run_id UUID→run_log`, `edge_type→cp.edge_type`, **`sink_type`** (null unless `canonical_to_sink`), `target_ref jsonb {path,content_hash,version}`, **`transform_version`**, `record_count` |
-| `cp.lineage_edge` | per-input contribution (1:N under a link) | `lineage_link_id→lineage_link`, `upstream_run_id UUID→run_log`, `source_file_id→file_catalogue`, `input_slot`, `edge_type→cp.edge_type`, `source_ref jsonb`, `record_count` — **no `consumer_run_id`** (derive via the link FK; M1) |
+| `cp.lineage_link` | the write-event bundle ("1 link per write-event, **N per run**") | `lineage_link_id UUID PK`; `consumer_run_id UUID→run_log`, `edge_type→cp.edge_type`, **`sink_type`** (null unless `canonical_to_sink`), `target_ref jsonb {path,content_hash,version}`, **`transform_version`**, `record_count`. **Hardened dedup key (009):** unique on `(consumer_run_id, edge_type, COALESCE(sink_type,''), COALESCE(target_ref->>'path',''), COALESCE(target_ref->>'content_hash',''))` — output identity, so fan-out of identical bytes mints two links. |
+| `cp.lineage_edge` | per-input contribution (1:N under a link) | `lineage_link_id→lineage_link`, `upstream_run_id UUID→run_log`, **`upstream_lineage_link_id UUID→lineage_link`** (names the EXACT upstream output; **NOT NULL for run-to-run edge types** `curated_to_canonical`/`merge_to_canonical`/`canonical_to_sink`, null for file `raw_to_curated`/`quarantine`/`replay` — enforced by CHECK `upstream_link_required_for_run_edges`, 009), `source_file_id→file_catalogue`, `input_slot`, `edge_type→cp.edge_type`, `source_ref jsonb`, `record_count` — **no `consumer_run_id`** (derive via the link FK; M1) |
 | `cp.reconciliation_log` | count checks per hop | `run_id→run_log`; `check_type`, `source_count`, `accounted_count`, `discrepancy`, `status`, `metrics jsonb` (per-slot merge counts; M5) |
 | `cp.dlq` | quarantined failures + replay | `dlq_id UUID PK`; `run_id→run_log`, `stage`, `reason`, `source_ref jsonb`, `payload_ref`, `record_count`, `replayed_at`, `replay_run_id UUID→run_log` |
 
@@ -97,8 +109,10 @@ Target tables (simulated): `ods.<dataset>` carry `_ods_workflow_run_id TEXT` and
 | `replay` | true (annotation; chain still written — X5) |
 | `orchestrates` | **false** (trigger edge; excluded from trace-to-raw — H-trigger) |
 
-**Trace-to-raw view** `cp.v_provenance` walks `lineage_edge`→`lineage_link` filtering
-`edge_type.is_provenance = true`, so `orchestrates` triggers never pollute a provenance walk (H-trigger).
+**Trace-to-raw view** `cp.v_provenance` walks **link→link** via
+`lineage_edge.upstream_lineage_link_id` (migration 009; was run→run before), filtering
+`edge_type.is_provenance = true`, so `orchestrates` triggers never pollute a provenance walk (H-trigger) and a
+consumer of one output never over-claims a multi-output upstream run's siblings. CYCLE key is `lineage_link_id`.
 
 ---
 
@@ -141,14 +155,17 @@ cp.write_lineage_link(
     p_edge_type         text,           -- FK cp.edge_type
     p_target_ref        jsonb,          -- {path, content_hash, version}
     p_record_count      bigint,
-    p_edges             jsonb,          -- [{upstream_run_id, source_file_id, input_slot, edge_type, source_ref, record_count}, ...]
+    p_edges             jsonb,          -- [{upstream_run_id, upstream_lineage_link_id, source_file_id, input_slot, edge_type, source_ref, record_count}, ...]
     p_sink_type         text = null,    -- required iff edge_type='canonical_to_sink'
     p_transform_version text = null
 ) RETURNS uuid                          -- lineage_link_id
   -- ATOMIC: link + all N edges in ONE transaction (X1). Raises if p_edges is empty
   --   ("every link has >=1 edge" — enforced at write, re-checked by recon).
-  -- ON CONFLICT (consumer_run_id, edge_type, target_ref->>'content_hash') DO NOTHING
-  --   -> returns existing link_id (idempotent replay — QA H1).
+  -- ON CONFLICT (consumer_run_id, edge_type, COALESCE(sink_type,''),
+  --   COALESCE(target_ref->>'path',''), COALESCE(target_ref->>'content_hash','')) DO NOTHING
+  --   -> returns existing link_id (idempotent replay — QA H1). Hardened key (009)
+  --   carries OUTPUT IDENTITY so fan-out of identical bytes mints two links.
+  -- run-to-run edges MUST carry upstream_lineage_link_id (CHECK, 009).
 
 cp.write_link_then_rows(
     p_consumer_run_id uuid, p_edge_type text, p_target_ref jsonb,

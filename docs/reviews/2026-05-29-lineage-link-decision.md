@@ -116,8 +116,8 @@ Until then, hardened-A (C1–C4) is the model.
 
 ## 7. Action list
 
-- [ ] C1 — add the "one link per output" invariant to the spec (decisions section).
-- [ ] C2 — change the conflict key in `002_functions.sql` / `write_lineage_link`; re-verify decision-#5 idempotency. **Gate before P3d.**
-- [ ] C3 — add `upstream_lineage_link_id` to `lineage_edge` (NOT NULL for run-to-run edge types) in `001_schema.sql`.
-- [ ] C4 — add the three tests to plan P3/P4.
-- [ ] Sign-off on this decision before P3d fan-out work proceeds.
+- [x] C1 — add the "one link per output" invariant to the spec (decisions section). *(done — spec v2 §6 "One link per output, never per run"; migration 009.)*
+- [x] C2 — change the conflict key in `write_lineage_link`; re-verify decision-#5 idempotency. *(done in `db/migrations/009_lineage_link_hardening.sql` — hardened key `(consumer_run_id, edge_type, COALESCE(sink_type,''), COALESCE(path,''), COALESCE(content_hash,''))`; ON CONFLICT inference on COALESCE expressions verified working; decision-#5 re-verified: same input+target → one link, different target → two links.)*
+- [x] C3 — add `upstream_lineage_link_id` to `lineage_edge` (NOT NULL for run-to-run edge types). *(done in 009 — column + `upstream_link_required_for_run_edges` CHECK; `cp.v_provenance` rewritten to walk link→link; harness wires it via `cp.run_output_link` discovery.)*
+- [x] C4 — add the tests. *(done in `tests/test_lineage_hardening.py`: C2 same-hash-two-links, C3 downstream specificity, C1 multi-output independence, CHECK rejection; existing fan-out test in `test_sink_dlq_replay.py` now backed by the hardened key with the sink-hash crutch removed.)*
+- [x] Sign-off on this decision before P3d fan-out work proceeds. *(Phase 5 hardening pass landed — all changes in one cohesive commit; full suite green.)*

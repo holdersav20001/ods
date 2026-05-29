@@ -103,8 +103,13 @@ def _row_count(conn, run_id):
 def _write_link_only_chain(conn, run_id, file_id, n):
     """Re-write the LINK-only part of a replay (curated + sink links, no row
     write). Both keyed by stable content_hashes, so re-running is a no-op at the
-    link/edge level via write_lineage_link's ON CONFLICT idempotency."""
-    lineage.write_link(
+    link/edge level via write_lineage_link's ON CONFLICT idempotency.
+
+    The sink (canonical_to_sink) edge is a run-to-run edge and must name its
+    upstream output link (009 CHECK); we reference the curated link written
+    here. write_link itself is idempotent, so re-running returns the SAME
+    curated link id, keeping the upstream reference stable across replays."""
+    curated = lineage.write_link(
         conn, consumer_run_id=run_id, edge_type="raw_to_curated",
         target_ref={"path": "s3://curated/c.parquet", "content_hash": "fix-curated"},
         record_count=n,
@@ -115,7 +120,7 @@ def _write_link_only_chain(conn, run_id, file_id, n):
         conn, consumer_run_id=run_id, edge_type="canonical_to_sink",
         target_ref={"path": "postgres://orders", "content_hash": "fix-sink"},
         record_count=n,
-        edges=[{"edge_type": "canonical_to_sink",
+        edges=[{"upstream_lineage_link_id": curated, "edge_type": "canonical_to_sink",
                 "source_ref": {"note": "x"}, "record_count": n}],
         sink_type="postgres", commit=True)
 
@@ -196,12 +201,23 @@ def test_link_then_rows_rows_are_idempotent(committing_conn):
         domain="sales", dataset="orders", business_date=BD,
         trigger_type="replay", file_id=file_id, commit=True)
 
+    # The canonical_to_sink edge must name its upstream output link (009 CHECK);
+    # mint a stable curated link to reference (idempotent, same id on retry).
+    up_link = lineage.write_link(
+        conn, consumer_run_id=run_id, edge_type="raw_to_curated",
+        target_ref={"path": "s3://curated/fix2", "content_hash": "fix2-curated"},
+        record_count=n,
+        edges=[{"source_file_id": file_id, "edge_type": "raw_to_curated",
+                "source_ref": {"p": "raw"}, "record_count": n}],
+        commit=True)
+
     def _sink_write():
         return lineage.write_link_then_rows(
             conn, consumer_run_id=run_id, edge_type="canonical_to_sink",
             target_ref={"path": "postgres://orders", "content_hash": "fix2-sink"},
             record_count=n,
-            edges=[{"edge_type": "canonical_to_sink",
+            edges=[{"upstream_lineage_link_id": up_link,
+                    "edge_type": "canonical_to_sink",
                     "source_ref": {"note": "x"}, "record_count": n}],
             rows=[{"k": i} for i in range(n)],
             sink_type="postgres", commit=True)
@@ -213,10 +229,11 @@ def test_link_then_rows_rows_are_idempotent(committing_conn):
     links2, edges2 = _link_edge_counts(conn, run_id)
     rows2 = _row_count(conn, run_id)
 
-    # Same link, link + edge counts stable, AND rows NOT doubled.
+    # Same SINK link, link + edge counts stable, AND rows NOT doubled. (The run
+    # now also has the curated upstream link, so counts include it.)
     assert link1 == link2, "retry produced a different link"
-    assert links1 == links2 == 1, "link should be idempotent across retries"
-    assert edges1 == edges2 == 1, "edges should not duplicate across retries"
+    assert links1 == links2 == 2, "links should be idempotent across retries"
+    assert edges1 == edges2 == 2, "edges should not duplicate across retries"
     assert rows1 == n
     assert rows2 == n, (
         f"write_link_then_rows doubled rows on retry: {rows1} -> {rows2} "
