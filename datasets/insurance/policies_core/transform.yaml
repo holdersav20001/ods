@@ -1,0 +1,8 @@
+# Canonical transformation for the policies_core slot.
+# Applied per-slot before ods_merge consumes silver parquet.
+transform_version: 1
+is_canonical: true
+
+renames: {}
+drops:   []
+casts:   {}

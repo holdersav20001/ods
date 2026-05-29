@@ -1,0 +1,9 @@
+# Canonical transformation for the merged policies_enriched dataset.
+# The merge job composes per-slot silver inputs; any post-merge rename or
+# cast belongs here.
+transform_version: 1
+is_canonical: true
+
+renames: {}
+drops:   []
+casts:   {}

@@ -263,10 +263,20 @@ def run(merge_run_id: str, domain: str, dataset: str, business_date: str) -> int
             sname = slot["slot_name"]
             rows = _read_staging(pg, slot["staging_table"], business_date)
             slot_data[sname] = rows
-            slot_run_id, file_id = _get_latest_slot_run(pg, domain, slot["dataset"], business_date)
-            s3_raw = _get_s3_raw_path(pg, slot_run_id) if slot_run_id else "unknown"
+            stage_run_id, file_id = _get_latest_slot_run(
+                pg, domain, slot["dataset"], business_date
+            )
+            # Prefer a canonicalize run if one ran AFTER the stage; this
+            # surfaces the per-slot canonicalize node in dashboards.
+            canon_run_id = ods_pipeline.runs.latest_succeeded_run(
+                pg, file_id=file_id, pipeline_type="canonicalize"
+            ) if file_id else None
+            upstream_run = canon_run_id or stage_run_id
+            s3_raw = _get_s3_raw_path(pg, stage_run_id) if stage_run_id else "unknown"
             slot_meta[sname] = {
-                "run_id": slot_run_id,
+                "run_id": upstream_run,
+                "stage_run_id": stage_run_id,
+                "canon_run_id": canon_run_id,
                 "file_id": file_id,
                 "s3_raw_path": s3_raw,
                 "count": len(rows),
