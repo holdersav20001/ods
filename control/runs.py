@@ -70,3 +70,17 @@ def latest_succeeded_run(conn, *, domain, dataset, business_date, pipeline_type)
         [domain, dataset, business_date, pipeline_type],
     ).fetchone()[0]
     return str(run_id) if run_id is not None else None
+
+
+def succeeded_runs(conn, *, domain, dataset, business_date, pipeline_type) -> list[str]:
+    """ALL succeeded runs for the slice, newest-first (the merge-hop discovery
+    primitive). Where latest_succeeded_run returns the single newest run, this
+    returns every succeeded run for (domain, dataset, business_date,
+    pipeline_type) so the 1:N merge hop can fan in across N upstreams.
+
+    Pure read (matches latest_succeeded_run: no commit needed for a SELECT)."""
+    rows = conn.execute(
+        "SELECT cp.succeeded_runs(%s,%s,%s,%s)",
+        [domain, dataset, business_date, pipeline_type],
+    ).fetchall()
+    return [str(r[0]) for r in rows]

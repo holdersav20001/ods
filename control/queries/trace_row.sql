@@ -49,7 +49,15 @@ WITH RECURSIVE chain AS (
     JOIN cp.v_provenance  p  ON p.lineage_link_id = ul.lineage_link_id
     WHERE c.upstream_run_id IS NOT NULL
 )
-SELECT c.hop,
+-- DISTINCT dedupes the fan-in case: cp.v_provenance is itself recursive, so for
+-- a multi-edge link (e.g. an N-edge merge_to_canonical) the anchor already
+-- surfaces both this link's edges AND the upstream edges those runs produced;
+-- this query's own upstream recursion then re-walks them. Without DISTINCT the
+-- same (hop, edge_type, consumer, upstream, source_file) hop is emitted once per
+-- redundant path. DISTINCT on the full hop identity collapses those duplicates
+-- so the reconstructed chain shows each hop exactly once (3 distinct raw paths
+-- for a 3-way merge, not 3x duplicated rows).
+SELECT DISTINCT c.hop,
        c.edge_type,
        c.consumer_run_id,
        c.upstream_run_id,

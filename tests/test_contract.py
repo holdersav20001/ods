@@ -262,6 +262,29 @@ def test_latest_succeeded_run(conn):
     assert got == newer
 
 
+# ---- succeeded_runs ---------------------------------------------------------
+
+def test_succeeded_runs_returns_all_succeeded_newest_first(conn):
+    # no succeeded runs yet -> empty set
+    assert conn.execute(
+        "SELECT array_agg(r) FROM cp.succeeded_runs('sales','orders',%s,'ingestion') r",
+        (BD,)
+    ).fetchone()[0] is None
+
+    _start_run(conn, status="failed")           # excluded: failed
+    a, _ = _start_run(conn, status="succeeded")
+    b, _ = _start_run(conn, status="succeeded")
+    # b strictly newer than a so ordering is deterministic
+    conn.execute(
+        "UPDATE cp.run_log SET finished_at = now() + interval '1 hour' WHERE run_id=%s",
+        (b,),
+    )
+    got = [r[0] for r in conn.execute(
+        "SELECT cp.succeeded_runs('sales','orders',%s,'ingestion')", (BD,)
+    ).fetchall()]
+    assert got == [b, a]   # newest-first, failed excluded
+
+
 # ---- start_stage / finish_stage / patch_run --------------------------------
 
 def test_start_finish_stage_roundtrip(conn):
@@ -328,7 +351,7 @@ def test_every_cp_function_is_asserted(conn):
     ASSERTED = {
         "start_run", "patch_run", "register_file", "start_stage", "finish_stage",
         "write_lineage_link", "write_link_then_rows", "write_reconciliation_check",
-        "quarantine", "latest_succeeded_run",
+        "quarantine", "latest_succeeded_run", "succeeded_runs",
     }
     missing = fns - ASSERTED
     assert not missing, f"cp functions with no contract assertion: {missing}"

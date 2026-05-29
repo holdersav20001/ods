@@ -43,3 +43,42 @@ def run_single_file(conn, *, file, commit=True) -> dict:
         "canonicalize": canonicalize,
         **ingest,  # backward-compat: ingest's run_id/file_id/link_id at top level
     }
+
+
+def run_multi_file(conn, *, files, commit=True) -> dict:
+    """Drive N raw files (same slice, different file_md5) through ingest, then
+    MERGE the N ingest runs into ONE canonical link (merge_to_canonical).
+
+    Mints ONE workflow_run_id and threads it to every ingest AND the merge run.
+    The merge hop DISCOVERS its N upstream ingest runs (via succeeded_runs); it
+    is handed only `slot_counts` (the synthetic per-slot row counts), never any
+    upstream run id. slot_counts is taken positionally from the files' record
+    counts; how those counts zip to the discovered upstreams (by position) is
+    the merge hop's concern.
+
+    `files` is a list of file dicts (same domain/dataset/business_date,
+    different file_md5). Returns {workflow_run_id, ingests:[...], merge:{...}}.
+    """
+    workflow_run_id = str(uuid.uuid4())
+
+    ingests = [
+        fakes.fake_ingest(
+            conn, workflow_run_id=workflow_run_id, file=f, commit=commit)
+        for f in files
+    ]
+
+    merge = fakes.fake_merge(
+        conn,
+        workflow_run_id=workflow_run_id,
+        domain=files[0]["domain"],
+        dataset=files[0]["dataset"],
+        business_date=files[0]["business_date"],
+        slot_counts=[f["record_count"] for f in files],
+        commit=commit,
+    )
+
+    return {
+        "workflow_run_id": workflow_run_id,
+        "ingests": ingests,
+        "merge": merge,
+    }

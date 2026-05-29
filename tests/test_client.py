@@ -103,6 +103,35 @@ def test_latest_succeeded_run_returns_newest(conn):
     assert got == max(first, second)
 
 
+# ---- runs.succeeded_runs ----------------------------------------------------
+
+def test_succeeded_runs_returns_all_for_key_newest_first(conn):
+    # 3 succeeded ingestion runs for the (sales/orders/BD) key ...
+    r1, _ = _start(conn, status="succeeded")
+    r2, _ = _start(conn, status="succeeded")
+    r3, _ = _start(conn, status="succeeded")
+    # ... force a strict finished_at ordering so newest-first is deterministic.
+    for offset, rid in ((1, r1), (2, r2), (3, r3)):
+        conn.execute(
+            "UPDATE cp.run_log SET finished_at = now() + (%s||' hour')::interval "
+            "WHERE run_id=%s", (offset, rid))
+    # 1 FAILED run for the same key (must be excluded) ...
+    _start(conn, status="failed")
+    # ... and 1 SUCCEEDED run for a DIFFERENT dataset (must be excluded).
+    other = runs.start(
+        conn, workflow_run_id=str(uuid.uuid4()), pipeline_type="ingestion",
+        domain="sales", dataset="returns", business_date=BD,
+        trigger_type="manual", commit=False)
+    runs.finalise(conn, other, status="succeeded", commit=False)
+
+    got = runs.succeeded_runs(
+        conn, domain="sales", dataset="orders",
+        business_date=BD, pipeline_type="ingestion")
+    # exactly the 3, newest-first (r3 has the latest finished_at), no failed/other
+    assert got == [r3, r2, r1]
+    assert other not in got
+
+
 # ---- lineage.write_link -----------------------------------------------------
 
 def test_write_link_creates_link_and_edges(conn):

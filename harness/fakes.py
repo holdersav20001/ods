@@ -168,3 +168,99 @@ def fake_canonicalize(conn, *, workflow_run_id, domain, dataset, business_date,
 
     return {"run_id": run_id, "upstream_run_id": upstream_run_id,
             "link_id": link_id}
+
+
+def fake_merge(conn, *, workflow_run_id, domain, dataset, business_date,
+               slot_counts, transform_version="v1", commit=True) -> dict:
+    """The merge hop: N upstream ingest runs -> ONE canonical link (merge_to_canonical).
+
+    1:N DISCOVERY HOP. Like fake_canonicalize it accepts NO upstream run id; it
+    DISCOVERS *all* succeeded ingestion runs for the slice via
+    control.runs.succeeded_runs. The only synthetic input is `slot_counts` — a
+    list of per-slot row counts, zipped BY POSITION to the discovered upstreams.
+
+    Produces ONE merge_to_canonical link with N edges (one per discovered
+    upstream), each carrying input_slot=i and upstream_run_id=upstreams[i]. The
+    link record_count and recon source/accounted counts are sum(slot_counts);
+    recon.metrics.per_slot records the per-slot breakdown.
+
+    Returns {run_id, link_id, upstream_run_ids}.
+    """
+    # 1. DISCOVER all upstream ingest runs (never trust passed-in ids).
+    upstreams = runs.succeeded_runs(
+        conn,
+        domain=domain,
+        dataset=dataset,
+        business_date=business_date,
+        pipeline_type="ingestion",
+    )
+    if len(upstreams) < 2:
+        raise ValueError(
+            "merge needs >=2 succeeded ingestion runs, discovered "
+            f"{len(upstreams)} for ({domain}/{dataset}/{business_date})"
+        )
+    if len(upstreams) != len(slot_counts):
+        raise ValueError(
+            f"slot_counts has {len(slot_counts)} entries but discovery found "
+            f"{len(upstreams)} upstream runs — one count per discovered upstream "
+            "is required"
+        )
+
+    total = sum(slot_counts)
+
+    run_id = runs.start(
+        conn,
+        workflow_run_id=workflow_run_id,
+        pipeline_type="merge",
+        domain=domain,
+        dataset=dataset,
+        business_date=business_date,
+        trigger_type="manual",
+        commit=commit,
+    )
+
+    with stages.stage_scope(conn, run_id, "merge", commit=commit) as st:
+        st.record_in = total
+        st.record_out = total  # fake: union of all slots, no dedup
+
+    edges = [
+        {
+            "upstream_run_id": up,          # the DISCOVERED ingest run for this slot
+            "input_slot": i,
+            "edge_type": "merge_to_canonical",
+            "source_ref": {"slot": i},
+            "record_count": cnt,
+        }
+        for i, (up, cnt) in enumerate(zip(upstreams, slot_counts))
+    ]
+
+    link_id = lineage.write_link(
+        conn,
+        consumer_run_id=run_id,
+        edge_type="merge_to_canonical",
+        target_ref={
+            "path": f"s3://canonical/{dataset}/{business_date}-merged.parquet",
+            "content_hash": f"{dataset}-{business_date}-merged-{transform_version}",
+            "version": 1,
+        },
+        record_count=total,
+        edges=edges,
+        transform_version=transform_version,
+        commit=commit,
+    )
+
+    recon.write_check(
+        conn,
+        run_id=run_id,
+        check_type="merge",
+        source_count=total,
+        accounted_count=total,  # balanced: union of all slots accounted for
+        metrics={"per_slot": {str(i): c for i, c in enumerate(slot_counts)}},
+        commit=commit,
+    )
+
+    runs.finalise(conn, run_id, status="succeeded", record_count_out=total,
+                  commit=commit)
+
+    return {"run_id": run_id, "link_id": link_id,
+            "upstream_run_ids": upstreams}
