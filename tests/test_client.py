@@ -240,3 +240,29 @@ def test_replay_mints_new_run_linked_to_original(conn):
         (new_run,)).fetchone()
     assert trigger == "replay"
     assert str(replay_of) == original
+
+
+# ---- runs.register_file -----------------------------------------------------
+
+def test_register_file_round_trip(conn):
+    md5 = "md5-" + uuid.uuid4().hex
+    file_id = runs.register_file(
+        conn, s3_raw_path="s3://raw/orders/f.csv", file_md5=md5,
+        business_date=BD, domain="sales", dataset="orders", commit=False)
+    assert isinstance(file_id, str)
+    path, fmd5, bd, dom, ds = conn.execute(
+        "SELECT s3_raw_path, file_md5, business_date, domain, dataset "
+        "FROM cp.file_catalogue WHERE file_id=%s", (file_id,)).fetchone()
+    assert (path, fmd5, bd, dom, ds) == (
+        "s3://raw/orders/f.csv", md5, BD, "sales", "orders")
+
+
+def test_register_file_idempotent_on_md5_business_date(conn):
+    md5 = "md5-" + uuid.uuid4().hex
+    first = runs.register_file(
+        conn, s3_raw_path="s3://raw/orders/f.csv", file_md5=md5,
+        business_date=BD, domain="sales", dataset="orders", commit=False)
+    second = runs.register_file(
+        conn, s3_raw_path="s3://raw/orders/f.csv", file_md5=md5,
+        business_date=BD, domain="sales", dataset="orders", commit=False)
+    assert first == second

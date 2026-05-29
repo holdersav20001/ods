@@ -12,6 +12,22 @@ from psycopg.types.json import Jsonb
 _UNSET = object()
 
 
+def register_file(conn, *, s3_raw_path, file_md5, business_date, domain, dataset,
+                  commit=True) -> str:
+    """Thin wrapper over cp.register_file (idempotent on (file_md5, business_date)).
+
+    Lives here because file registration is the first step of the run/file
+    lifecycle that the ingest hop drives.
+    """
+    file_id = conn.execute(
+        "SELECT cp.register_file(%s,%s,%s,%s,%s)",
+        [s3_raw_path, file_md5, business_date, domain, dataset],
+    ).fetchone()[0]
+    if commit:
+        conn.commit()
+    return str(file_id)
+
+
 def start(conn, *, workflow_run_id, pipeline_type, domain, dataset, business_date,
           trigger_type, file_id=None, replay_of_run_id=None, commit=True) -> str:
     run_id = conn.execute(

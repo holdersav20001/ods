@@ -1,0 +1,89 @@
+"""Fake (Spark-free) pipeline stages for the ODS control-plane harness.
+
+A fake stage exercises the FULL control-plane lifecycle (file registration, run
+log, stage scope, lineage link+edges, reconciliation) without doing any real
+data transformation. It is the substrate the lineage / recon GATEs run against.
+
+LIFECYCLE CONTRACT (enforced by reviewers):
+  * The composer owns the connection AND the workflow_run_id. A fake stage NEVER
+    mints a workflow_run_id and NEVER opens its own connection — both arrive as
+    arguments.
+  * Lineage rows are written ONLY through control.lineage.write_link — never by
+    hand-building cp.lineage_edge / cp.lineage_link rows.
+  * No raw INSERT SQL; everything goes through the Phase-2 client wrappers.
+"""
+from control import lineage, recon, runs, stages
+
+
+def fake_ingest(conn, *, workflow_run_id, file, commit=True) -> dict:
+    """The ingest hop: raw file -> curated parquet (raw_to_curated).
+
+    `file` is a dict: {s3_raw_path, file_md5, business_date, domain, dataset,
+    record_count}. Returns the ids produced: {run_id, file_id, link_id}.
+
+    This is a FAKE stage: all rows pass (record_in == record_out), the curated
+    content_hash is faked from the raw md5, and recon is balanced by definition.
+    The single lineage edge anchors the curated link to the registered RAW file
+    (source_file_id) — that is the legitimate raw anchor, NOT a discovered
+    upstream run (the ingest hop has no upstream run).
+    """
+    n = file["record_count"]
+
+    file_id = runs.register_file(
+        conn,
+        s3_raw_path=file["s3_raw_path"],
+        file_md5=file["file_md5"],
+        business_date=file["business_date"],
+        domain=file["domain"],
+        dataset=file["dataset"],
+        commit=commit,
+    )
+
+    run_id = runs.start(
+        conn,
+        workflow_run_id=workflow_run_id,
+        pipeline_type="ingestion",
+        domain=file["domain"],
+        dataset=file["dataset"],
+        business_date=file["business_date"],
+        trigger_type="manual",
+        file_id=file_id,
+        commit=commit,
+    )
+
+    with stages.stage_scope(conn, run_id, "ingest", commit=commit) as st:
+        st.record_in = n
+        st.record_out = n  # fake: every row passes through
+
+    link_id = lineage.write_link(
+        conn,
+        consumer_run_id=run_id,
+        edge_type="raw_to_curated",
+        target_ref={
+            "path": f"s3://curated/{file['file_md5']}.parquet",
+            "content_hash": file["file_md5"],  # fake curated hash
+            "version": 1,
+        },
+        record_count=n,
+        edges=[{
+            "source_file_id": file_id,  # raw anchor (the registered RAW file)
+            "edge_type": "raw_to_curated",
+            "source_ref": {"path": file["s3_raw_path"]},
+            "record_count": n,
+        }],
+        commit=commit,
+    )
+
+    recon.write_check(
+        conn,
+        run_id=run_id,
+        check_type="ingest",
+        source_count=n,
+        accounted_count=n,  # balanced
+        commit=commit,
+    )
+
+    runs.finalise(conn, run_id, status="succeeded", record_count_out=n,
+                  commit=commit)
+
+    return {"run_id": run_id, "file_id": file_id, "link_id": link_id}
