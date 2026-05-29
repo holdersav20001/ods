@@ -21,6 +21,7 @@ All use the rolled-back `conn` fixture (commit=False) for isolation.
 """
 import datetime
 import json
+import pathlib
 import uuid
 
 import pytest
@@ -30,6 +31,9 @@ from control import lineage, runs
 from harness import composers
 
 BD = datetime.date(2026, 5, 29)
+
+TRACE_SQL = (pathlib.Path(__file__).resolve().parents[1]
+             / "control" / "queries" / "trace_row.sql").read_text()
 
 
 def _file(record_count=12, dataset="orders"):
@@ -252,3 +256,66 @@ def test_harness_fanout_same_hash_two_links(conn):
         "fan-out links must now share the SAME canonical content_hash "
         "(sink_type no longer baked into the hash)")
     print("\n[C2-harness] fan-out same hash:", {r[2] for r in links})
+
+
+# --------------------------------------------------------------------------- #
+# trace_row.sql alignment: the debug query now walks link->link too, so given a
+# multi-output upstream it must NOT pull the sibling output (matches v_provenance).
+# --------------------------------------------------------------------------- #
+def test_trace_row_sql_no_sibling_overclaim(conn):
+    # Same shape as C3: one upstream run, TWO raw_to_curated outputs (own files);
+    # a downstream curated_to_canonical link names ONLY output A.
+    up_run = runs.start(
+        conn, workflow_run_id=str(uuid.uuid4()), pipeline_type="ingestion",
+        domain="sales", dataset="orders", business_date=BD,
+        trigger_type="manual", commit=False)
+    file_a = runs.register_file(
+        conn, s3_raw_path="s3://raw/TA.csv", file_md5="md5-TA-" + uuid.uuid4().hex,
+        business_date=BD, domain="sales", dataset="orders", commit=False)
+    file_b = runs.register_file(
+        conn, s3_raw_path="s3://raw/TB.csv", file_md5="md5-TB-" + uuid.uuid4().hex,
+        business_date=BD, domain="sales", dataset="orders", commit=False)
+    out_a = lineage.write_link(
+        conn, consumer_run_id=up_run, edge_type="raw_to_curated",
+        target_ref={"path": "s3://curated/TA", "content_hash": "TOUT-A", "version": 1},
+        record_count=3,
+        edges=[{"source_file_id": file_a, "edge_type": "raw_to_curated",
+                "source_ref": {"path": "s3://raw/TA.csv"}, "record_count": 3}],
+        commit=False)
+    out_b = lineage.write_link(
+        conn, consumer_run_id=up_run, edge_type="raw_to_curated",
+        target_ref={"path": "s3://curated/TB", "content_hash": "TOUT-B", "version": 1},
+        record_count=3,
+        edges=[{"source_file_id": file_b, "edge_type": "raw_to_curated",
+                "source_ref": {"path": "s3://raw/TB.csv"}, "record_count": 3}],
+        commit=False)
+    assert out_a != out_b
+
+    down_run = runs.start(
+        conn, workflow_run_id=str(uuid.uuid4()), pipeline_type="canonicalization",
+        domain="sales", dataset="orders", business_date=BD,
+        trigger_type="manual", commit=False)
+    down_link = lineage.write_link(
+        conn, consumer_run_id=down_run, edge_type="curated_to_canonical",
+        target_ref={"path": "s3://canonical/TA", "content_hash": "TCANON-A", "version": 1},
+        record_count=3,
+        edges=[{"upstream_run_id": up_run, "upstream_lineage_link_id": out_a,
+                "edge_type": "curated_to_canonical",
+                "source_ref": {"note": "consumes output A only"}, "record_count": 3}],
+        commit=False)
+
+    chain = conn.execute(TRACE_SQL, {"link_id": down_link}).fetchall()
+    edge_types = [c[1] for c in chain]
+    raw_paths = [c[5] for c in chain if c[5] is not None]
+
+    print("\n[trace_row link->link] down_link", down_link)
+    for c in chain:
+        print("    hop", c[0], c[1], "consumer=", c[2], "upstream=", c[3], "raw=", c[5])
+
+    # The chain reaches output A's raw file, NOT output B's sibling.
+    assert "curated_to_canonical" in edge_types
+    assert "raw_to_curated" in edge_types
+    assert "s3://raw/TA.csv" in raw_paths, "trace did NOT reach the named output's raw file"
+    assert "s3://raw/TB.csv" not in raw_paths, (
+        "trace_row.sql over-claimed the sibling output of the multi-output "
+        "upstream run (run->run walk regression — must follow upstream_lineage_link_id)")
