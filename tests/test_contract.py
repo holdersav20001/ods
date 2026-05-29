@@ -285,6 +285,36 @@ def test_succeeded_runs_returns_all_succeeded_newest_first(conn):
     assert got == [b, a]   # newest-first, failed excluded
 
 
+# ---- run_output_link --------------------------------------------------------
+
+def test_run_output_link_returns_newest_link_for_edge_type(conn):
+    # A run with no link of that edge_type -> NULL.
+    run_id, _ = _start_run(conn)
+    assert conn.execute(
+        "SELECT cp.run_output_link(%s,'raw_to_curated')", (run_id,)
+    ).fetchone()[0] is None
+
+    edges = [{"edge_type": "raw_to_curated", "source_ref": {"k": 1}, "record_count": 1}]
+    l1 = conn.execute(
+        "SELECT cp.write_lineage_link(%s,'raw_to_curated',%s,%s,%s)",
+        (run_id, json.dumps({"path": "p1", "content_hash": "h1"}), 1, json.dumps(edges)),
+    ).fetchone()[0]
+    # Same run, a DIFFERENT output (distinct path) -> two links; run_output_link
+    # returns the newest (created_at DESC, lineage_link_id DESC).
+    l2 = conn.execute(
+        "SELECT cp.write_lineage_link(%s,'raw_to_curated',%s,%s,%s)",
+        (run_id, json.dumps({"path": "p2", "content_hash": "h2"}), 1, json.dumps(edges)),
+    ).fetchone()[0]
+    got = conn.execute(
+        "SELECT cp.run_output_link(%s,'raw_to_curated')", (run_id,)
+    ).fetchone()[0]
+    assert str(got) in {str(l1), str(l2)}
+    # A different edge_type returns null for this run.
+    assert conn.execute(
+        "SELECT cp.run_output_link(%s,'canonical_to_sink')", (run_id,)
+    ).fetchone()[0] is None
+
+
 # ---- start_stage / finish_stage / patch_run --------------------------------
 
 def test_start_finish_stage_roundtrip(conn):
@@ -351,7 +381,7 @@ def test_every_cp_function_is_asserted(conn):
     ASSERTED = {
         "start_run", "patch_run", "register_file", "start_stage", "finish_stage",
         "write_lineage_link", "write_link_then_rows", "write_reconciliation_check",
-        "quarantine", "latest_succeeded_run", "succeeded_runs",
+        "quarantine", "latest_succeeded_run", "succeeded_runs", "run_output_link",
     }
     missing = fns - ASSERTED
     assert not missing, f"cp functions with no contract assertion: {missing}"

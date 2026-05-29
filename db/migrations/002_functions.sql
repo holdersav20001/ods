@@ -78,6 +78,9 @@ BEGIN
 END $$;
 
 -- cp.write_lineage_link: THE reference pattern — atomic link + N edges in one txn.
+-- SUPERSEDED by 009_lineage_link_hardening.sql — the dedup/ON CONFLICT key gained
+-- output identity (sink_type + path) and the edge insert gained
+-- upstream_lineage_link_id. Edit there, not here (009 CREATE OR REPLACEs this fn).
 CREATE OR REPLACE FUNCTION cp.write_lineage_link(
     p_consumer_run_id uuid, p_edge_type text, p_target_ref jsonb, p_record_count bigint,
     p_edges jsonb, p_sink_type text DEFAULT NULL, p_transform_version text DEFAULT NULL

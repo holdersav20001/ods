@@ -135,6 +135,11 @@ def fake_canonicalize(conn, *, workflow_run_id, domain, dataset, business_date,
             f"({domain}/{dataset}/{business_date})"
         )
 
+    # Name the EXACT upstream output (the ingest run's raw_to_curated link), not
+    # just the run — the input-side disambiguator for run-to-run edges (C3/009).
+    up_link = runs.run_output_link(
+        conn, run_id=upstream_run_id, edge_type="raw_to_curated")
+
     run_id = runs.start(
         conn,
         workflow_run_id=workflow_run_id,
@@ -183,6 +188,7 @@ def fake_canonicalize(conn, *, workflow_run_id, domain, dataset, business_date,
         record_count=good,  # only the good rows are canonicalized
         edges=[{
             "upstream_run_id": upstream_run_id,  # the DISCOVERED ingest run
+            "upstream_lineage_link_id": up_link,  # the EXACT upstream output
             "edge_type": "curated_to_canonical",
             "source_ref": {"note": "discovered ingest run"},
             "record_count": good,
@@ -265,6 +271,10 @@ def fake_merge(conn, *, workflow_run_id, domain, dataset, business_date,
     edges = [
         {
             "upstream_run_id": up,          # the DISCOVERED ingest run for this slot
+            # name the EXACT upstream output (that ingest run's raw_to_curated
+            # link), so the merge edge disambiguates which output it merged (C3).
+            "upstream_lineage_link_id": runs.run_output_link(
+                conn, run_id=up, edge_type="raw_to_curated"),
             "input_slot": i,
             "edge_type": "merge_to_canonical",
             "source_ref": {"slot": i},
@@ -348,6 +358,15 @@ def fake_sink(conn, *, workflow_run_id, domain, dataset, business_date,
             f"({domain}/{dataset}/{business_date})"
         )
 
+    # The upstream run's output is a curated_to_canonical link (single-file
+    # canonicalize) or a merge_to_canonical link (merged). Name that EXACT
+    # output link as the canonical_to_sink edge's upstream (C3/009).
+    upstream_edge_type = (
+        "merge_to_canonical" if upstream_pipeline_type == "merge"
+        else "curated_to_canonical")
+    up_link = runs.run_output_link(
+        conn, run_id=upstream, edge_type=upstream_edge_type)
+
     run_id = runs.start(
         conn,
         workflow_run_id=workflow_run_id,
@@ -366,19 +385,23 @@ def fake_sink(conn, *, workflow_run_id, domain, dataset, business_date,
     rows = [{"k": i} for i in range(n)]
     edges = [{
         "upstream_run_id": upstream,  # the DISCOVERED canonical/merge run
+        "upstream_lineage_link_id": up_link,  # the EXACT upstream output
         "edge_type": "canonical_to_sink",
         "source_ref": {"note": "discovered canonical/merge run"},
         "record_count": n,
     }]
 
     # POSTGRES WRITE LAST: link+edges written, THEN rows, in one transaction.
+    # FAN-OUT KEY: the content_hash is the SAME canonical bytes regardless of
+    # sink (no sink_type baked in — that was the crutch that hid the dedup bug).
+    # sink_type + path disambiguate the two fan-out links via the hardened key.
     link_id = lineage.write_link_then_rows(
         conn,
         consumer_run_id=run_id,
         edge_type="canonical_to_sink",
         target_ref={
             "path": f"{sink_type}://{dataset}",
-            "content_hash": f"{dataset}-{business_date}-{sink_type}",
+            "content_hash": f"{dataset}-{business_date}-canonical",
             "version": 1,
         },
         record_count=n,

@@ -399,10 +399,14 @@ def test_no_empty_links_no_triggers_one_wfid(conn):
 # GATE D.7 — cycle guard: a deliberate 2-run provenance cycle TERMINATES
 # --------------------------------------------------------------------------- #
 def test_provenance_cycle_terminates(conn):
-    """Build two runs A and B whose links reference each other's runs as
-    upstream (A's edge upstream=B, B's edge upstream=A) — a 2-run provenance
-    cycle — via the client write_link (NOT raw SQL). Assert SELECT * FROM
-    cp.v_provenance TERMINATES (the CYCLE clause stops the walk) rather than
+    """Build two links A and B whose edges reference each other's link as the
+    upstream output (A's edge upstream_lineage_link_id=B, B's=A) — a 2-link
+    provenance cycle (the v_provenance recursion is now link->link, so the cycle
+    must close on upstream_lineage_link_id, the recursion/CYCLE key). The links
+    are written via the client write_link; the second edge is then redirected to
+    close the cycle with a raw UPDATE (the link ids only exist after the writes —
+    a chicken-and-egg the client path can't express in one call). Assert SELECT
+    FROM cp.v_provenance TERMINATES (the CYCLE clause stops the walk) rather than
     hanging / erroring under max recursion.
     """
     wfid = str(uuid.uuid4())
@@ -415,22 +419,37 @@ def test_provenance_cycle_terminates(conn):
         domain="sales", dataset="orders", business_date=BD,
         trigger_type="manual", commit=False)
 
-    # A's link: an is_provenance edge whose upstream is B.
+    # A's link: needs an upstream link to satisfy the CHECK before B exists.
+    # Mint a throwaway raw_to_curated seed link and point A's edge at it; the
+    # edge is redirected to B below to close the cycle.
+    seed = lineage.write_link(
+        conn, consumer_run_id=run_a, edge_type="raw_to_curated",
+        target_ref={"path": "s3://cyc/seed", "content_hash": "cyc-seed", "version": 1},
+        record_count=1,
+        edges=[{"edge_type": "raw_to_curated", "source_ref": {"cyc": "seed"},
+                "record_count": 1}],
+        commit=False)
     link_a = lineage.write_link(
         conn, consumer_run_id=run_a, edge_type="curated_to_canonical",
         target_ref={"path": "s3://cyc/a", "content_hash": "cyc-a", "version": 1},
         record_count=1,
-        edges=[{"upstream_run_id": run_b, "edge_type": "curated_to_canonical",
+        edges=[{"upstream_run_id": run_b, "upstream_lineage_link_id": seed,
+                "edge_type": "curated_to_canonical",
                 "source_ref": {"cyc": "a->b"}, "record_count": 1}],
         commit=False)
-    # B's link: an is_provenance edge whose upstream is A. Closes the cycle.
+    # B's link: edge upstream is A. Closes the cycle at the LINK level.
     link_b = lineage.write_link(
         conn, consumer_run_id=run_b, edge_type="curated_to_canonical",
         target_ref={"path": "s3://cyc/b", "content_hash": "cyc-b", "version": 1},
         record_count=1,
-        edges=[{"upstream_run_id": run_a, "edge_type": "curated_to_canonical",
+        edges=[{"upstream_run_id": run_a, "upstream_lineage_link_id": link_a,
+                "edge_type": "curated_to_canonical",
                 "source_ref": {"cyc": "b->a"}, "record_count": 1}],
         commit=False)
+    # Redirect A's edge to point at B (now that link_b exists) — closes A<->B.
+    conn.execute(
+        "UPDATE cp.lineage_edge SET upstream_lineage_link_id=%s "
+        "WHERE lineage_link_id=%s", (link_b, link_a))
 
     # If the CYCLE clause were absent this would loop forever / raise. With it,
     # the query returns a finite result set. Statement timeout as a safety net.

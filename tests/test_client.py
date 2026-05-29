@@ -184,8 +184,17 @@ def test_write_link_idempotent_on_content_hash(conn):
 
 def test_write_link_then_rows_stamps_target_rows(conn):
     run_id, wfid = _start(conn)
+    # A run-to-run edge (curated_to_canonical) must name its exact upstream
+    # output link (009 CHECK). Mint a minimal upstream raw_to_curated link.
+    up_link = lineage.write_link(
+        conn, consumer_run_id=run_id, edge_type="raw_to_curated",
+        target_ref={"path": "s3://curated/up", "content_hash": "up1"},
+        record_count=3,
+        edges=[{"edge_type": "raw_to_curated", "record_count": 3}],
+        commit=False)
     rows = [{"id": 1}, {"id": 2}, {"id": 3}]
-    edges = [{"edge_type": "curated_to_canonical", "record_count": 3}]
+    edges = [{"upstream_lineage_link_id": up_link,
+              "edge_type": "curated_to_canonical", "record_count": 3}]
     link_id = lineage.write_link_then_rows(
         conn, consumer_run_id=run_id, edge_type="curated_to_canonical",
         target_ref={"content_hash": "rows1"}, record_count=3,

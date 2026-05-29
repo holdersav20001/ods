@@ -260,6 +260,10 @@ def replay_single_file(conn, *, original_run_id, file, commit=True) -> dict:
         business_date=file["business_date"], pipeline_type="ingestion")
     if upstream_run_id is None:
         raise ValueError("replay: no succeeded ingest run discovered")
+    # Name the EXACT upstream output (the replay ingest run's raw_to_curated
+    # link) on the curated_to_canonical edge — same wiring as the normal chain.
+    up_link = runs.run_output_link(
+        conn, run_id=upstream_run_id, edge_type="raw_to_curated")
     canon_run_id = runs.start(
         conn,
         workflow_run_id=new_workflow_run_id,
@@ -288,6 +292,7 @@ def replay_single_file(conn, *, original_run_id, file, commit=True) -> dict:
         edges=[
             {
                 "upstream_run_id": upstream_run_id,  # DISCOVERED replay ingest run
+                "upstream_lineage_link_id": up_link,  # the EXACT upstream output
                 "edge_type": "curated_to_canonical",
                 "source_ref": {"note": "discovered replay ingest run"},
                 "record_count": n,
