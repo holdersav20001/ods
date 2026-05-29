@@ -75,7 +75,7 @@ def write_link(
       * ``source_file_id``   (str / UUID; optional — None when there is no
                              registered source file)
       * ``source_ref``       (str; optional)
-      * ``slot_name``        (str; optional — role tag for multi-source writes,
+      * ``input_slot``        (str; optional — role tag for multi-source writes,
                               e.g. ``'core'``, ``'enrichment'``)
       * ``record_count``     (int; optional)
       * ``edge_type``        (str; optional — defaults to the link's
@@ -103,7 +103,7 @@ def write_link(
             "source_file_id":  str(c.get("source_file_id"))
                                 if c.get("source_file_id") else "",
             "source_ref":      c.get("source_ref"),
-            "slot_name":       c.get("slot_name"),
+            "input_slot":       c.get("input_slot"),
             "record_count":    str(c.get("record_count"))
                                 if c.get("record_count") is not None else "",
             "edge_type":       c.get("edge_type"),

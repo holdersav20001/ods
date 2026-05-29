@@ -59,7 +59,7 @@ def finalise_success(
         contributions=[{
             "source_file_id": file_id,
             "source_ref":     s3_input_path,
-            "slot_name":      "main",
+            "input_slot":     "main",
             "record_count":   written_count,
             "edge_type":      "raw_to_curated",
         }],

@@ -44,7 +44,7 @@ COMMENT ON TABLE pipeline.lineage_link IS
 --    NOT NULL globally.
 ALTER TABLE pipeline.lineage_edge
     ADD COLUMN lineage_link_id UUID REFERENCES pipeline.lineage_link(lineage_link_id) ON DELETE CASCADE,
-    ADD COLUMN slot_name       TEXT;
+    ADD COLUMN input_slot       TEXT;
 
 -- Cascade existing pipeline.run_log child FKs so wiping a run cleans up
 -- lineage_edge / run_stage_log automatically (no orphan rows after rerun
@@ -73,7 +73,7 @@ COMMENT ON COLUMN pipeline.lineage_edge.lineage_link_id IS
     'FK to the lineage_link write event this edge contributed to. Nullable '
     'only for legacy api_pull / event writes; required for file-batch.';
 
-COMMENT ON COLUMN pipeline.lineage_edge.slot_name IS
+COMMENT ON COLUMN pipeline.lineage_edge.input_slot IS
     'Optional contribution role: core, enrichment, lookup, driver. NULL for '
     'single-source edges.';
 
@@ -88,7 +88,7 @@ SELECT
     le.source_file_id,
     le.upstream_run_id,
     le.source_ref,
-    le.slot_name,
+    le.input_slot,
     le.record_count AS contribution_records
 FROM pipeline.lineage_link ll
 LEFT JOIN pipeline.lineage_edge le
@@ -138,7 +138,7 @@ BEGIN
         INSERT INTO pipeline.lineage_edge
             (consumer_run_id, upstream_run_id, source_file_id,
              edge_type, source_ref, target_ref, record_count,
-             lineage_link_id, slot_name)
+             lineage_link_id, input_slot)
         VALUES
             (p_consumer_run_id,
              NULLIF(v_contrib->>'upstream_run_id', '')::uuid,
@@ -148,7 +148,7 @@ BEGIN
              p_target_ref,
              NULLIF(v_contrib->>'record_count', '')::bigint,
              p_lineage_link_id,
-             v_contrib->>'slot_name');
+             v_contrib->>'input_slot');
     END LOOP;
 
     RETURN p_lineage_link_id;

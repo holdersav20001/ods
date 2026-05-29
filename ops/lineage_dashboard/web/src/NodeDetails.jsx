@@ -257,7 +257,7 @@ function WriteEventPanel({ linkId, fallback, onJumpToLink }) {
           {data.edges.map((e, i) => (
             <li key={i} style={{ padding: 6, marginBottom: 4, borderRadius: 4,
                                   background: '#f5f3ff', fontSize: 12 }}>
-              <div><strong>slot={e.slot_name || '—'}</strong>
+              <div><strong>input_slot={e.input_slot || '—'}</strong>
                 {e.upstream_status && <Pill status={e.upstream_status} />}
               </div>
               <div style={{ color: '#475569' }}>{e.edge_type} · {e.record_count ?? '—'} rows</div>

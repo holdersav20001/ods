@@ -13,7 +13,7 @@ Assertions
 ----------
 * per slot:
     - one run_log row, pipeline_type='canonicalize', status='succeeded'
-    - one lineage_link bundle edge_type='staging_to_canonical', slot_name=<slot>
+    - one lineage_link bundle edge_type='staging_to_canonical', input_slot=<slot>
     - silver parquet objects exist under canonical/<domain>/<slot_dataset>/
 * merge:
     - merge lineage_link bundle has 2 lineage_edge rows
@@ -63,7 +63,7 @@ CANONICAL_BUCKET = "ods-curated-local"
 
 
 def _canonicalize_slot(
-    *, run_id: str, slot_dataset: str, slot_name: str,
+    *, run_id: str, slot_dataset: str, input_slot: str,
     staging_table: str, business_date: str, upstream_run_id: str,
 ) -> subprocess.CompletedProcess:
     repo_root = os.getcwd()
@@ -79,7 +79,7 @@ def _canonicalize_slot(
         "--dataset", slot_dataset,
         "--business_date", business_date,
         "--staging_table", staging_table,
-        "--slot_name", slot_name,
+        "--input_slot", input_slot,
         "--upstream_run_id", upstream_run_id,
     ]
     return subprocess.run(cmd, capture_output=True, text=True, timeout=420)
@@ -117,7 +117,7 @@ def test_multi_file_with_per_slot_canonicalize_lineage(s3, pg):
     canon_enr  = str(uuid.uuid4())
     r1 = _canonicalize_slot(
         run_id=canon_core, slot_dataset="policies_core",
-        slot_name="core", staging_table="pipeline.slot_staging_core",
+        input_slot="core", staging_table="pipeline.slot_staging_core",
         business_date=BD, upstream_run_id=run_core_stage,
     )
     assert r1.returncode == 0, (
@@ -126,7 +126,7 @@ def test_multi_file_with_per_slot_canonicalize_lineage(s3, pg):
     )
     r2 = _canonicalize_slot(
         run_id=canon_enr, slot_dataset="policies_enrichment",
-        slot_name="enrichment",
+        input_slot="enrichment",
         staging_table="pipeline.slot_staging_enrichment",
         business_date=BD, upstream_run_id=run_enr_stage,
     )
@@ -175,7 +175,7 @@ def test_multi_file_with_per_slot_canonicalize_lineage(s3, pg):
             assert link[0] == "staging_to_canonical"
 
             cur.execute(
-                "SELECT upstream_run_id::text, slot_name "
+                "SELECT upstream_run_id::text, input_slot "
                 " FROM pipeline.lineage_edge "
                 " WHERE consumer_run_id=%s::uuid",
                 (canon_run,),
@@ -192,10 +192,10 @@ def test_multi_file_with_per_slot_canonicalize_lineage(s3, pg):
 
     with pg.cursor() as cur:
         cur.execute(
-            "SELECT slot_name, upstream_run_id::text "
+            "SELECT input_slot, upstream_run_id::text "
             "  FROM pipeline.lineage_edge "
             " WHERE consumer_run_id=%s::uuid "
-            " ORDER BY slot_name",
+            " ORDER BY input_slot",
             (merge_run_id,),
         )
         edges = dict(cur.fetchall())

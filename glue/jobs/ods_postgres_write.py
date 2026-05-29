@@ -541,9 +541,10 @@ def run(*, run_id: str, domain: str, dataset: str, s3_input_path: str,
             record_count=postgres_count,
             contributions=[{
                 "upstream_run_id": upstream_ingest_run,
-                "source_file_id": file_id,
-                "source_ref": s3_input_path,
-                "record_count": curated_count,
+                "source_file_id":  file_id,
+                "source_ref":      s3_input_path,
+                "input_slot":      "main",
+                "record_count":    curated_count,
             }],
         )
 

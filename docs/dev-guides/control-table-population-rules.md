@@ -29,7 +29,7 @@ ods_pipeline.lineage.write_link(
             "upstream_run_id":  <previous_run_id_or_None>,
             "source_file_id":   <file_catalogue_id_or_None>,
             "source_ref":       "<input URI>",       # see §4
-            "slot_name":        "<slot_or_'main'>",  # see §5
+            "input_slot":        "<slot_or_'main'>",  # see §5
             "record_count":     <rows_read>,
             "edge_type":        "<same as parent>",
         },
@@ -112,13 +112,13 @@ The dashboard classifies nodes by URI prefix (see
 is what makes the dashboard show a "raw file" box where it should say
 "curated".
 
-## 5. `slot_name`
+## 5. `input_slot`
 
 Per-edge tag describing the role of this contribution within the link.
 
 - Single-source writes: `"main"`.
 - Multi-source writes (e.g. `ods_merge`): one of the slot names from
-  `dataset_config.slot_name`, e.g. `"core"`, `"enrichment"`.
+  `dataset_config.input_slot`, e.g. `"core"`, `"enrichment"`.
 - Defensive / empty links (no actual data): `"empty"`.
 
 ## 6. `pipeline_type` on `run_log`

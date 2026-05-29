@@ -20,7 +20,7 @@ Control plane:
   * run_log row, ``pipeline_type='canonicalize'``
   * lineage_link bundle ``edge_type='staging_to_canonical'``
   * one lineage_edge contribution per upstream slot stage run, with
-    ``slot_name=<slot>``
+    ``input_slot=<slot>``
 
 CLI::
 
@@ -30,7 +30,7 @@ CLI::
         --dataset <slot_dataset>              \
         --business_date YYYY-MM-DD            \
         --staging_table pipeline.slot_staging_<slot> \
-        --slot_name <slot>                    \
+        --input_slot <slot>                    \
         --upstream_run_id <stage_run_id>
 """
 from __future__ import annotations
@@ -124,7 +124,7 @@ def run(*,
         dataset: str,
         business_date: str,
         staging_table: str,
-        slot_name: str,
+        input_slot: str,
         upstream_run_id: str,
         upstream_file_id: str | None = None,
         airflow_dag_id: str | None = None,
@@ -141,7 +141,7 @@ def run(*,
             "transform_yaml": transform["raw_path"],
             "transform_version": transform["transform_version"],
             "is_canonical": transform["is_canonical"],
-            "slot_name": slot_name,
+            "input_slot": input_slot,
             "staging_table": staging_table,
             "airflow_dag_id": airflow_dag_id,
             "airflow_run_id": airflow_run_id,
@@ -181,7 +181,7 @@ def run(*,
                 "upstream_run_id": upstream_run_id,
                 "source_file_id":  upstream_file_id,
                 "source_ref":      f"postgres://{staging_table}",
-                "slot_name":       slot_name,
+                "input_slot":      input_slot,
                 "record_count":    source_count,
                 "edge_type":       "staging_to_canonical",
             }],
@@ -198,7 +198,7 @@ def run(*,
                     "actions_applied": actions,
                     "output_path": out_path.replace("s3a://", "s3://"),
                     "lineage_link_id": lineage_link_id,
-                    "slot_name": slot_name,
+                    "input_slot": input_slot,
                 },
             },
         )
@@ -230,7 +230,7 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--business_date",   required=True)
     p.add_argument("--staging_table",   required=True,
                    help="Fully qualified pg table, e.g. pipeline.slot_staging_core")
-    p.add_argument("--slot_name",       required=True)
+    p.add_argument("--input_slot",       required=True)
     p.add_argument("--upstream_run_id", required=True,
                    help="The ods_stage run_id that loaded slot_staging")
     p.add_argument("--upstream_file_id", default=None)
@@ -245,7 +245,7 @@ if __name__ == "__main__":
         run_id=args.run_id, domain=args.domain, dataset=args.dataset,
         business_date=args.business_date,
         staging_table=args.staging_table,
-        slot_name=args.slot_name,
+        input_slot=args.input_slot,
         upstream_run_id=args.upstream_run_id,
         upstream_file_id=args.upstream_file_id,
         airflow_dag_id=args.airflow_dag_id,

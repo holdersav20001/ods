@@ -93,7 +93,7 @@ function layout(trace) {
 
 function edgeLabel(e) {
   const parts = [e.kind];
-  if (e.data?.slot_name) parts.push(`slot=${e.data.slot_name}`);
+  if (e.data?.input_slot) parts.push(`input_slot=${e.data.input_slot}`);
   if (e.data?.record_count != null) parts.push(`${e.data.record_count} rows`);
   return parts.join(' · ');
 }

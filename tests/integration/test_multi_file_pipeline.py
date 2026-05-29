@@ -227,8 +227,8 @@ def test_1_happy_path(s3, pg):
 
     # lineage_edge: one row per slot, all sharing the same lineage_link
     cur.execute(
-        "SELECT slot_name FROM pipeline.lineage_edge "
-        "WHERE consumer_run_id=%s ORDER BY slot_name",
+        "SELECT input_slot FROM pipeline.lineage_edge "
+        "WHERE consumer_run_id=%s ORDER BY input_slot",
         (merge_run_id,),
     )
     slots = [r[0] for r in cur.fetchall()]
@@ -304,7 +304,7 @@ def test_3_slot_rerun(s3, pg):
         "FROM ods.policies_enriched t "
         "JOIN pipeline.lineage_edge le "
         "  ON le.lineage_link_id = t._ods_lineage_link_id "
-        " AND le.slot_name = 'core' "
+        " AND le.input_slot = 'core' "
         "WHERE t.policy_id='POL001'"
     )
     row = cur.fetchone()
@@ -374,9 +374,9 @@ def test_5_lineage_trace(s3, pg):
     # Wide row carries _ods_lineage_link_id → resolves to merge run + per-slot upstreams
     cur.execute(
         "SELECT ll.consumer_run_id::text, "
-        "       MAX(CASE WHEN le.slot_name='core'       "
+        "       MAX(CASE WHEN le.input_slot='core'       "
         "                THEN le.upstream_run_id::text END), "
-        "       MAX(CASE WHEN le.slot_name='enrichment' "
+        "       MAX(CASE WHEN le.input_slot='enrichment' "
         "                THEN le.upstream_run_id::text END) "
         "FROM ods.policies_enriched t "
         "JOIN pipeline.lineage_link ll "
@@ -395,9 +395,9 @@ def test_5_lineage_trace(s3, pg):
     # lineage_edge: 2 rows (one per slot) carrying source_ref + record_count.
     # columns_written is no longer captured — that was merge_contribution_log only.
     cur.execute(
-        "SELECT slot_name, source_ref, record_count "
+        "SELECT input_slot, source_ref, record_count "
         "FROM pipeline.lineage_edge "
-        "WHERE consumer_run_id=%s ORDER BY slot_name",
+        "WHERE consumer_run_id=%s ORDER BY input_slot",
         (merge_run_id,),
     )
     rows = cur.fetchall()

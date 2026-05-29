@@ -5,7 +5,7 @@ ODS Glue merge job — staged slot tables → wide Postgres target.
 Reads all slot staging tables for a given business_date, performs a
 full-outer join, writes to the wide target table stamped with a single
 _ods_lineage_link_id, and records one lineage_edge row per contributing
-slot under that lineage_link (each edge carries the slot_name).
+slot under that lineage_link (each edge carries the input_slot).
 
 After migration 36 the dedicated merge_run_log and merge_contribution_log
 tables are gone — run_log + lineage_link + lineage_edge cover the same
@@ -219,7 +219,7 @@ def _write_wide(
 # NOTE: _write_contribution removed in migration 36. The merge_contribution_log
 # table no longer exists. Slot contributions are now recorded as
 # pipeline.lineage_edge rows under one shared lineage_link_id; the slot role
-# travels on lineage_edge.slot_name. See ods_pipeline.lineage.write_link.
+# travels on lineage_edge.input_slot. See ods_pipeline.lineage.write_link.
 
 
 def run(merge_run_id: str, domain: str, dataset: str, business_date: str) -> int:
@@ -333,7 +333,7 @@ def run(merge_run_id: str, domain: str, dataset: str, business_date: str) -> int
                 "upstream_run_id": meta["run_id"],
                 "source_file_id":  meta["file_id"],
                 "source_ref":      meta["s3_raw_path"],
-                "slot_name":       sname,
+                "input_slot":      sname,
                 "record_count":    meta["count"],
                 "edge_type":       "slot_to_merged",
             })
@@ -352,7 +352,7 @@ def run(merge_run_id: str, domain: str, dataset: str, business_date: str) -> int
                 "upstream_run_id": None,
                 "source_file_id":  None,
                 "source_ref":      None,
-                "slot_name":       "empty",
+                "input_slot":      "empty",
                 "record_count":    0,
                 "edge_type":       "slot_to_merged",
             }],

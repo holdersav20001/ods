@@ -14,7 +14,7 @@ Assertions
     status='succeeded', record_count_source == record_count_target
   * pipeline.lineage_link of edge_type='curated_to_canonical' exists for
     the canonicalize run and points back to the ingestion run via one
-    lineage_edge with slot_name='canonical'
+    lineage_edge with input_slot='canonical'
   * target table rows carry _ods_lineage_link_id stamped by the postgres
     write step; the bundle's lineage_edge has upstream_run_id ==
     canonicalize_run_id (because the postgres write step's upstream is
@@ -213,11 +213,11 @@ def test_canonicalize_full_chain(
         assert canonical.rstrip("/") in (link[2] or "").rstrip("/")
         assert link[3] == 3
 
-        # lineage_edge: 1 contribution, slot_name='canonical', upstream =
+        # lineage_edge: 1 contribution, input_slot='canonical', upstream =
         # ingestion run, source_ref = curated path.
         cur.execute(
             "SELECT upstream_run_id::text, source_file_id::text, source_ref, "
-            "       slot_name, edge_type, record_count "
+            "       input_slot, edge_type, record_count "
             "  FROM pipeline.lineage_edge "
             " WHERE lineage_link_id = %s::uuid",
             (canon_link_id,),

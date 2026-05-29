@@ -296,7 +296,7 @@ def get_link_edges(lineage_link_id: str) -> dict[str, Any]:
     with _conn() as c, c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(
             """
-            SELECT le.slot_name, le.edge_type, le.source_ref, le.target_ref,
+            SELECT le.input_slot, le.edge_type, le.source_ref, le.target_ref,
                    le.record_count,
                    le.upstream_run_id::text,
                    le.source_file_id::text,
@@ -307,7 +307,7 @@ def get_link_edges(lineage_link_id: str) -> dict[str, Any]:
          LEFT JOIN pipeline.run_log ur       ON ur.run_id = le.upstream_run_id
          LEFT JOIN pipeline.file_catalogue fc ON fc.file_id = le.source_file_id
              WHERE le.lineage_link_id = %s::uuid
-             ORDER BY le.slot_name NULLS LAST
+             ORDER BY le.input_slot NULLS LAST
             """,
             (lineage_link_id,),
         )
@@ -331,7 +331,7 @@ def trace(lineage_link_id: str) -> dict[str, Any]:
 
     Edges:
       raw_file        → upstream_run     (kind='produced')
-      upstream_run    → write_event      (kind='contributed', carries slot_name)
+      upstream_run    → write_event      (kind='contributed', carries input_slot)
       write_event     → consumer_run     (kind='emitted_by')
       write_event     → target           (kind='wrote_to')
     """
@@ -367,7 +367,7 @@ def trace(lineage_link_id: str) -> dict[str, Any]:
             SELECT le.upstream_run_id::text,
                    le.source_file_id::text,
                    le.source_ref,
-                   le.slot_name,
+                   le.input_slot,
                    le.edge_type,
                    le.record_count,
                    ur.pipeline_type AS upstream_pipeline_type,
@@ -384,7 +384,7 @@ def trace(lineage_link_id: str) -> dict[str, Any]:
          LEFT JOIN pipeline.run_log ur  ON ur.run_id  = le.upstream_run_id
          LEFT JOIN pipeline.file_catalogue fc ON fc.file_id = le.source_file_id
              WHERE le.lineage_link_id = %s::uuid
-             ORDER BY le.slot_name NULLS LAST
+             ORDER BY le.input_slot NULLS LAST
             """,
             (lineage_link_id,),
         )
@@ -423,7 +423,7 @@ def trace(lineage_link_id: str) -> dict[str, Any]:
               record_count=link["record_count"])
 
     for contrib in contributions:
-        slot = contrib["slot_name"]
+        slot = contrib["input_slot"]
         if contrib["upstream_run_id"]:
             ur_id = f"run:{contrib['upstream_run_id']}"
             _add_node(ur_id, "upstream_run",
@@ -435,7 +435,7 @@ def trace(lineage_link_id: str) -> dict[str, Any]:
                       business_date=str(contrib["upstream_business_date"])
                                      if contrib["upstream_business_date"] else None)
             _add_edge(ur_id, write_event_id, "contributed",
-                      slot_name=slot, record_count=contrib["record_count"])
+                      input_slot=slot, record_count=contrib["record_count"])
 
         rf_id = None
         if contrib["source_file_id"]:
@@ -462,7 +462,7 @@ def trace(lineage_link_id: str) -> dict[str, Any]:
             tgt_for_file = (f"run:{contrib['upstream_run_id']}"
                             if contrib["upstream_run_id"] else write_event_id)
             _add_edge(rf_id, tgt_for_file, "produced",
-                      slot_name=slot, source_ref=contrib["source_ref"])
+                      input_slot=slot, source_ref=contrib["source_ref"])
 
     return {
         "lineage_link": dict(link) | {"created_at": str(link["created_at"])},
