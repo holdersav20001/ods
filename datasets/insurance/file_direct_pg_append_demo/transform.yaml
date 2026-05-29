@@ -1,0 +1,10 @@
+# Canonical transform for the append demo dataset.
+# Identity for now; used by ops/lineage_dashboard/demo_run.py workflow 2
+# so the canonicalize chain writes into its own target table separate
+# from workflow 1 (upsert dataset).
+transform_version: 1
+is_canonical: true
+
+renames: {}
+drops:   []
+casts:   {}
