@@ -55,8 +55,18 @@ CANONICAL_BUCKET = os.environ.get("ODS_CANONICAL_BUCKET", "ods-curated-local")
 # YAML loader
 # ---------------------------------------------------------------------------
 
+def _datasets_root() -> str:
+    """Resolve the datasets/ root.
+
+    Honours ``ODS_DATASETS_ROOT`` so the job runs the same in the docker
+    image (where the repo is bind-mounted) as on a developer's workstation.
+    """
+    override = os.environ.get("ODS_DATASETS_ROOT")
+    return override if override else os.path.join(_REPO_ROOT, "datasets")
+
+
 def _yaml_path(domain: str, dataset: str) -> str:
-    return os.path.join(_REPO_ROOT, "datasets", domain, dataset, "transform.yaml")
+    return os.path.join(_datasets_root(), domain, dataset, "transform.yaml")
 
 
 def _load_transform(domain: str, dataset: str) -> dict:

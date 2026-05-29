@@ -509,9 +509,26 @@ def run(*, run_id: str, domain: str, dataset: str, s3_input_path: str,
         # lineage_edge contributions, all sharing lineage_link_id. The
         # contributions list has length 1 for single-source loads; merge
         # jobs use the same write_link helper with N entries.
+        # Discover the data-lineage upstream for this write event. Order:
+        #   1. caller-supplied --upstream_run_id, IF it exists in run_log
+        #      (the DAG passes the canonicalize run; integration tests
+        #      pass a synthetic orchestration parent that is NOT a
+        #      run_log row, which would FK-violate)
+        #   2. most recent succeeded canonicalize run for this file
+        #   3. most recent succeeded ingestion run for this file
         upstream_ingest_run = None
-        if file_id:
+        if upstream_run_id:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT 1 FROM pipeline.run_log WHERE run_id = %s::uuid",
+                    (upstream_run_id,),
+                )
+                if cur.fetchone():
+                    upstream_ingest_run = upstream_run_id
+        if not upstream_ingest_run and file_id:
             upstream_ingest_run = ods_pipeline.runs.latest_succeeded_run(
+                conn, file_id=file_id, pipeline_type="canonicalize"
+            ) or ods_pipeline.runs.latest_succeeded_run(
                 conn, file_id=file_id, pipeline_type="ingestion"
             )
 

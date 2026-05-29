@@ -1,0 +1,10 @@
+# Canonical transformation contract for the file_direct_pg_upsert_demo
+# dataset used by the integration tests. Identity for now; the test
+# verifies the canonicalize step runs end-to-end and writes the canonical
+# parquet, run_log, and lineage_link even when there are no rename ops.
+transform_version: 1
+is_canonical: true
+
+renames: {}
+drops:   []
+casts:   {}
