@@ -17,6 +17,7 @@ present" holds.
 """
 from __future__ import annotations
 
+import uuid
 from typing import Any
 
 import ods_pipeline
@@ -40,15 +41,28 @@ def finalise_success(
     failing_count: int,
 ) -> None:
     """Write the success-path control-plane rows in canonical order."""
-    # 1. Lineage first — so "succeeded" later implies the edge exists.
-    ods_pipeline.lineage.write_edge(
+    # 1. Lineage first — so "succeeded" later implies the proof rows exist.
+    #
+    #    Record this ingestion as its OWN pipeline.lineage_link bundle.
+    #    Without this, the dashboard only ever sees the postgres_write
+    #    bundle and the curated parquet artefact has nowhere to live in
+    #    the graph. The bundle has one lineage_edge contribution (this
+    #    write event consumed exactly one raw file → one curated parquet
+    #    output) and writes the same data as the old write_edge call did.
+    ods_pipeline.lineage.write_link(
         conn,
+        lineage_link_id=str(uuid.uuid4()),
         consumer_run_id=run_id,
-        source_file_id=file_id,
         edge_type="raw_to_curated",
-        source_ref=s3_input_path,
         target_ref=curated_uri,
         record_count=written_count,
+        contributions=[{
+            "source_file_id": file_id,
+            "source_ref":     s3_input_path,
+            "slot_name":      "main",
+            "record_count":   written_count,
+            "edge_type":      "raw_to_curated",
+        }],
     )
 
     # 2. file_catalogue: ingesting → curated.
