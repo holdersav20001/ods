@@ -87,3 +87,84 @@ def fake_ingest(conn, *, workflow_run_id, file, commit=True) -> dict:
                   commit=commit)
 
     return {"run_id": run_id, "file_id": file_id, "link_id": link_id}
+
+
+def fake_canonicalize(conn, *, workflow_run_id, domain, dataset, business_date,
+                      record_count, transform_version="v1", commit=True) -> dict:
+    """The canonicalize hop: curated parquet -> canonical parquet.
+
+    DISCOVERY HOP. Its defining feature: it does NOT accept an upstream run id.
+    It DISCOVERS its ingest upstream by calling control.runs.latest_succeeded_run
+    for the (domain, dataset, business_date, pipeline_type='ingestion') slice.
+    The discovered run id becomes the lineage edge's upstream_run_id, so the
+    canonical link's provenance spans runs back to the ingest run (and through
+    it, to the raw file). There is NO source_file_id on this hop's edge — the
+    raw anchor is the ingest edge's job; this hop anchors to a RUN, not a file.
+
+    Returns {run_id, upstream_run_id, link_id}.
+    """
+    n = record_count
+
+    # 1. DISCOVER the upstream ingest run (never trust a passed-in id).
+    upstream_run_id = runs.latest_succeeded_run(
+        conn,
+        domain=domain,
+        dataset=dataset,
+        business_date=business_date,
+        pipeline_type="ingestion",
+    )
+    if upstream_run_id is None:
+        raise ValueError(
+            "no succeeded ingestion run to canonicalize for "
+            f"({domain}/{dataset}/{business_date})"
+        )
+
+    run_id = runs.start(
+        conn,
+        workflow_run_id=workflow_run_id,
+        pipeline_type="canonicalization",
+        domain=domain,
+        dataset=dataset,
+        business_date=business_date,
+        trigger_type="manual",
+        commit=commit,
+    )
+
+    with stages.stage_scope(conn, run_id, "canonicalize", commit=commit) as st:
+        st.record_in = n
+        st.record_out = n  # fake: every row passes through
+
+    link_id = lineage.write_link(
+        conn,
+        consumer_run_id=run_id,
+        edge_type="curated_to_canonical",
+        target_ref={
+            "path": f"s3://canonical/{dataset}/{business_date}.parquet",
+            "content_hash": f"{dataset}-{business_date}-{transform_version}",
+            "version": 1,
+        },
+        record_count=n,
+        edges=[{
+            "upstream_run_id": upstream_run_id,  # the DISCOVERED ingest run
+            "edge_type": "curated_to_canonical",
+            "source_ref": {"note": "discovered ingest run"},
+            "record_count": n,
+        }],
+        transform_version=transform_version,
+        commit=commit,
+    )
+
+    recon.write_check(
+        conn,
+        run_id=run_id,
+        check_type="canonicalize",
+        source_count=n,
+        accounted_count=n,  # balanced
+        commit=commit,
+    )
+
+    runs.finalise(conn, run_id, status="succeeded", record_count_out=n,
+                  commit=commit)
+
+    return {"run_id": run_id, "upstream_run_id": upstream_run_id,
+            "link_id": link_id}

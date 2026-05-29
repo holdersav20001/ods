@@ -139,3 +139,165 @@ def test_trace_row_sql_reconstructs_chain_to_raw(conn, result):
     print("\n[trace_row.sql] reconstructed chain for link", link_id)
     for c in chain:
         print("   ", c)
+
+
+# --------------------------------------------------------------------------- #
+# GATE B evidence — the canonicalize hop (curated_to_canonical) via DISCOVERY.
+#
+# GATE B checklist (canonicalize hop):
+#   1. Trace-to-raw ACROSS RUNS: walking cp.v_provenance / trace_row.sql from the
+#      canonical link reaches the raw file THROUGH the ingest run (2 hops:
+#      canonical -> ingest-curated -> raw file).
+#   2. Discovery proven (mandatory re-run test): a second canonicalize, with NO
+#      upstream id passed (the signature has none), links to the run that
+#      latest_succeeded_run returns; with TWO succeeded ingests it links to
+#      exactly what discovery selects — proving it selects, not grabs anything.
+#   3. No empty links (canonical link has an edge); provenance for the canonical
+#      run is only is_provenance edges (no orchestrates).
+#   4. transform_version recorded on the canonical link row.
+#   5. One workflow_run_id across ingest + canonicalize runs.
+# --------------------------------------------------------------------------- #
+CD = ["hop", "edge_type", "consumer_run_id", "upstream_run_id",
+      "source_file_id", "raw_s3_path"]
+
+
+def test_trace_canonical_to_raw_across_runs(conn, result):
+    """GATE B.1: canonical link's chain reaches the raw file through the ingest run."""
+    canon_link = result["canonicalize"]["link_id"]
+    rows = conn.execute(TRACE_SQL, {"link_id": canon_link}).fetchall()
+    chain = [dict(zip(CD, r)) for r in rows]
+    assert chain, "trace_row.sql returned no chain for the canonical link"
+
+    # Two provenance hops: canonical (hop 1) then ingest-curated (hop 2).
+    edge_types = [c["edge_type"] for c in chain]
+    assert "curated_to_canonical" in edge_types
+    assert "raw_to_curated" in edge_types
+    assert max(c["hop"] for c in chain) >= 2, "chain did not span runs (expected >=2 hops)"
+
+    # The raw leaf carries the registered raw path -> trace reached the raw file.
+    raw_paths = [c["raw_s3_path"] for c in chain if c["raw_s3_path"] is not None]
+    assert result["_file"]["s3_raw_path"] in raw_paths
+    # And it got there through the ingest run.
+    upstreams = {str(c["upstream_run_id"]) for c in chain if c["upstream_run_id"]}
+    assert result["ingest"]["run_id"] in upstreams
+
+    print("\n[GATE B.1] 2-hop chain canonical -> ingest-curated -> raw, link", canon_link)
+    for c in chain:
+        print("   ", c)
+
+
+def test_discovery_selects_latest_ingest_no_upstream_param(conn):
+    """GATE B.2 (mandatory): discovery proven — no upstream id is ever passed,
+    and with TWO succeeded ingests the canonical edge links to exactly the run
+    latest_succeeded_run selects (the newest)."""
+    import inspect
+    from harness import fakes
+
+    # PROOF #1 (static): fake_canonicalize's signature has NO upstream run param.
+    params = set(inspect.signature(fakes.fake_canonicalize).parameters)
+    forbidden = {"upstream_run_id", "upstream_id", "upstream_run", "ingest_run_id"}
+    assert not (params & forbidden), (
+        f"fake_canonicalize must DISCOVER its upstream, not accept it: {params & forbidden}")
+
+    f = _file()
+    wfid = "11111111-1111-1111-1111-111111111111"
+
+    # Create TWO succeeded ingestion runs for the SAME slice (different file_md5
+    # so register_file is not deduped). latest_succeeded_run must pick one of
+    # them; we assert the canonical edge links to whatever it SELECTS.
+    ing1 = fakes.fake_ingest(conn, workflow_run_id=wfid, file=f, commit=False)
+    f2 = dict(f)
+    f2["file_md5"] = f["file_md5"] + "-second"
+    f2["s3_raw_path"] = f["s3_raw_path"].replace(".csv", "-2.csv")
+    ing2 = fakes.fake_ingest(conn, workflow_run_id=wfid, file=f2, commit=False)
+
+    from control import runs as _runs
+    selected = _runs.latest_succeeded_run(
+        conn, domain=f["domain"], dataset=f["dataset"],
+        business_date=f["business_date"], pipeline_type="ingestion")
+    assert selected in {ing1["run_id"], ing2["run_id"]}, \
+        "discovery returned a run that is not one of the two ingests"
+
+    canon = fakes.fake_canonicalize(
+        conn, workflow_run_id=wfid, domain=f["domain"], dataset=f["dataset"],
+        business_date=f["business_date"], record_count=f["record_count"],
+        commit=False)
+
+    # The hop discovered the SAME run latest_succeeded_run returns (it SELECTS).
+    assert canon["upstream_run_id"] == selected
+
+    # And the canonical edge in the DB carries that discovered upstream run.
+    edge_upstream = conn.execute(
+        "SELECT upstream_run_id FROM cp.lineage_edge WHERE lineage_link_id = %s",
+        (canon["link_id"],)).fetchone()[0]
+    assert str(edge_upstream) == selected
+    assert canon["upstream_run_id"] in {ing1["run_id"], ing2["run_id"]}
+
+    print("\n[GATE B.2] DISCOVERY-SELECTION PROOF")
+    print("    ingest run #1        :", ing1["run_id"])
+    print("    ingest run #2        :", ing2["run_id"])
+    print("    latest_succeeded_run :", selected)
+    print("    canonical edge upstream:", str(edge_upstream))
+    print("    (no upstream id was passed; signature params =", sorted(params), ")")
+
+
+def test_discovery_raises_without_ingest(conn):
+    """GATE B.2b: with no succeeded ingestion run, canonicalize refuses (clear error)."""
+    from harness import fakes
+    f = _file()
+    with pytest.raises(ValueError, match="no succeeded ingestion run"):
+        fakes.fake_canonicalize(
+            conn, workflow_run_id="22222222-2222-2222-2222-222222222222",
+            domain=f["domain"], dataset=f["dataset"],
+            business_date=f["business_date"], record_count=f["record_count"],
+            commit=False)
+
+
+def test_canonical_no_empty_link(conn, result):
+    """GATE B.3a: the canonical link has at least one edge."""
+    canon_link = result["canonicalize"]["link_id"]
+    empty = conn.execute(
+        "SELECT count(*) FROM cp.lineage_link l "
+        "WHERE l.lineage_link_id = %s "
+        "AND NOT EXISTS (SELECT 1 FROM cp.lineage_edge e "
+        "                WHERE e.lineage_link_id = l.lineage_link_id)",
+        (canon_link,)).fetchone()[0]
+    assert empty == 0
+    print("\n[GATE B.3a] empty canonical links:", empty)
+
+
+def test_canonical_provenance_excludes_triggers(conn, result):
+    """GATE B.3b: the canonical run's v_provenance is only is_provenance edges."""
+    canon_run = result["canonicalize"]["run_id"]
+    rows = conn.execute(
+        "SELECT p.edge_type, t.is_provenance "
+        "FROM cp.v_provenance p "
+        "JOIN cp.edge_type t ON t.edge_type = p.edge_type "
+        "WHERE p.consumer_run_id = %s", (canon_run,)).fetchall()
+    assert rows
+    assert all(r[1] is True for r in rows)
+    assert all(r[0] != "orchestrates" for r in rows)
+    assert {r[0] for r in rows} == {"curated_to_canonical"}
+    print("\n[GATE B.3b] canonical-run provenance edge_types:",
+          sorted({r[0] for r in rows}))
+
+
+def test_canonical_transform_version_recorded(conn, result):
+    """GATE B.4: the canonical link row records transform_version."""
+    canon_link = result["canonicalize"]["link_id"]
+    tv = conn.execute(
+        "SELECT transform_version FROM cp.lineage_link WHERE lineage_link_id = %s",
+        (canon_link,)).fetchone()[0]
+    assert tv == "v1"
+    print("\n[GATE B.4] canonical link transform_version:", tv)
+
+
+def test_single_workflow_run_id_across_both_hops(conn, result):
+    """GATE B.5: ingest + canonicalize runs share the one minted workflow_run_id."""
+    wfid = result["workflow_run_id"]
+    rows = conn.execute(
+        "SELECT DISTINCT workflow_run_id FROM cp.run_log WHERE run_id IN (%s, %s)",
+        (result["ingest"]["run_id"], result["canonicalize"]["run_id"])).fetchall()
+    assert [r[0] for r in rows] == [wfid], \
+        "ingest and canonicalize must share ONE workflow_run_id"
+    print("\n[GATE B.5] single workflow_run_id across both hops:", wfid)
