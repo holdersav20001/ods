@@ -20,6 +20,7 @@ END $$;
 -- cp.patch_run: update only whitelisted keys present in p_patch.
 -- Whitelist: status, record_count_in, record_count_out, error.
 -- Terminal status ('succeeded'/'failed') also stamps finished_at = now().
+-- SUPERSEDED by 007_finished_at_clock.sql (finished_at -> clock_timestamp). Edit there, not here.
 CREATE OR REPLACE FUNCTION cp.patch_run(
     p_run_id uuid, p_patch jsonb
 ) RETURNS void LANGUAGE plpgsql AS $$
@@ -65,6 +66,7 @@ BEGIN
 END $$;
 
 -- cp.finish_stage: stamp status, counts, metrics, finished_at on the stage row.
+-- SUPERSEDED by 007_finished_at_clock.sql (finished_at -> clock_timestamp). Edit there, not here.
 CREATE OR REPLACE FUNCTION cp.finish_stage(
     p_stage_log_id bigint, p_status text, p_in bigint, p_out bigint, p_metrics jsonb
 ) RETURNS void LANGUAGE plpgsql AS $$
@@ -116,6 +118,7 @@ END $$;
 --   _ods_lineage_link_id uuid NOT NULL REFERENCES cp.lineage_link(lineage_link_id)
 -- NOTE: the to_regclass guard only verifies the table EXISTS, not that its shape
 -- matches this contract; a mis-shaped target will fail at the EXECUTE insert.
+-- SUPERSEDED by 008_link_then_rows_idempotent.sql (row-idempotency short-circuit). Edit there, not here.
 CREATE OR REPLACE FUNCTION cp.write_link_then_rows(
     p_consumer_run_id uuid, p_edge_type text, p_target_ref jsonb, p_record_count bigint,
     p_edges jsonb, p_rows jsonb, p_sink_type text DEFAULT NULL, p_transform_version text DEFAULT NULL

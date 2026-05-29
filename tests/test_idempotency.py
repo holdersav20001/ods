@@ -207,18 +207,20 @@ def test_link_then_rows_rows_are_idempotent(committing_conn):
             sink_type="postgres", commit=True)
 
     link1 = _sink_write()
-    links1, _ = _link_edge_counts(conn, run_id)
+    links1, edges1 = _link_edge_counts(conn, run_id)
     rows1 = _row_count(conn, run_id)
     link2 = _sink_write()
-    links2, _ = _link_edge_counts(conn, run_id)
+    links2, edges2 = _link_edge_counts(conn, run_id)
     rows2 = _row_count(conn, run_id)
 
-    # Same link, link count stable, AND rows NOT doubled.
+    # Same link, link + edge counts stable, AND rows NOT doubled.
     assert link1 == link2, "retry produced a different link"
     assert links1 == links2 == 1, "link should be idempotent across retries"
+    assert edges1 == edges2 == 1, "edges should not duplicate across retries"
     assert rows1 == n
     assert rows2 == n, (
         f"write_link_then_rows doubled rows on retry: {rows1} -> {rows2} "
         "(migration 008 row-idempotency guard missing/broken)")
-    print("\n[IDEMPOTENT ROWS] write_link_then_rows retry: same link, rows "
-          f"stable: {rows1} -> {rows2} (NOT doubled)")
+    print("\n[IDEMPOTENT ROWS] write_link_then_rows retry: same link, edges "
+          f"stable: {edges1} -> {edges2}, rows stable: {rows1} -> {rows2} "
+          "(NOT doubled)")
