@@ -87,6 +87,212 @@ def list_links(limit: int = Query(50, ge=1, le=500)) -> list[dict[str, Any]]:
     return [dict(r) for r in rows]
 
 
+@app.get("/api/run/{run_id}")
+def get_run(run_id: str) -> dict[str, Any]:
+    """Full run_log row + run_stage_log timeline + lineage handles."""
+    with _conn() as c, c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(
+            """
+            SELECT r.run_id::text, r.pipeline_type, r.domain, r.dataset,
+                   r.business_date, r.status, r.started_at, r.ended_at,
+                   r.record_count_source, r.record_count_target,
+                   r.record_count_dq_pass, r.record_count_dq_fail,
+                   r.error_summary, r.config_version_id, r.schema_version_id,
+                   r.orchestrators, r.runtime_context,
+                   r.file_id::text,
+                   r.kafka_topic,
+                   fc.s3_raw_path, fc.s3_curated_path,
+                   dc.schema_id            AS dataset_schema_id,
+                   dc.schema_version       AS dataset_schema_version,
+                   dc.transform_yaml_path  AS dataset_transform_yaml_path,
+                   dc.is_canonical         AS dataset_is_canonical
+              FROM pipeline.run_log r
+         LEFT JOIN pipeline.file_catalogue fc ON fc.file_id = r.file_id
+         LEFT JOIN pipeline.dataset_config dc
+                ON dc.domain  = r.domain
+               AND dc.dataset = r.dataset
+               AND dc.active  = TRUE
+             WHERE r.run_id = %s::uuid
+            """,
+            (run_id,),
+        )
+        run = cur.fetchone()
+        if run is None:
+            raise HTTPException(404, f"run {run_id} not found")
+
+        cur.execute(
+            """
+            SELECT stage, status, event_type, attempt_number,
+                   started_at, ended_at,
+                   input_ref, output_ref,
+                   record_count_in, record_count_out,
+                   error
+              FROM pipeline.run_stage_log
+             WHERE run_id = %s::uuid
+             ORDER BY started_at, id
+            """,
+            (run_id,),
+        )
+        stages = [dict(r) for r in cur.fetchall()]
+
+        # Links this run participated in — as consumer AND as upstream.
+        cur.execute(
+            """
+            SELECT lineage_link_id::text AS lineage_link_id, 'consumer' AS role,
+                   edge_type, target_ref, record_count, created_at
+              FROM pipeline.lineage_link
+             WHERE consumer_run_id = %s::uuid
+            UNION ALL
+            SELECT DISTINCT le.lineage_link_id::text, 'upstream' AS role,
+                   le.edge_type, le.target_ref, le.record_count, NULL::timestamp
+              FROM pipeline.lineage_edge le
+             WHERE le.upstream_run_id = %s::uuid
+               AND le.lineage_link_id IS NOT NULL
+             ORDER BY created_at DESC NULLS LAST
+            """,
+            (run_id, run_id),
+        )
+        links = [dict(r) for r in cur.fetchall()]
+
+    def _stringify(row):
+        return {k: (str(v) if v is not None else None) for k, v in row.items()}
+
+    return {
+        "run": _stringify(dict(run)),
+        "stages": [_stringify(s) for s in stages],
+        "links": [_stringify(l) for l in links],
+    }
+
+
+_DATASETS_ROOT = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "..", "datasets")
+)
+_ALLOWED_YAML_KINDS = {
+    "contract", "dataset", "delivery", "quality",
+    "reconciliation", "source", "transform",
+}
+
+
+@app.get("/api/yaml/dataset/{domain}/{dataset}/{kind}")
+def get_dataset_yaml(domain: str, dataset: str, kind: str) -> dict[str, str]:
+    """Return the raw YAML for one config file under datasets/<d>/<ds>/.
+
+    Path-sandboxed: only the whitelisted kinds and only paths that resolve
+    inside ``datasets/`` are served.
+    """
+    if kind not in _ALLOWED_YAML_KINDS:
+        raise HTTPException(400, f"kind {kind!r} not allowed")
+    # Sanitise — refuse traversal.
+    for part in (domain, dataset):
+        if not part or "/" in part or "\\" in part or part.startswith("."):
+            raise HTTPException(400, "invalid path component")
+    target = os.path.abspath(
+        os.path.join(_DATASETS_ROOT, domain, dataset, f"{kind}.yaml")
+    )
+    if not target.startswith(_DATASETS_ROOT + os.sep):
+        raise HTTPException(400, "path escapes datasets/")
+    if not os.path.exists(target):
+        raise HTTPException(404, f"{domain}/{dataset}/{kind}.yaml not found")
+    with open(target, "r", encoding="utf-8") as f:
+        content = f.read()
+    return {
+        "path": os.path.relpath(target, os.path.dirname(_DATASETS_ROOT)),
+        "kind": kind,
+        "content": content,
+    }
+
+
+@app.get("/api/file/{file_id}")
+def get_file(file_id: str) -> dict[str, Any]:
+    """file_catalogue row + every run_log entry that processed this file."""
+    with _conn() as c, c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(
+            """
+            SELECT file_id::text, domain, dataset, business_date,
+                   s3_raw_path, s3_curated_path, sftp_path,
+                   file_md5, file_size_bytes, source_row_count,
+                   state, last_run_id::text, created_at, updated_at
+              FROM pipeline.file_catalogue
+             WHERE file_id = %s::uuid
+            """,
+            (file_id,),
+        )
+        file_row = cur.fetchone()
+        if file_row is None:
+            raise HTTPException(404, f"file {file_id} not found")
+
+        cur.execute(
+            """
+            SELECT run_id::text, pipeline_type, domain, dataset,
+                   business_date, status, started_at, ended_at,
+                   record_count_source, record_count_target
+              FROM pipeline.run_log
+             WHERE file_id = %s::uuid
+             ORDER BY started_at
+            """,
+            (file_id,),
+        )
+        runs = [dict(r) for r in cur.fetchall()]
+
+    def _stringify(row):
+        return {k: (str(v) if v is not None else None) for k, v in row.items()}
+    return {"file": _stringify(dict(file_row)),
+            "runs": [_stringify(r) for r in runs]}
+
+
+@app.get("/api/target")
+def get_target(ref: str = Query(..., description="target_ref")) -> dict[str, Any]:
+    """Recent lineage_link writes that landed at this target_ref."""
+    with _conn() as c, c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(
+            """
+            SELECT ll.lineage_link_id::text,
+                   ll.consumer_run_id::text,
+                   ll.edge_type, ll.record_count, ll.created_at,
+                   r.pipeline_type, r.domain, r.dataset,
+                   r.business_date, r.status
+              FROM pipeline.lineage_link ll
+         LEFT JOIN pipeline.run_log r ON r.run_id = ll.consumer_run_id
+             WHERE ll.target_ref = %s
+             ORDER BY ll.created_at DESC
+             LIMIT 50
+            """,
+            (ref,),
+        )
+        links = [dict(r) for r in cur.fetchall()]
+    def _stringify(row):
+        return {k: (str(v) if v is not None else None) for k, v in row.items()}
+    return {"target_ref": ref, "links": [_stringify(l) for l in links]}
+
+
+@app.get("/api/lineage/link/{lineage_link_id}/edges")
+def get_link_edges(lineage_link_id: str) -> dict[str, Any]:
+    """All lineage_edge rows in this bundle (with run + file metadata)."""
+    with _conn() as c, c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(
+            """
+            SELECT le.slot_name, le.edge_type, le.source_ref, le.target_ref,
+                   le.record_count,
+                   le.upstream_run_id::text,
+                   le.source_file_id::text,
+                   ur.pipeline_type AS upstream_pipeline_type,
+                   ur.status        AS upstream_status,
+                   fc.s3_raw_path
+              FROM pipeline.lineage_edge le
+         LEFT JOIN pipeline.run_log ur       ON ur.run_id = le.upstream_run_id
+         LEFT JOIN pipeline.file_catalogue fc ON fc.file_id = le.source_file_id
+             WHERE le.lineage_link_id = %s::uuid
+             ORDER BY le.slot_name NULLS LAST
+            """,
+            (lineage_link_id,),
+        )
+        edges = [dict(r) for r in cur.fetchall()]
+    def _stringify(row):
+        return {k: (str(v) if v is not None else None) for k, v in row.items()}
+    return {"lineage_link_id": lineage_link_id,
+            "edges": [_stringify(e) for e in edges]}
+
+
 @app.get("/api/lineage/trace/{lineage_link_id}")
 def trace(lineage_link_id: str) -> dict[str, Any]:
     """Return a graph (nodes + edges) for one lineage_link.

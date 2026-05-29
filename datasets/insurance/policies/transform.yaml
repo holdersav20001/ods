@@ -1,2 +1,23 @@
+# Canonical transformation contract for insurance.policies.
+#
+# Applied by glue/jobs/ods_canonicalize_file.py between ods_ingestion
+# (curated parquet) and ods_postgres_write (ods.insurance_policy).
+#
+# Order of application: renames -> drops -> casts.
+#
+# Schema:
+#   transform_version: int           # bumped when this file's semantics change
+#   is_canonical:      bool          # downstream gates 'canonical_topic'
+#   renames: {old: new, ...}         # column rename map
+#   drops:   [col, col, ...]         # columns to drop from canonical
+#   casts:   {col: spark_type, ...}  # Spark SQL type expressions
+#
+# IMPORTANT: any non-empty renames/drops MUST be matched by corresponding
+# DDL changes on the downstream target table or the postgres_write step
+# will fail with column-mismatch. Leave empty until that work is paired.
+transform_version: 1
 is_canonical: true
-mode: identity
+
+renames: {}
+drops:   []
+casts:   {}

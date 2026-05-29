@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import LineageGraph from './LineageGraph.jsx';
 import LinksList from './LinksList.jsx';
-import NodeDetails from './NodeDetails.jsx';
+import NodeDetails, { YamlModalProvider } from './NodeDetails.jsx';
 
 export default function App() {
   const [links, setLinks] = useState([]);
@@ -34,6 +34,7 @@ export default function App() {
   const onNodeClick = useCallback((_e, n) => setSelectedNode(n), []);
 
   return (
+    <YamlModalProvider>
     <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr 360px', height: '100vh' }}>
       <aside style={{ borderRight: '1px solid #e5e7eb', overflowY: 'auto' }}>
         <header style={{ padding: 12, borderBottom: '1px solid #e5e7eb', background: '#f9fafb' }}>
@@ -52,9 +53,11 @@ export default function App() {
       </main>
 
       <aside style={{ borderLeft: '1px solid #e5e7eb', overflowY: 'auto', background: '#fafafa' }}>
-        <NodeDetails node={selectedNode} link={trace?.lineage_link} />
+        <NodeDetails node={selectedNode} link={trace?.lineage_link}
+                     onJumpToLink={setSelectedLinkId} />
       </aside>
     </div>
+    </YamlModalProvider>
   );
 }
 

@@ -5,8 +5,10 @@ datasets. Skips Kafka publish, canonicalize, and the JDBC Connect
 sink. Just:
 
     init_run (parent + ingestion + direct_postgres child runs)
-      -> stage_ingest         (Glue ods_ingestion: CSV/JSONL → Parquet)
-      -> stage_postgres_write (Glue ods_postgres_write: Parquet → PG)
+      -> stage_ingest         (Glue ods_ingestion: CSV/JSONL → curated Parquet)
+      -> stage_canonicalize   (Glue ods_canonicalize_file: curated → canonical
+                                Parquet via datasets/<d>/<ds>/transform.yaml)
+      -> stage_postgres_write (Glue ods_postgres_write: canonical Parquet → PG)
       -> finalise             (mark parent succeeded, advance file_catalogue)
 
 Triggered by ``dag_drop_to_raw`` for any ``source_type='s3_batch'``
@@ -84,9 +86,10 @@ def init_run() -> dict:
     if missing:
         raise RuntimeError(f"dag_run.conf missing keys: {missing}")
 
-    upstream_run_id = conf.get("upstream_run_id") or str(uuid.uuid4())
-    ingest_run_id = conf.get("ingest_run_id") or str(uuid.uuid4())
-    pg_write_run_id = conf.get("pg_write_run_id") or str(uuid.uuid4())
+    upstream_run_id     = conf.get("upstream_run_id")     or str(uuid.uuid4())
+    ingest_run_id       = conf.get("ingest_run_id")       or str(uuid.uuid4())
+    canonicalize_run_id = conf.get("canonicalize_run_id") or str(uuid.uuid4())
+    pg_write_run_id     = conf.get("pg_write_run_id")     or str(uuid.uuid4())
 
     conn = psycopg2.connect(PG_DSN)
     try:
@@ -149,6 +152,17 @@ def init_run() -> dict:
         )
         ods_pipeline.runs.start(
             conn,
+            run_id=canonicalize_run_id,
+            pipeline_type="canonicalize",
+            domain=conf["domain"],
+            dataset=conf["dataset"],
+            business_date=conf["business_date"],
+            file_id=conf["file_id"],
+            config_version_id=config_version_id,
+            orchestrators=[{"run_id": upstream_run_id, "edge_type": "orchestrates"}],
+        )
+        ods_pipeline.runs.start(
+            conn,
             run_id=pg_write_run_id,
             pipeline_type="direct_postgres",
             domain=conf["domain"],
@@ -178,14 +192,22 @@ def init_run() -> dict:
         status="running",
     )
 
+    # Canonical S3 lives parallel to curated: same bucket, "canonical/" prefix.
+    s3_canonical_path = s3_curated_path.replace("/curated/", "/canonical/", 1)
+    if "/canonical/" not in s3_canonical_path:
+        # Fallback when the dataset_config path uses a flat layout.
+        s3_canonical_path = s3_curated_path.rstrip("/") + "_canonical/"
+
     return {
         **conf,
         "run_id": upstream_run_id,
         "upstream_run_id": upstream_run_id,
         "ingest_run_id": ingest_run_id,
+        "canonicalize_run_id": canonicalize_run_id,
         "pg_write_run_id": pg_write_run_id,
         "s3_raw_path": s3_raw_path,
         "s3_curated_path": s3_curated_path,
+        "s3_canonical_path": s3_canonical_path,
         "airflow_dag_id": dag_run.dag_id,
         "airflow_run_id": dag_run.run_id,
     }
@@ -296,6 +318,28 @@ with DAG(
         mounts=_glue_mounts,
     )
 
+    canonicalize = DockerOperator(
+        task_id="stage_canonicalize",
+        image=GLUE_IMAGE,
+        network_mode="ods-network",
+        auto_remove=True,
+        mount_tmp_dir=False,
+        command=(
+            "spark-submit "
+            "/home/glue_user/workspace/jobs/ods_canonicalize_file.py "
+            "--run_id {{ ti.xcom_pull(task_ids='init_run')['canonicalize_run_id'] }} "
+            "--domain {{ ti.xcom_pull(task_ids='init_run')['domain'] }} "
+            "--dataset {{ ti.xcom_pull(task_ids='init_run')['dataset'] }} "
+            "--s3_curated_path {{ ti.xcom_pull(task_ids='init_run')['s3_curated_path'] }} "
+            "--business_date {{ ti.xcom_pull(task_ids='init_run')['business_date'] }} "
+            "--upstream_run_id {{ ti.xcom_pull(task_ids='init_run')['ingest_run_id'] }} "
+            "--airflow_dag_id {{ dag.dag_id }} "
+            "--airflow_run_id {{ run_id }}"
+        ),
+        environment=GLUE_ENV,
+        mounts=_glue_mounts,
+    )
+
     # R8: bulk Parquet -> Postgres writes for historic backfills run for
     # hours; swap in the long-running wrapper for heartbeat + force-stop.
     pg_write = make_long_running_docker_operator(
@@ -318,9 +362,9 @@ with DAG(
             "--run_id {{ ti.xcom_pull(task_ids='init_run')['pg_write_run_id'] }} "
             "--domain {{ ti.xcom_pull(task_ids='init_run')['domain'] }} "
             "--dataset {{ ti.xcom_pull(task_ids='init_run')['dataset'] }} "
-            "--s3_input_path {{ ti.xcom_pull(task_ids='init_run')['s3_curated_path'] }} "
+            "--s3_input_path {{ ti.xcom_pull(task_ids='init_run')['s3_canonical_path'] }} "
             "--file_id {{ ti.xcom_pull(task_ids='init_run')['file_id'] }} "
-            "--upstream_run_id {{ ti.xcom_pull(task_ids='init_run')['upstream_run_id'] }} "
+            "--upstream_run_id {{ ti.xcom_pull(task_ids='init_run')['canonicalize_run_id'] }} "
             "--airflow_dag_id {{ dag.dag_id }} "
             "--airflow_run_id {{ run_id }}"
         ),
@@ -334,5 +378,5 @@ with DAG(
     )
 
     fin = finalise(ctx)
-    ctx >> ingest >> pg_write >> fin
-    [ingest, pg_write] >> fin
+    ctx >> ingest >> canonicalize >> pg_write >> fin
+    [ingest, canonicalize, pg_write] >> fin
