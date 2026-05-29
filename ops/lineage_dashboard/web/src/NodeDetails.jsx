@@ -261,8 +261,15 @@ function WriteEventPanel({ linkId, fallback, onJumpToLink }) {
                 {e.upstream_status && <Pill status={e.upstream_status} />}
               </div>
               <div style={{ color: '#475569' }}>{e.edge_type} · {e.record_count ?? '—'} rows</div>
-              {e.s3_raw_path && <Mono>raw: {e.s3_raw_path}</Mono>}
-              {e.source_ref && !e.s3_raw_path && <Mono>src: {e.source_ref}</Mono>}
+              {/* source_ref is what THIS write event actually read; show
+                  it first. s3_raw_path is the ORIGINAL raw arrival the
+                  bytes came from (joined via source_file_id) — only
+                  surface when it differs from source_ref so it's clear
+                  this is provenance, not the direct input. */}
+              {e.source_ref && <Mono>read from: {e.source_ref}</Mono>}
+              {e.s3_raw_path && e.s3_raw_path !== e.source_ref && (
+                <Mono>originally raw: {e.s3_raw_path}</Mono>
+              )}
               {e.upstream_run_id && <Mono>upstream_run: {e.upstream_run_id}</Mono>}
               {e.source_file_id && <Mono>file_id: {e.source_file_id}</Mono>}
             </li>
