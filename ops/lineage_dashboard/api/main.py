@@ -93,6 +93,10 @@ def get_run(run_id: str) -> dict[str, Any]:
     with _conn() as c, c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(
             """
+            -- Properties of the SOURCE FILE (s3_raw_path / s3_curated_path)
+            -- live on the file_catalogue node, not on the run. Joining them
+            -- here just duplicated the same paths onto every run that
+            -- touched the file and made the side panel noisy.
             SELECT r.run_id::text, r.pipeline_type, r.domain, r.dataset,
                    r.business_date, r.status, r.started_at, r.ended_at,
                    r.record_count_source, r.record_count_target,
@@ -101,13 +105,11 @@ def get_run(run_id: str) -> dict[str, Any]:
                    r.orchestrators, r.runtime_context,
                    r.file_id::text,
                    r.kafka_topic,
-                   fc.s3_raw_path, fc.s3_curated_path,
                    dc.schema_id            AS dataset_schema_id,
                    dc.schema_version       AS dataset_schema_version,
                    dc.transform_yaml_path  AS dataset_transform_yaml_path,
                    dc.is_canonical         AS dataset_is_canonical
               FROM pipeline.run_log r
-         LEFT JOIN pipeline.file_catalogue fc ON fc.file_id = r.file_id
          LEFT JOIN pipeline.dataset_config dc
                 ON dc.domain  = r.domain
                AND dc.dataset = r.dataset

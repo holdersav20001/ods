@@ -384,28 +384,48 @@ function RunPanel({ runId, onJumpToLink }) {
         </ol>
       </Section>
 
-      <Section title={`Lineage links (${links.length})`}>
-        {links.length === 0 && <Empty>None.</Empty>}
-        <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-          {links.map((l, i) => (
-            <li key={i}
-                onClick={() => onJumpToLink && onJumpToLink(l.lineage_link_id)}
-                style={{
-                  padding: 6, marginBottom: 4, borderRadius: 4,
-                  background: '#eef2ff', cursor: 'pointer', fontSize: 12,
-                }}>
-              <div><strong>{l.role}</strong> · {l.edge_type}</div>
-              <Mono>{l.lineage_link_id}</Mono>
-              <div style={{ color: '#64748b' }}>
-                {l.target_ref || ''} · {l.record_count ?? '—'} rows
-              </div>
-            </li>
-          ))}
-        </ul>
-      </Section>
+      <LinkSection
+        title="Wrote (this run produced these write events)"
+        emptyMsg="This run did not produce a lineage_link bundle."
+        items={links.filter(l => l.role === 'consumer')}
+        bg="#ecfdf5"
+        onJumpToLink={onJumpToLink}
+      />
+      <LinkSection
+        title="Read by (downstream steps used this run as input)"
+        emptyMsg="No downstream step has consumed this run yet."
+        items={links.filter(l => l.role === 'upstream')}
+        bg="#eff6ff"
+        onJumpToLink={onJumpToLink}
+      />
     </>
   );
 }
+
+function LinkSection({ title, emptyMsg, items, bg, onJumpToLink }) {
+  return (
+    <Section title={`${title} (${items.length})`}>
+      {items.length === 0 && <Empty>{emptyMsg}</Empty>}
+      <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+        {items.map((l, i) => (
+          <li key={i}
+              onClick={() => onJumpToLink && onJumpToLink(l.lineage_link_id)}
+              style={{
+                padding: 6, marginBottom: 4, borderRadius: 4,
+                background: bg, cursor: 'pointer', fontSize: 12,
+              }}>
+            <div><strong>{l.edge_type}</strong></div>
+            <Mono>{l.lineage_link_id}</Mono>
+            <div style={{ color: '#64748b' }}>
+              {l.target_ref || ''} · {l.record_count ?? '—'} rows
+            </div>
+          </li>
+        ))}
+      </ul>
+    </Section>
+  );
+}
+
 
 function Section({ title, children }) {
   return (
