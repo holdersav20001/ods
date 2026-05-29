@@ -266,11 +266,29 @@ def run(merge_run_id: str, domain: str, dataset: str, business_date: str) -> int
             stage_run_id, file_id = _get_latest_slot_run(
                 pg, domain, slot["dataset"], business_date
             )
-            # Prefer a canonicalize run if one ran AFTER the stage; this
-            # surfaces the per-slot canonicalize node in dashboards.
-            canon_run_id = ods_pipeline.runs.latest_succeeded_run(
-                pg, file_id=file_id, pipeline_type="canonicalize"
-            ) if file_id else None
+            # Prefer the most recent succeeded canonicalize run for this
+            # slot (matched on domain+dataset+business_date because
+            # ods_stage doesn't currently persist file_id on the stage
+            # run_log row). When no canonicalize run exists, fall back to
+            # the stage run so the pre-canon flow keeps working.
+            canon_run_id = None
+            with pg.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT run_id::text FROM pipeline.run_log
+                     WHERE domain = %s
+                       AND dataset = %s
+                       AND business_date = %s
+                       AND pipeline_type = 'canonicalize'
+                       AND status = 'succeeded'
+                     ORDER BY ended_at DESC NULLS LAST, started_at DESC
+                     LIMIT 1
+                    """,
+                    (domain, slot["dataset"], business_date),
+                )
+                row = cur.fetchone()
+            if row:
+                canon_run_id = row[0]
             upstream_run = canon_run_id or stage_run_id
             s3_raw = _get_s3_raw_path(pg, stage_run_id) if stage_run_id else "unknown"
             slot_meta[sname] = {
