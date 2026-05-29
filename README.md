@@ -29,10 +29,14 @@ So: **id for grouping, edges for provenance.** Both are kept; neither replaces t
 
 ## Status
 
-- ✅ Design spec written + approved in principle: `docs/specs/2026-05-29-control-plane-design.md`.
-- ⏳ **Not yet built.** Next step = Phase 1 below.
-- ❓ One open decision (see spec): generalize sink as `sink_type`+`sink_config` and edge_type
-  `canonical_to_sink` (current lean) vs keep `canonical_to_postgres` for now.
+- ✅ Design spec written: `docs/specs/2026-05-29-control-plane-design.md`.
+- ⚠️ **Reviewed by 4 lenses (architect, senior dev, QA, lineage) → NOT build-ready as written.**
+  See `docs/reviews/2026-05-29-design-review-consolidated.md` (5 CRITICAL + ~8 HIGH, converged).
+- 👉 **FIRST task for the new session: revise the spec to v2** addressing the CRITICAL+HIGH items
+  (function-signature appendix, atomic link+edges / write-ordering primitive, `workflow_run_id`
+  synthetic-id format, `edge_type` lookup table + `canonical_to_sink`, replay-traces-to-raw,
+  DLQ-as-edge, harness MUST-NOT rules, exhaustive contract test). **Then** Phase 1.
+- ❓ 4 decisions to make first — see the review's "Decisions the user should make".
 
 ## Setup (do once, before Phase 1)
 
