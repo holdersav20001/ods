@@ -442,12 +442,14 @@ def trace(lineage_link_id: str) -> dict[str, Any]:
         rf_id = None
         if contrib["source_file_id"]:
             # An entry in file_catalogue — always represents the RAW file
-            # the data originated from (file_catalogue tracks raw arrivals).
+            # the data originated from. We deliberately do NOT surface
+            # s3_curated_path here: the curated artefact is its own node
+            # downstream of the ingestion run, and showing it on the raw
+            # file node implies the raw file IS the curated file.
             rf_id = f"file:{contrib['source_file_id']}"
             _add_node(rf_id, "raw_file",
                       label=contrib["s3_raw_path"] or contrib["source_ref"] or "raw",
                       s3_raw_path=contrib["s3_raw_path"],
-                      s3_curated_path=contrib["s3_curated_path"],
                       file_size_bytes=contrib["file_size_bytes"],
                       source_row_count=contrib["source_row_count"])
         elif contrib["source_ref"]:
