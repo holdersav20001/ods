@@ -126,9 +126,10 @@ cp.patch_run(p_run_id uuid, p_patch jsonb) RETURNS void
   -- whitelisted keys only {status,record_count_in,record_count_out,error}. Own commit.
 
 cp.register_file(
-    p_workflow_run_id text, p_s3_raw_path text, p_file_md5 text,
+    p_s3_raw_path text, p_file_md5 text,
     p_business_date date, p_domain text, p_dataset text
 ) RETURNS uuid                          -- file_id
+  -- file<->run association lives in run_log.file_id; file_catalogue dedups across runs
   -- ON CONFLICT (file_md5, business_date) DO UPDATE state -> returns existing file_id (idempotent).
 
 cp.start_stage(p_run_id uuid, p_stage text, p_attempt int) RETURNS bigint   -- stage_log_id

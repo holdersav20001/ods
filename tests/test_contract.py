@@ -61,12 +61,12 @@ def test_start_run_creates_running_row(conn):
 def test_register_file_idempotent(conn):
     md5 = "md5-" + uuid4().hex
     fid1 = conn.execute(
-        "SELECT cp.register_file(%s,'s3://bucket/raw/a.csv',%s,%s,'sales','orders')",
-        (str(uuid4()), md5, BD),
+        "SELECT cp.register_file('s3://bucket/raw/a.csv',%s,%s,'sales','orders')",
+        (md5, BD),
     ).fetchone()[0]
     fid2 = conn.execute(
-        "SELECT cp.register_file(%s,'s3://bucket/raw/b.csv',%s,%s,'sales','orders')",
-        (str(uuid4()), md5, BD),
+        "SELECT cp.register_file('s3://bucket/raw/b.csv',%s,%s,'sales','orders')",
+        (md5, BD),
     ).fetchone()[0]
     assert fid1 == fid2
     cnt = conn.execute(
@@ -203,6 +203,40 @@ def test_quarantine_creates_dlq_and_lineage(conn):
         (link[0],),
     ).fetchone()[0]
     assert edge_cnt == 1
+
+
+def test_quarantine_distinct_failures_dont_collapse(conn):
+    # Two quarantine events in the SAME run with the SAME payload_ref must NOT
+    # collapse to one lineage_link (content_hash must be discriminated by dlq_id).
+    run_id, _ = _start_run(conn)
+    ref = "s3://dlq/same.json"
+    d1 = conn.execute(
+        "SELECT cp.quarantine(%s,'curate','bad A',%s,%s,%s)",
+        (run_id, json.dumps({"src": "a"}), ref, 2),
+    ).fetchone()[0]
+    d2 = conn.execute(
+        "SELECT cp.quarantine(%s,'curate','bad B',%s,%s,%s)",
+        (run_id, json.dumps({"src": "b"}), ref, 3),
+    ).fetchone()[0]
+    assert d1 != d2
+    dlq_cnt = conn.execute(
+        "SELECT count(*) FROM cp.dlq WHERE run_id=%s", (run_id,)
+    ).fetchone()[0]
+    assert dlq_cnt == 2
+    link_cnt = conn.execute(
+        "SELECT count(*) FROM cp.lineage_link "
+        "WHERE consumer_run_id=%s AND edge_type='quarantine'",
+        (run_id,),
+    ).fetchone()[0]
+    assert link_cnt == 2, "distinct quarantine events collapsed to one link"
+    # each link has exactly one edge
+    edge_cnt = conn.execute(
+        "SELECT count(*) FROM cp.lineage_edge e JOIN cp.lineage_link l "
+        "ON l.lineage_link_id=e.lineage_link_id "
+        "WHERE l.consumer_run_id=%s AND l.edge_type='quarantine'",
+        (run_id,),
+    ).fetchone()[0]
+    assert edge_cnt == 2
 
 
 # ---- latest_succeeded_run ---------------------------------------------------

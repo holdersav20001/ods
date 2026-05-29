@@ -36,8 +36,10 @@ END $$;
 
 -- cp.register_file: idempotent on (file_md5, business_date). No-op update so
 -- RETURNING always yields the existing/new file_id.
+-- file<->run association lives in run_log.file_id; file_catalogue dedups across runs
+DROP FUNCTION IF EXISTS cp.register_file(text, text, text, date, text, text);
 CREATE OR REPLACE FUNCTION cp.register_file(
-    p_workflow_run_id text, p_s3_raw_path text, p_file_md5 text,
+    p_s3_raw_path text, p_file_md5 text,
     p_business_date date, p_domain text, p_dataset text
 ) RETURNS uuid LANGUAGE plpgsql AS $$
 DECLARE v_file uuid;
@@ -107,6 +109,13 @@ BEGIN
 END $$;
 
 -- cp.write_link_then_rows: THE only sanctioned path to stamp target rows.
+-- TARGET-TABLE CONTRACT: the dynamic insert below requires every ods.<dataset>
+-- target table to have exactly these columns:
+--   payload              jsonb NOT NULL
+--   _ods_workflow_run_id text
+--   _ods_lineage_link_id uuid NOT NULL REFERENCES cp.lineage_link(lineage_link_id)
+-- NOTE: the to_regclass guard only verifies the table EXISTS, not that its shape
+-- matches this contract; a mis-shaped target will fail at the EXECUTE insert.
 CREATE OR REPLACE FUNCTION cp.write_link_then_rows(
     p_consumer_run_id uuid, p_edge_type text, p_target_ref jsonb, p_record_count bigint,
     p_edges jsonb, p_rows jsonb, p_sink_type text DEFAULT NULL, p_transform_version text DEFAULT NULL
@@ -155,9 +164,11 @@ BEGIN
     INSERT INTO cp.dlq (run_id, stage, reason, source_ref, payload_ref, record_count)
     VALUES (p_run_id, p_stage, p_reason, p_source_ref, p_payload_ref, p_record_count)
     RETURNING dlq_id INTO v_dlq;
+    -- Discriminate the link's content_hash by the unique dlq_id so two quarantine
+    -- events in the same run with the same payload_ref do NOT collapse via ON CONFLICT.
     PERFORM cp.write_lineage_link(
         p_run_id, 'quarantine',
-        jsonb_build_object('path', p_payload_ref, 'content_hash', p_payload_ref),
+        jsonb_build_object('path', p_payload_ref, 'content_hash', v_dlq::text, 'dlq_id', v_dlq),
         p_record_count,
         jsonb_build_array(jsonb_build_object(
             'source_ref', p_source_ref, 'edge_type', 'quarantine', 'record_count', p_record_count)));
