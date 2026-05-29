@@ -282,3 +282,56 @@ def test_patch_run_whitelist_and_terminal(conn):
     assert row[0] == "succeeded"
     assert row[1] == 40
     assert row[2] is not None   # terminal sets finished_at
+
+
+# ---- P1 EXIT GATE: exhaustiveness + column-drift guards ---------------------
+
+def test_every_cp_function_is_asserted(conn):
+    fns = {r[0] for r in conn.execute(
+        "SELECT proname FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace "
+        "WHERE n.nspname='cp' AND p.prokind='f'").fetchall()}
+    # ASSERTED is maintained by hand as each fn gets a round-trip test.
+    ASSERTED = {
+        "start_run", "patch_run", "register_file", "start_stage", "finish_stage",
+        "write_lineage_link", "write_link_then_rows", "write_reconciliation_check",
+        "quarantine", "latest_succeeded_run",
+    }
+    missing = fns - ASSERTED
+    assert not missing, f"cp functions with no contract assertion: {missing}"
+
+
+def _columns(conn, table):
+    return {r[0] for r in conn.execute(
+        "SELECT column_name FROM information_schema.columns "
+        "WHERE table_schema='cp' AND table_name=%s", (table,)).fetchall()}
+
+
+def test_start_run_returns_run_log_row_with_loadbearing_columns(conn):
+    run_id, _ = _start_run(conn)
+    # returned run_id resolves to a cp.run_log row
+    assert conn.execute(
+        "SELECT 1 FROM cp.run_log WHERE run_id=%s", (run_id,)
+    ).fetchone() is not None
+    required = {
+        "run_id", "workflow_run_id", "trigger_type", "replay_of_run_id",
+        "pipeline_type", "domain", "dataset", "business_date", "file_id",
+        "status", "record_count_in", "record_count_out", "error",
+        "started_at", "finished_at",
+    }
+    cols = _columns(conn, "run_log")
+    assert required <= cols, f"run_log missing load-bearing columns: {required - cols}"
+
+
+def test_write_lineage_link_tables_have_loadbearing_columns(conn):
+    link_required = {
+        "lineage_link_id", "consumer_run_id", "edge_type", "sink_type",
+        "target_ref", "transform_version", "record_count", "created_at",
+    }
+    edge_required = {
+        "lineage_edge_id", "lineage_link_id", "upstream_run_id", "source_file_id",
+        "input_slot", "edge_type", "source_ref", "record_count",
+    }
+    link_cols = _columns(conn, "lineage_link")
+    edge_cols = _columns(conn, "lineage_edge")
+    assert link_required <= link_cols, f"lineage_link missing: {link_required - link_cols}"
+    assert edge_required <= edge_cols, f"lineage_edge missing: {edge_required - edge_cols}"
