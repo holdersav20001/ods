@@ -2,14 +2,21 @@ import { useMemo } from 'react';
 import ReactFlow, { Background, Controls, MiniMap, MarkerType } from 'reactflow';
 
 const KIND_STYLES = {
-  raw_file:      { bg: '#fff7ed', border: '#f97316', icon: '📄' },
-  upstream_run:  { bg: '#eff6ff', border: '#3b82f6', icon: '⚙️' },
-  write_event:   { bg: '#f3e8ff', border: '#8b5cf6', icon: '🔗' },
-  consumer_run:  { bg: '#ecfdf5', border: '#10b981', icon: '🏷️' },
-  target:        { bg: '#fef9c3', border: '#ca8a04', icon: '🗄️' },
+  raw_file:       { bg: '#fff7ed', border: '#f97316', icon: '📄' },
+  curated_file:   { bg: '#fef3c7', border: '#d97706', icon: '🪙' },
+  canonical_file: { bg: '#dbeafe', border: '#2563eb', icon: '🧊' },
+  staging_table:  { bg: '#f1f5f9', border: '#64748b', icon: '🗃️' },
+  upstream_run:   { bg: '#eff6ff', border: '#3b82f6', icon: '⚙️' },
+  write_event:    { bg: '#f3e8ff', border: '#8b5cf6', icon: '🔗' },
+  consumer_run:   { bg: '#ecfdf5', border: '#10b981', icon: '🏷️' },
+  target:         { bg: '#fef9c3', border: '#ca8a04', icon: '🗄️' },
+  target_db:      { bg: '#fef9c3', border: '#ca8a04', icon: '🗄️' },
 };
 
-const KIND_ORDER = ['raw_file', 'upstream_run', 'write_event', 'consumer_run', 'target'];
+const KIND_ORDER = [
+  'raw_file', 'staging_table', 'curated_file', 'canonical_file',
+  'upstream_run', 'write_event', 'consumer_run', 'target', 'target_db',
+];
 
 export default function LineageGraph({ trace, onNodeClick }) {
   const { nodes, edges } = useMemo(() => layout(trace), [trace]);

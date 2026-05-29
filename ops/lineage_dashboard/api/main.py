@@ -202,6 +202,31 @@ def get_dataset_yaml(domain: str, dataset: str, kind: str) -> dict[str, str]:
     }
 
 
+def _artefact_kind(uri: str | None) -> str:
+    """Classify a source_ref / target_ref URI into a dashboard node kind.
+
+    The classifier is intentionally simple and convention-based — it
+    keeps the dashboard honest without the API needing extra schema. See
+    docs/dev-guides/lineage-link-and-autonomous-tasks.md for the rules.
+    """
+    s = (uri or "").lower()
+    if not s:
+        return "raw_file"
+    if s.startswith("jdbc:") or s.startswith("postgresql://") or s.startswith("postgres://"):
+        return "target_db"
+    if "/canonical/" in s or s.startswith("canonical://"):
+        return "canonical_file"
+    if "/curated/" in s or "ods-curated" in s:
+        return "curated_file"
+    if "/raw/"     in s or "ods-raw"     in s or s.endswith(".csv") or s.endswith(".jsonl"):
+        return "raw_file"
+    # Fall-through: a postgres staging table source_ref like
+    # 'postgres://pipeline.slot_staging_core' or unrecognised URIs.
+    if s.startswith("postgres://") or "slot_staging" in s:
+        return "staging_table"
+    return "raw_file"
+
+
 @app.get("/api/file/{file_id}")
 def get_file(file_id: str) -> dict[str, Any]:
     """file_catalogue row + every run_log entry that processed this file."""
@@ -414,6 +439,8 @@ def trace(lineage_link_id: str) -> dict[str, Any]:
 
         rf_id = None
         if contrib["source_file_id"]:
+            # An entry in file_catalogue — always represents the RAW file
+            # the data originated from (file_catalogue tracks raw arrivals).
             rf_id = f"file:{contrib['source_file_id']}"
             _add_node(rf_id, "raw_file",
                       label=contrib["s3_raw_path"] or contrib["source_ref"] or "raw",
@@ -422,13 +449,14 @@ def trace(lineage_link_id: str) -> dict[str, Any]:
                       file_size_bytes=contrib["file_size_bytes"],
                       source_row_count=contrib["source_row_count"])
         elif contrib["source_ref"]:
-            # Raw source with no registered file_id — still surface the
-            # source_ref (often the S3 path) as a raw_file node so the
-            # chain back to the data origin is never broken.
+            # No file_catalogue row — classify the source_ref by URI shape
+            # so the dashboard reflects the actual layer (raw vs curated
+            # parquet vs canonical parquet vs JDBC source).
+            kind = _artefact_kind(contrib["source_ref"])
             rf_id = f"src:{contrib['source_ref']}"
-            _add_node(rf_id, "raw_file",
+            _add_node(rf_id, kind,
                       label=contrib["source_ref"],
-                      s3_raw_path=contrib["source_ref"])
+                      uri=contrib["source_ref"])
 
         if rf_id:
             tgt_for_file = (f"run:{contrib['upstream_run_id']}"
