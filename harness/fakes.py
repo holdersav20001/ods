@@ -90,7 +90,8 @@ def fake_ingest(conn, *, workflow_run_id, file, commit=True) -> dict:
 
 
 def fake_canonicalize(conn, *, workflow_run_id, domain, dataset, business_date,
-                      record_count, transform_version="v1", commit=True) -> dict:
+                      record_count, transform_version="v1", dq_failures=0,
+                      commit=True) -> dict:
     """The canonicalize hop: curated parquet -> canonical parquet.
 
     DISCOVERY HOP. Its defining feature: it does NOT accept an upstream run id.
@@ -101,9 +102,24 @@ def fake_canonicalize(conn, *, workflow_run_id, domain, dataset, business_date,
     it, to the raw file). There is NO source_file_id on this hop's edge — the
     raw anchor is the ingest edge's job; this hop anchors to a RUN, not a file.
 
-    Returns {run_id, upstream_run_id, link_id}.
+    DQ HANDLING (Lineage M1) — `dq_failures` (default 0 = original behaviour):
+    a transform that would cast a value to NULL is a DATA-QUALITY failure. Such
+    rows must NOT be silently written as NULL; they are routed to dlq.quarantine
+    (a 'quarantine' link+edge, visible in cp.v_provenance) and only the GOOD
+    rows are canonicalized. With dq_failures=k: canonical link record_count =
+    record_count - k (the good rows), k rows are quarantined, and recon is
+    balanced as good + dlq == source. When dq_failures=0 this function behaves
+    EXACTLY as before (no quarantine, canonical record_count == record_count).
+
+    Returns {run_id, upstream_run_id, link_id, good_count, dq_failures,
+             dlq_id (or None), dlq_link_id (or None)}.
     """
-    n = record_count
+    source = record_count
+    bad = dq_failures
+    good = source - bad
+    if bad < 0 or good < 0:
+        raise ValueError(
+            f"dq_failures={bad} invalid for record_count={source}")
 
     # 1. DISCOVER the upstream ingest run (never trust a passed-in id).
     upstream_run_id = runs.latest_succeeded_run(
@@ -131,8 +147,29 @@ def fake_canonicalize(conn, *, workflow_run_id, domain, dataset, business_date,
     )
 
     with stages.stage_scope(conn, run_id, "canonicalize", commit=commit) as st:
-        st.record_in = n
-        st.record_out = n  # fake: every row passes through
+        st.record_in = source
+        st.record_out = good  # only the good rows pass; bad rows quarantined
+
+    # DQ failures -> quarantine (NOT silently written as NULL). The quarantine()
+    # primitive writes the dlq row AND a 'quarantine' link+edge visible in
+    # v_provenance, so the dropped rows remain accounted for in the graph.
+    dlq_id = None
+    dlq_link_id = None
+    if bad > 0:
+        dlq_id = dlq.quarantine(
+            conn,
+            run_id=run_id,
+            stage="canonicalize",
+            reason="dq: transform cast value to NULL",
+            source_ref={"note": "rows failing DQ (would cast to NULL)"},
+            payload_ref=f"s3://dlq/{dataset}/{business_date}-dq.json",
+            record_count=bad,
+            commit=commit,
+        )
+        dlq_link_id = str(conn.execute(
+            "SELECT lineage_link_id FROM cp.lineage_link "
+            "WHERE consumer_run_id=%s AND edge_type='quarantine'",
+            (run_id,)).fetchone()[0])
 
     link_id = lineage.write_link(
         conn,
@@ -143,12 +180,12 @@ def fake_canonicalize(conn, *, workflow_run_id, domain, dataset, business_date,
             "content_hash": f"{dataset}-{business_date}-{transform_version}",
             "version": 1,
         },
-        record_count=n,
+        record_count=good,  # only the good rows are canonicalized
         edges=[{
             "upstream_run_id": upstream_run_id,  # the DISCOVERED ingest run
             "edge_type": "curated_to_canonical",
             "source_ref": {"note": "discovered ingest run"},
-            "record_count": n,
+            "record_count": good,
         }],
         transform_version=transform_version,
         commit=commit,
@@ -158,16 +195,18 @@ def fake_canonicalize(conn, *, workflow_run_id, domain, dataset, business_date,
         conn,
         run_id=run_id,
         check_type="canonicalize",
-        source_count=n,
-        accounted_count=n,  # balanced
+        source_count=source,
+        accounted_count=good + bad,  # good (canonicalized) + bad (quarantined)
+        metrics={"good": good, "dq_quarantined": bad} if bad else None,
         commit=commit,
     )
 
-    runs.finalise(conn, run_id, status="succeeded", record_count_out=n,
+    runs.finalise(conn, run_id, status="succeeded", record_count_out=good,
                   commit=commit)
 
     return {"run_id": run_id, "upstream_run_id": upstream_run_id,
-            "link_id": link_id}
+            "link_id": link_id, "good_count": good, "dq_failures": bad,
+            "dlq_id": dlq_id, "dlq_link_id": dlq_link_id}
 
 
 def fake_merge(conn, *, workflow_run_id, domain, dataset, business_date,
