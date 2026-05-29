@@ -12,7 +12,7 @@ LIFECYCLE CONTRACT (enforced by reviewers):
     hand-building cp.lineage_edge / cp.lineage_link rows.
   * No raw INSERT SQL; everything goes through the Phase-2 client wrappers.
 """
-from control import lineage, recon, runs, stages
+from control import dlq, lineage, recon, runs, stages
 
 
 def fake_ingest(conn, *, workflow_run_id, file, commit=True) -> dict:
@@ -264,3 +264,168 @@ def fake_merge(conn, *, workflow_run_id, domain, dataset, business_date,
 
     return {"run_id": run_id, "link_id": link_id,
             "upstream_run_ids": upstreams}
+
+
+def fake_sink(conn, *, workflow_run_id, domain, dataset, business_date,
+              record_count, sink_type="postgres",
+              upstream_pipeline_type="canonicalization", commit=True) -> dict:
+    """The sink hop: canonical/merge parquet -> target rows (canonical_to_sink).
+
+    TERMINAL HOP and the ONLY hop that writes target rows — POSTGRES WRITE IS
+    LAST. Like the canonicalize/merge hops it is a DISCOVERY hop: it accepts NO
+    upstream run id, it DISCOVERS its upstream canonical (or merge) run via
+    control.runs.latest_succeeded_run for (domain, dataset, business_date,
+    pipeline_type=upstream_pipeline_type). The discovered run becomes the
+    canonical_to_sink edge's upstream_run_id, so the sink link's provenance spans
+    back through the canonical run to the raw file.
+
+    The target rows are written through control.lineage.write_link_then_rows —
+    the sanctioned primitive that writes the link+edges FIRST, THEN inserts the
+    rows into ods.<dataset> in the SAME transaction, stamping
+    _ods_lineage_link_id + _ods_workflow_run_id. The FK on _ods_lineage_link_id
+    guarantees no target row can exist without its committed link.
+
+    `sink_type` ('postgres', 'kafka', ...) is stamped on the link (the
+    sink_type_iff_sink CHECK requires it non-null for canonical_to_sink). Calling
+    fake_sink twice for the same slice with different sink_type fans the same
+    canonical out to two sinks (two canonical_to_sink links).
+
+    Returns {run_id, link_id}.
+    """
+    n = record_count
+
+    # 1. DISCOVER the upstream canonical/merge run (never trust a passed-in id).
+    upstream = runs.latest_succeeded_run(
+        conn,
+        domain=domain,
+        dataset=dataset,
+        business_date=business_date,
+        pipeline_type=upstream_pipeline_type,
+    )
+    if upstream is None:
+        raise ValueError(
+            "no succeeded "
+            f"{upstream_pipeline_type} run to sink for "
+            f"({domain}/{dataset}/{business_date})"
+        )
+
+    run_id = runs.start(
+        conn,
+        workflow_run_id=workflow_run_id,
+        pipeline_type="sink",
+        domain=domain,
+        dataset=dataset,
+        business_date=business_date,
+        trigger_type="manual",
+        commit=commit,
+    )
+
+    with stages.stage_scope(conn, run_id, "sink", commit=commit) as st:
+        st.record_in = n
+        st.record_out = n  # fake: every row written
+
+    rows = [{"k": i} for i in range(n)]
+    edges = [{
+        "upstream_run_id": upstream,  # the DISCOVERED canonical/merge run
+        "edge_type": "canonical_to_sink",
+        "source_ref": {"note": "discovered canonical/merge run"},
+        "record_count": n,
+    }]
+
+    # POSTGRES WRITE LAST: link+edges written, THEN rows, in one transaction.
+    link_id = lineage.write_link_then_rows(
+        conn,
+        consumer_run_id=run_id,
+        edge_type="canonical_to_sink",
+        target_ref={
+            "path": f"{sink_type}://{dataset}",
+            "content_hash": f"{dataset}-{business_date}-{sink_type}",
+            "version": 1,
+        },
+        record_count=n,
+        edges=edges,
+        rows=rows,
+        sink_type=sink_type,
+        commit=commit,
+    )
+
+    recon.write_check(
+        conn,
+        run_id=run_id,
+        check_type="sink",
+        source_count=n,
+        accounted_count=n,  # balanced: every canonical row written to the sink
+        commit=commit,
+    )
+
+    runs.finalise(conn, run_id, status="succeeded", record_count_out=n,
+                  commit=commit)
+
+    return {"run_id": run_id, "link_id": link_id}
+
+
+def fake_fail(conn, *, workflow_run_id, domain, dataset, business_date,
+              good_count, bad_count, commit=True) -> dict:
+    """A stage that partially fails: good_count rows pass, bad_count are
+    quarantined to the DLQ.
+
+    Proves DLQ rows appear in the lineage graph and in recon. The DLQ write
+    goes through control.dlq.quarantine, which inserts the dlq row AND a
+    'quarantine' lineage link+edge atomically (so the quarantined rows are
+    reachable in cp.v_provenance). Recon is written as source=good+bad,
+    accounted=good+bad (good rows + dlq rows together account for the source),
+    so the balanced case has discrepancy 0; a row lost without being DLQ'd would
+    breach.
+
+    Returns {run_id, dlq_id, link_id} where link_id is the quarantine link.
+    """
+    source = good_count + bad_count
+
+    run_id = runs.start(
+        conn,
+        workflow_run_id=workflow_run_id,
+        pipeline_type="canonicalization",
+        domain=domain,
+        dataset=dataset,
+        business_date=business_date,
+        trigger_type="manual",
+        commit=commit,
+    )
+
+    with stages.stage_scope(conn, run_id, "canonicalize", commit=commit) as st:
+        st.record_in = source
+        st.record_out = good_count  # bad rows did NOT pass
+
+    dlq_id = dlq.quarantine(
+        conn,
+        run_id=run_id,
+        stage="canonicalize",
+        reason="fake validation failure",
+        source_ref={"note": "synthetic bad rows"},
+        payload_ref=f"s3://dlq/{dataset}/{business_date}.json",
+        record_count=bad_count,
+        commit=commit,
+    )
+
+    # The quarantine() function wrote a 'quarantine' link discriminated by the
+    # dlq_id; surface its link_id so tests can assert it is in the graph.
+    link_id = str(conn.execute(
+        "SELECT lineage_link_id FROM cp.lineage_link "
+        "WHERE consumer_run_id=%s AND edge_type='quarantine'",
+        (run_id,)).fetchone()[0])
+
+    # Recon: good rows + DLQ'd rows together account for the source. Balanced.
+    recon.write_check(
+        conn,
+        run_id=run_id,
+        check_type="canonicalize",
+        source_count=source,
+        accounted_count=good_count + bad_count,
+        metrics={"good": good_count, "dlq": bad_count},
+        commit=commit,
+    )
+
+    runs.finalise(conn, run_id, status="succeeded", record_count_out=good_count,
+                  commit=commit)
+
+    return {"run_id": run_id, "dlq_id": dlq_id, "link_id": link_id}
