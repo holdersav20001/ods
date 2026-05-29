@@ -37,8 +37,25 @@ So: **id for grouping, edges for provenance.** Both are kept; neither replaces t
   value in a TEXT column** + `trigger_type`/`replay_of_run_id` (holds Airflow string `dag_run_id` too);
   `canonical_to_sink` + `sink_type` on the link; DLQ as a `quarantine` provenance edge; content
   hash/version in `target_ref`.
-- 👉 **FIRST task for the new session: Phase 1** — migrations (`001`–`003`) + `cp.*` functions +
-  exhaustive contract test, applied to `ods_cp`.
+- ✅ **BUILD COMPLETE** (branch `feat/control-plane-p1`, 8 migrations, **96 tests green**). All four
+  phases done, each reviewed; the four hop-by-hop **lineage gates passed** with evidence (Reality-Checker
+  verified):
+  - **P1** — migrations `001`–`004`: schema, 10 `cp.*` functions, sample target, FK + discovery indexes;
+    atomic `write_lineage_link`, FK-enforced sink invariant, `v_provenance` trace view, exhaustive
+    contract + column-drift guards. (spec/security/quality reviewed)
+  - **P2** — Python client `control/` (runs/lineage/stages/recon/dlq), conn-injected, per-write commit;
+    test-isolation verified.
+  - **P3** — Spark-free harness, hop-by-hop, each lineage-gated: ingest (`raw_to_curated`, **GATE A**) →
+    canonicalize (discovery via `latest_succeeded_run`, **GATE B**) → merge (N-edge `merge_to_canonical`
+    + `cp.succeeded_runs`, **GATE C**) → sink (`canonical_to_sink`, postgres-write-last) + fan-out + DLQ
+    + replay-to-raw + `v_provenance` cycle guard (mig `006`), **GATE D**.
+  - **P4** — regression matrix: recon negatives, every-FK rejection, idempotent replay, concurrency,
+    transform-DQ→quarantine, orchestration trigger-edge (excluded from provenance), `clock_timestamp()`
+    discovery-determinism fix (mig `007`), row-idempotent sink retries (mig `008`), adapter-contract
+    test, and the `tests/README.md` coverage boundary.
+- Plan + per-task evidence: `docs/plans/2026-05-29-control-plane-implementation.md`.
+- 👉 **Next:** open a PR / merge `feat/control-plane-p1`; later, a thin integration test confirming the
+  real Spark jobs call this client with the right args (the coverage boundary the fakes can't prove).
 
 ## Setup (do once, before Phase 1)
 
