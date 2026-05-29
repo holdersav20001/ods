@@ -246,9 +246,12 @@ CREATE TABLE cp.lineage_link (
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT sink_type_iff_sink CHECK (
         (edge_type = 'canonical_to_sink') = (sink_type IS NOT NULL)
-    ),
-    UNIQUE (consumer_run_id, edge_type, (target_ref->>'content_hash'))
+    )
 );
+-- Expression uniqueness must be a UNIQUE INDEX (Postgres forbids expressions in a
+-- table-level UNIQUE constraint). write_lineage_link's ON CONFLICT infers against this.
+CREATE UNIQUE INDEX uq_lineage_link_target
+    ON cp.lineage_link (consumer_run_id, edge_type, (target_ref->>'content_hash'));
 
 CREATE TABLE cp.lineage_edge (
     lineage_edge_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -474,7 +477,9 @@ Composers `run_single_file` / `run_multi_file` mint one `workflow_run_id` and th
 **Owner:** build + `code-reviewer` + `security-engineer`. Add the remaining spec tests:
 - [ ] recon negatives: `good+dlq<source`→breach; `>source`→double-count; "every link ≥1 edge"; fan-out per-sink count equality.
 - [ ] FK rejection on **every** FK (consumer/upstream/source_file/`_ods_lineage_link_id`/`dlq.run_id`/`dlq.replay_run_id`).
-- [ ] idempotent replay: replay twice → stable counts; original recon unchanged.
+- [ ] idempotent replay/refeed: new `workflow_run_id` per refeed; replay twice → stable counts; original recon unchanged.
+- [ ] **restart-task (Airflow clear-task): same `workflow_run_id`, unchanged input → re-run stage → exactly 1 link (dedup on `(consumer_run_id, edge_type, content_hash)`), counts stable, recon unchanged.**
+- [ ] **restart-task with changed upstream content under same `workflow_run_id` → new link (content_hash differs); assert prior link NOT auto-superseded and recon flags the orphan unless downstream also re-run.**
 - [ ] concurrency: two writers under one `workflow_run_id` → no lost/dup links.
 - [ ] NOT-NULL reject for `workflow_run_id`; bad `edge_type` rejected by FK.
 - [ ] transform cast-to-NULL treated as a `quarantine` event, not silent mutation.

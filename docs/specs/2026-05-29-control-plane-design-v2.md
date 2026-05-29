@@ -19,6 +19,25 @@ all 5 CRITICAL + 8 HIGH + the MEDIUM items, with the 4 user decisions resolved.
    Provenance walk is rows-complete. *(resolves H-dlq)*
 4. **`target_ref` carries a content hash + version now** — `{path, content_hash, version}` jsonb. Old links
    stay pinned to the exact bytes they logged; re-run overwrite can't silently re-point them. *(resolves Lineage M2)*
+5. **Two *separate* restartability use cases — do not conflate.**
+   - **Restart-a-task** (Airflow clear-task / retry): operator clears a failed or stale task in the Airflow
+     UI; Airflow re-runs **from that task forward** under the **same `dag_run_id`** = **same `workflow_run_id`**.
+     `trigger_type` stays `'airflow'`. No new chain. Re-execution is **idempotent**: `register_file` dedups on
+     `(file_md5, business_date)`; `write_lineage_link` dedups on `(consumer_run_id, edge_type,
+     target_ref->>'content_hash')` → re-running an unchanged task produces the **same link** (counts stable).
+     This is intra-run recovery — the normal "restart from any task" Airflow gives you.
+   - **Replay / refeed** (new or corrected file arrived): a **new** file (late data, vendor correction,
+     reprocessing) → composer mints a **new `workflow_run_id`**, `trigger_type='replay'` (or `'manual'`/
+     `'dlq_drain'`), `replay_of_run_id` → the original run. **Full provenance chain is re-written** plus a
+     `replay` edge, so the refed row still traces to raw (X5). This is a *new execution that supersedes prior
+     output*, not a re-run of the old one.
+
+   **Boundary rule:** same input bytes + same `workflow_run_id` ⇒ restart-task (idempotent dedup). New bytes
+   ⇒ refeed under a new `workflow_run_id`. **Mid-run clear-task with *changed* upstream content** (rare —
+   parquet rewritten under a live run) produces a **new link** (content_hash differs, `ON CONFLICT` misses);
+   the prior link is **not** auto-superseded. Operational requirement: an Airflow clear-task **must clear
+   downstream tasks too**, so the changed content propagates and no stale canonical/sink link lingers. Recon
+   flags the orphan if it doesn't.
 
 ---
 
