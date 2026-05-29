@@ -4,7 +4,7 @@ A clean, **Spark-free** implementation of the ODS control plane — the Postgres
 and Python client that record *what ran*, *what it produced*, *where data came from*, and *what failed*,
 so any row is traceable to raw and any incident is reconstructable.
 
-> **New session / new contributor: read this file, then `docs/specs/2026-05-29-control-plane-design.md`
+> **New session / new contributor: read this file, then `docs/specs/2026-05-29-control-plane-design-v2.md`
 > (the authoritative design). Everything you need is in this repo — no prior chat context required.**
 
 ## What this is (and isn't)
@@ -29,14 +29,16 @@ So: **id for grouping, edges for provenance.** Both are kept; neither replaces t
 
 ## Status
 
-- ✅ Design spec written: `docs/specs/2026-05-29-control-plane-design.md`.
-- ⚠️ **Reviewed by 4 lenses (architect, senior dev, QA, lineage) → NOT build-ready as written.**
-  See `docs/reviews/2026-05-29-design-review-consolidated.md` (5 CRITICAL + ~8 HIGH, converged).
-- 👉 **FIRST task for the new session: revise the spec to v2** addressing the CRITICAL+HIGH items
-  (function-signature appendix, atomic link+edges / write-ordering primitive, `workflow_run_id`
-  synthetic-id format, `edge_type` lookup table + `canonical_to_sink`, replay-traces-to-raw,
-  DLQ-as-edge, harness MUST-NOT rules, exhaustive contract test). **Then** Phase 1.
-- ❓ 4 decisions to make first — see the review's "Decisions the user should make".
+- ✅ Design spec **v2** written and build-ready: `docs/specs/2026-05-29-control-plane-design-v2.md`
+  (supersedes the v1 `…-control-plane-design.md`).
+- ✅ Reviewed by 4 lenses (architect, senior dev, QA, lineage); 5 CRITICAL + ~8 HIGH folded into v2.
+  Review of record: `docs/reviews/2026-05-29-design-review-consolidated.md`.
+- ✅ 4 decisions resolved (baked into v2's "User decisions" section): `workflow_run_id` = **bare UUID
+  value in a TEXT column** + `trigger_type`/`replay_of_run_id` (holds Airflow string `dag_run_id` too);
+  `canonical_to_sink` + `sink_type` on the link; DLQ as a `quarantine` provenance edge; content
+  hash/version in `target_ref`.
+- 👉 **FIRST task for the new session: Phase 1** — migrations (`001`–`003`) + `cp.*` functions +
+  exhaustive contract test, applied to `ods_cp`.
 
 ## Setup (do once, before Phase 1)
 
