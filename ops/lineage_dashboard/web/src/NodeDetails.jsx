@@ -58,6 +58,66 @@ function YamlModal({ domain, dataset, kind, onClose }) {
   );
 }
 
+/**
+ * Map a pipeline_type to the declarative configs that STAGE actually
+ * reads. Keeping this tight is what stops the dashboard from giving the
+ * wrong impression that, say, the postgres-write step "uses" transform.yaml.
+ *
+ *  ingestion / stage      → contract (schema), quality (DQ rules), source
+ *  canonicalize           → transform (THE rename/cast/drop)
+ *  direct_postgres / load → delivery, reconciliation
+ *  merge                  → dataset (merge composition)
+ *  orchestration          → nothing — purely scheduling
+ */
+function configsForRun(pipelineType, run) {
+  const schemaLabel = run?.dataset_schema_id
+    ? `schema ${run.dataset_schema_id} v${run.dataset_schema_version}`
+    : 'contract';
+  const transformLabel = `transform · ${
+    run?.dataset_is_canonical === 'True' ? 'canonical' : 'non-canonical'
+  }`;
+  const t = (pipelineType || '').toLowerCase();
+  switch (t) {
+    case 'ingestion':
+    case 'stage':
+      return [
+        { kind: 'contract', label: schemaLabel },
+        { kind: 'quality',  label: 'quality (DQ rules)' },
+        { kind: 'source',   label: 'source' },
+      ];
+    case 'canonicalize':
+      return [
+        { kind: 'transform', label: transformLabel },
+        { kind: 'contract',  label: schemaLabel },  // canonicalize honours schema
+      ];
+    case 'load':
+    case 'direct_postgres':
+    case 'postgres_write':
+      return [
+        { kind: 'delivery',       label: 'delivery' },
+        { kind: 'reconciliation', label: 'reconciliation' },
+      ];
+    case 'merge':
+      return [
+        { kind: 'dataset', label: 'dataset (merge composition)' },
+      ];
+    case 'orchestration':
+      return [];
+    default:
+      // Unknown pipeline_type — show the full set so we never hide info.
+      return [
+        { kind: 'contract',       label: schemaLabel },
+        { kind: 'transform',      label: transformLabel },
+        { kind: 'quality',        label: 'quality' },
+        { kind: 'dataset',        label: 'dataset' },
+        { kind: 'delivery',       label: 'delivery' },
+        { kind: 'source',         label: 'source' },
+        { kind: 'reconciliation', label: 'reconciliation' },
+      ];
+  }
+}
+
+
 function YamlBadge({ kind, label, domain, dataset }) {
   const open = useContext(YamlModalContext);
   if (!domain || !dataset) return <Tag>{label}</Tag>;
@@ -272,22 +332,17 @@ function RunPanel({ runId, onJumpToLink }) {
   const dom = run.domain, ds = run.dataset;
   return (
     <>
-      <Section title="Configs">
-        {run.dataset_schema_id && (
-          <YamlBadge kind="schema" domain={dom} dataset={ds}
-                     label={`schema ${run.dataset_schema_id} v${run.dataset_schema_version}`} />
-        )}
-        {dom && ds && (
-          <>
-            <YamlBadge kind="transform"      domain={dom} dataset={ds}
-                       label={`transform · ${run.dataset_is_canonical === 'True' ? 'canonical' : 'non-canonical'}`} />
-            <YamlBadge kind="quality"        domain={dom} dataset={ds} label="quality" />
-            <YamlBadge kind="dataset"        domain={dom} dataset={ds} label="dataset" />
-            <YamlBadge kind="delivery"       domain={dom} dataset={ds} label="delivery" />
-            <YamlBadge kind="source"         domain={dom} dataset={ds} label="source" />
-            <YamlBadge kind="reconciliation" domain={dom} dataset={ds} label="reconciliation" />
-          </>
-        )}
+      <Section title={`Configs consumed by this ${run.pipeline_type || 'run'}`}>
+        {dom && ds && (() => {
+          const badges = configsForRun(run.pipeline_type, run);
+          if (!badges.length) {
+            return <Empty>No declarative config applies to this stage.</Empty>;
+          }
+          return badges.map(b => (
+            <YamlBadge key={b.kind} kind={b.kind}
+                       domain={dom} dataset={ds} label={b.label} />
+          ));
+        })()}
       </Section>
 
       <Section title="Run">
