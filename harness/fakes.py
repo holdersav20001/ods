@@ -450,6 +450,14 @@ def fake_sink(conn, *, workflow_run_id, domain, dataset, business_date,
     # by construction) cannot.
     recon.reconcile_sink(conn, run_id=run_id, source_count=n, commit=commit)
 
+    # PER-OUTPUT sink recon (P10-C / THEME E, Codex P4): scope accounted to THIS
+    # link's rows. When a run fans the same canonical out to >1 sink (K
+    # canonical_to_sink links in ONE run), the run-scoped check above would
+    # false-double-count (K*n rows vs n source); the per-link check reconciles
+    # each output independently (n == n). The terminal/authoritative sink check.
+    recon.reconcile_sink_link(conn, lineage_link_id=link_id, source_count=n,
+                              commit=commit)
+
     runs.finalise(conn, run_id, status="succeeded", record_count_out=n,
                   commit=commit)
 

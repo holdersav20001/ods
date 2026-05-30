@@ -72,23 +72,29 @@ def latest_succeeded_run(conn, *, domain, dataset, business_date, pipeline_type)
     return str(run_id) if run_id is not None else None
 
 
-def run_output_link(conn, *, run_id, edge_type, target_path=None) -> str:
+def run_output_link(conn, *, run_id, edge_type, target_path=None,
+                    content_hash=None) -> str:
     """The output link a given run produced for a given edge_type — how a
     downstream stage names its EXACT upstream output (the input-side
-    disambiguator for run-to-run lineage edges; see migration 009/010, decision
-    C3, audit F1).
+    disambiguator for run-to-run lineage edges; see migration 009/010/015,
+    decision C3, audit F1, Codex P1).
 
-    OUTPUT-IDENTITY discovery (010): there is NO random pick. The function
-    RAISES rather than guess:
-      * target_path given  -> the EXACT output at that path (RAISES if none).
-      * target_path None   -> the run's SOLE output of that edge_type; RAISES if
-        the run produced zero outputs of that type, and RAISES (ambiguous) if it
-        produced more than one (the caller must then pass target_path).
+    OUTPUT-IDENTITY discovery (010, hardened 015): there is NO random pick. The
+    function RAISES rather than guess:
+      * content_hash given -> the EXACT output at that content_hash (optionally
+        further scoped by target_path); RAISES if none.
+      * elif target_path given -> the output at that path; RAISES if none, and
+        RAISES 'ambiguous — pass p_content_hash' if MORE THAN ONE link sits at
+        that path (the changed-content restart / in-place refeed case: two links
+        at one path with different content_hash). NO silent stale pick.
+      * else -> the run's SOLE output of that edge_type; RAISES if zero, RAISES
+        (ambiguous) if more than one (the caller must then disambiguate).
 
     Returns the lineage_link_id (never None — absence/ambiguity is an error).
     Pure read (matches latest_succeeded_run: no commit)."""
     link_id = conn.execute(
-        "SELECT cp.run_output_link(%s,%s,%s)", [run_id, edge_type, target_path]
+        "SELECT cp.run_output_link(%s,%s,%s,%s)",
+        [run_id, edge_type, target_path, content_hash],
     ).fetchone()[0]
     return str(link_id)
 

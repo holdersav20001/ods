@@ -37,6 +37,7 @@ import psycopg
 import pytest
 from psycopg.types.json import Jsonb
 
+from control import recon
 from harness import composers
 
 BD = "2026-05-30"
@@ -244,12 +245,14 @@ def test_CONFIRMED_orphan_sink_row_traces_to_no_raw(conn):
 
 
 # =========================================================================== #
-# CONFIRMED A4-S5 — cross-hop loss is silent (carried forward).
+# FIXED A4-S5 (THEME F) — cross-hop loss now BREACHES via reconcile_workflow.
 #   60 raw rows arrive; one upstream wholly fails downstream so only 30 reach
-#   canonical/sink. Sink recon balances (30==30) and there is NO automated
-#   cross-hop check, so the 30 lost rows leave no breach and no trace.
+#   canonical/sink. Per-run sink recon balances (30==30) and is BLIND to the
+#   loss, but the new end-to-end cp.reconcile_workflow(workflow_run_id) compares
+#   raw_in (SUM raw_to_curated edge record_count over the workflow's runs) to
+#   accounted (actual sink rows + dlq) and REPORTS breach on the 30 lost rows.
 # =========================================================================== #
-def test_CONFIRMED_wholly_failed_upstream_loses_rows_with_no_breach(conn):
+def test_FIXED_wholly_failed_upstream_loses_rows_breaches_via_workflow_recon(conn):
     wf = str(uuid.uuid4())
 
     def ingest(n):
@@ -319,6 +322,64 @@ def test_CONFIRMED_wholly_failed_upstream_loses_rows_with_no_breach(conn):
         "SELECT count(*) FROM cp.lineage_edge WHERE upstream_lineage_link_id=%s",
         (fail[1],)).fetchone()[0]
     assert consumed == 0, "failed upstream was unexpectedly consumed downstream"
+
+    # FIXED (THEME F): the end-to-end workflow recon catches the loss that the
+    # per-run sink recon could not. raw_in = 60 (both raw_to_curated edges),
+    # accounted = 30 sink rows + 0 dlq => discrepancy 30 => BREACH.
+    recon.reconcile_workflow(conn, workflow_run_id=wf, commit=False)
+    wf_status, wf_disc, wf_src, wf_acc, wf_metrics = conn.execute(
+        "SELECT status, discrepancy, source_count, accounted_count, metrics "
+        "FROM cp.reconciliation_log WHERE check_type='workflow' "
+        "AND metrics->>'workflow_run_id'=%s", (wf,)).fetchone()
+    assert (wf_status, wf_disc) == ("breach", 30), (wf_status, wf_disc, wf_src, wf_acc)
+    assert wf_src == 60 and wf_acc == 30, (wf_src, wf_acc)
+    assert wf_metrics["raw_in"] == 60 and wf_metrics["sink_out"] == 30 \
+        and wf_metrics["dlq_out"] == 0, wf_metrics
+
+
+def test_FIXED_healthy_workflow_reconciles_ok(conn):
+    """Companion to the breach probe: a workflow where every raw row reaches the
+    sink reconciles ok via cp.reconcile_workflow (raw_in == sink_out, no loss)."""
+    wf = str(uuid.uuid4())
+    f = conn.execute(
+        "SELECT cp.register_file(%s,%s,%s,'sales','orders')",
+        (f"s3://raw/{uuid.uuid4()}.csv", uuid.uuid4().hex, BD)).fetchone()[0]
+    ir = conn.execute(
+        "INSERT INTO cp.run_log (workflow_run_id,pipeline_type,domain,dataset,"
+        "business_date,trigger_type,status,file_id) "
+        "VALUES (%s,'ingestion','sales','orders',%s,'manual','succeeded',%s) "
+        "RETURNING run_id", (wf, BD, f)).fetchone()[0]
+    raw_link = _raw_to_curated(conn, ir, f, n=20)
+    cr = conn.execute(
+        "INSERT INTO cp.run_log (workflow_run_id,pipeline_type,domain,dataset,"
+        "business_date,trigger_type,status) "
+        "VALUES (%s,'canonicalize','sales','orders',%s,'manual','succeeded') "
+        "RETURNING run_id", (wf, BD)).fetchone()[0]
+    canon = conn.execute(
+        "SELECT cp.write_lineage_link(%s,'curated_to_canonical',%s,20,%s,NULL,NULL)",
+        (cr, Jsonb(_tref("hcok")), Jsonb(
+            [{"edge_type": "curated_to_canonical", "upstream_run_id": str(ir),
+              "upstream_lineage_link_id": str(raw_link), "source_ref": {},
+              "record_count": 20}]))).fetchone()[0]
+    sr = conn.execute(
+        "INSERT INTO cp.run_log (workflow_run_id,pipeline_type,domain,dataset,"
+        "business_date,trigger_type,status) "
+        "VALUES (%s,'sink','sales','orders',%s,'manual','succeeded') RETURNING run_id",
+        (wf, BD)).fetchone()[0]
+    conn.execute(
+        "SELECT cp.write_link_then_rows(%s,'canonical_to_sink',%s,20,%s,%s,'postgres',NULL)",
+        (sr, Jsonb(_tref("hsok")), Jsonb(
+            [{"edge_type": "canonical_to_sink", "upstream_run_id": str(cr),
+              "upstream_lineage_link_id": str(canon), "source_ref": {},
+              "record_count": 20}]),
+         Jsonb([{"k": i} for i in range(20)])))
+
+    recon.reconcile_workflow(conn, workflow_run_id=wf, commit=False)
+    status, disc, src, acc = conn.execute(
+        "SELECT status, discrepancy, source_count, accounted_count "
+        "FROM cp.reconciliation_log WHERE check_type='workflow' "
+        "AND metrics->>'workflow_run_id'=%s", (wf,)).fetchone()
+    assert (status, disc, src, acc) == ("ok", 0, 20, 20), (status, disc, src, acc)
 
 
 # =========================================================================== #

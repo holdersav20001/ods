@@ -33,6 +33,7 @@ dataset are namespaced p9r1_*; multi-run scenarios clean up in finally.
 """
 import uuid
 
+import psycopg
 import pytest
 
 from control import lineage, recon, runs
@@ -257,14 +258,13 @@ def test_FIXED_restart_latest_succeeded_run_is_deterministic(conn):
 # It filters on path ONLY, never content_hash, so two links at one path with   #
 # different content_hash silently collapse to one (the OLD bytes).             #
 # --------------------------------------------------------------------------- #
-def test_CONFIRMED_run_output_link_path_not_exact_silent_stale_pick(conn):
-    """CONFIRMED (HIGH) — confirms Codex P1. cp.run_output_link with a
-    target_path matches WHERE target_ref->>'path' = p_target_path with NO
-    content_hash predicate (see 010). Decision #5's mid-run-changed-content case
-    produces two links at the SAME path (old + new content_hash). The selector
-    is therefore NOT exact: a plpgsql `SELECT ... INTO` over two matching rows
-    returns ONE arbitrarily and does NOT error. A consumer wiring its upstream by
-    path silently gets a stale (or arbitrary) content version."""
+def test_FIXED_run_output_link_path_ambiguous_raises_content_hash_exact(conn):
+    """FIXED (THEME B / migration 015) — confirms Codex P1 closed. Two links at
+    the SAME path (old + new content_hash) coexist under the hardened 5-part key.
+    The path branch of cp.run_output_link is now EXACT-or-RAISE: with >1 link at
+    (run, edge_type, path) it RAISES 'ambiguous — pass p_content_hash' (no silent
+    stale pick), and passing the disambiguating content_hash returns the EXACT
+    one. (Was: silently returned one arbitrarily.)"""
     try:
         wfid = str(uuid.uuid4())
         ds = _ds("a2sel")
@@ -304,37 +304,51 @@ def test_CONFIRMED_run_output_link_path_not_exact_silent_stale_pick(conn):
         assert n_at_path == 2, "two links coexist at one path (old+new content)"
         assert link_old != link_new
 
-        # The selector returns ONE without error — NOT exact, NO disambiguation.
-        got = runs.run_output_link(
-            conn, run_id=run_id, edge_type="raw_to_curated", target_path=path)
-        # CONFIRMED: it silently resolved a path-collision to a single link
-        # instead of RAISING 'ambiguous' (as it correctly does for >1 path-less
-        # output). A consumer cannot tell it got the stale 'old' version.
-        assert got in {link_old, link_new}
-        # Prove the silence: no exception was raised even though the path is
-        # ambiguous on content. (Contrast: path-less ambiguity DOES raise.)
-        assert got is not None, (
-            "run_output_link(target_path) silently returned one of two "
-            "different-content links at the same path — Codex P1 confirmed")
+        # FIXED: the path branch is now EXACT-or-RAISE. Two links at one path =>
+        # the path-only selector RAISES 'ambiguous' (no silent stale pick), the
+        # same loud-failure contract the path-less branch already had.
+        conn.execute("SAVEPOINT c_ambig_path")
+        with pytest.raises(psycopg.errors.RaiseException, match="ambiguous"):
+            runs.run_output_link(
+                conn, run_id=run_id, edge_type="raw_to_curated", target_path=path)
+        conn.execute("ROLLBACK TO SAVEPOINT c_ambig_path")
+
+        # Disambiguating by content_hash returns the EXACT link — no guessing.
+        got_old = runs.run_output_link(
+            conn, run_id=run_id, edge_type="raw_to_curated",
+            target_path=path, content_hash="old")
+        got_new = runs.run_output_link(
+            conn, run_id=run_id, edge_type="raw_to_curated",
+            target_path=path, content_hash="new")
+        assert str(got_old) == str(link_old), (got_old, link_old)
+        assert str(got_new) == str(link_new), (got_new, link_new)
+
+        # content_hash alone (no path) is also exact.
+        got_old2 = runs.run_output_link(
+            conn, run_id=run_id, edge_type="raw_to_curated", content_hash="old")
+        assert str(got_old2) == str(link_old)
     finally:
         conn.rollback()
 
 
 # --------------------------------------------------------------------------- #
-# ATTACK 3 — Codex P4: reconcile_sink is run-scoped, not per-output.           #
-# One run with two sink outputs of the same 5-row upstream => 10 rows counted  #
-# => false 'double_count'.                                                     #
+# ATTACK 3 — Codex P4 CLOSED (THEME E): per-OUTPUT sink recon.                  #
+# One run with two sink outputs of the same 5-row upstream stamps 10 rows; the  #
+# run-scoped reconcile_sink would call that a false 'double_count'. The new      #
+# per-link reconcile_sink_link scopes `accounted` to ONE link's rows, so each   #
+# correct fan-out output reconciles ok.                                         #
 # --------------------------------------------------------------------------- #
-def test_CONFIRMED_reconcile_sink_run_scoped_false_double_count_on_fanout(conn):
-    """CONFIRMED (HIGH) — confirms Codex P4. cp.reconcile_sink derives `accounted`
-    by counting ALL ods.<dataset> rows joined to ANY canonical_to_sink link of
-    the run (see 011). Decision #6 MANDATES fan-out: one run writes K
-    canonical_to_sink links (e.g. postgres + kafka) for the SAME upstream rows.
-    Each link stamps its own target rows, so a 5-row upstream fanned to 2 sinks
-    stamps 10 rows. reconcile_sink(run, 5) then computes accounted=10,
-    discrepancy=-5 => status 'double_count' — a FALSE breach on a CORRECT
-    fan-out. Recon should be PER-OUTPUT (per sink link), e.g.
-    reconcile_sink_link(link_id, source_count)."""
+def test_FIXED_reconcile_sink_link_per_output_no_false_double_count_on_fanout(conn):
+    """FIXED (THEME E / migration 015) — closes Codex P4. cp.reconcile_sink is
+    run-scoped: it counts ALL ods.<dataset> rows joined to ANY canonical_to_sink
+    link of the run (see 011), so a Decision-#6 fan-out (one run, K
+    canonical_to_sink links for the SAME upstream rows) double-counts: a 5-row
+    upstream fanned to 2 sinks stamps 10 rows => run-scoped recon reports
+    discrepancy=-5 / 'double_count' — a FALSE breach. The fix is a per-OUTPUT
+    recon keyed on the link: cp.reconcile_sink_link(link_id, source_count) counts
+    ONLY rows stamped with THAT link, so each correct fan-out output reconciles
+    'ok'. This probe asserts BOTH: the run-scoped check still (correctly, by its
+    own contract) double-counts, AND the per-link check is clean per output."""
     try:
         wfid = str(uuid.uuid4())
         ds = "orders"  # the only ods.* target table that exists
@@ -360,9 +374,10 @@ def test_CONFIRMED_reconcile_sink_run_scoped_false_double_count_on_fanout(conn):
             dataset=ds, business_date=BDATE, trigger_type="airflow",
             commit=False)
         rows = [{"v": i} for i in range(5)]
+        link_ids = {}
         for sink_type, path in (("postgres", "postgres://ods/orders"),
                                 ("kafka", "kafka://ods.orders")):
-            lineage.write_link_then_rows(
+            link_ids[sink_type] = lineage.write_link_then_rows(
                 conn, consumer_run_id=sink_run, edge_type="canonical_to_sink",
                 target_ref={"path": path, "content_hash": "hX", "version": 1},
                 record_count=5, sink_type=sink_type,
@@ -378,14 +393,27 @@ def test_CONFIRMED_reconcile_sink_run_scoped_false_double_count_on_fanout(conn):
             [sink_run]).fetchone()[0]
         assert stamped == 10, stamped
 
+        # Run-scoped recon STILL double-counts (that is its contract; it cannot
+        # tell a legitimate fan-out from a duplicate) — documents WHY per-output.
         recon.reconcile_sink(conn, run_id=sink_run, source_count=5, commit=False)
         status, disc, accounted = conn.execute(
             "SELECT status, discrepancy, accounted_count "
             "FROM cp.reconciliation_log WHERE run_id=%s AND check_type='sink_graph'",
             [sink_run]).fetchone()
-        # CONFIRMED false breach: a CORRECT fan-out is reported as double_count.
         assert accounted == 10 and disc == -5 and status == "double_count", (
             status, disc, accounted)
+
+        # FIXED: the per-OUTPUT recon scopes accounted to ONE link's rows, so
+        # each correct fan-out output reconciles cleanly (5 == 5, ok).
+        for sink_type, link_id in link_ids.items():
+            recon.reconcile_sink_link(
+                conn, lineage_link_id=link_id, source_count=5, commit=False)
+            st, ds_disc, acc = conn.execute(
+                "SELECT status, discrepancy, accounted_count "
+                "FROM cp.reconciliation_log "
+                "WHERE check_type='sink_link' AND metrics->>'lineage_link_id'=%s",
+                [str(link_id)]).fetchone()
+            assert (st, ds_disc, acc) == ("ok", 0, 5), (sink_type, st, ds_disc, acc)
     finally:
         conn.rollback()
 
@@ -525,11 +553,14 @@ def test_CONFIRMED_changed_content_leaves_discoverable_stale_link_unflagged(conn
     the orphan otherwise. This probe re-runs the upstream WITHOUT clearing
     downstream and shows:
       (1) both old and new curated links coexist for the run;
-      (2) a downstream consumer discovering by path (run_output_link) silently
-          resolves to ONE of them (the stale link is still reachable);
+      (2) a downstream consumer discovering by PATH alone now RAISES 'ambiguous'
+          (THEME B / 015 — no more silent stale pick) and must disambiguate by
+          content_hash to reach the EXACT version it intends;
       (3) there is NO superseded/valid flag and NO recon check that marks the
           orphaned old link — it silently rots. There is no automatic orphan
-          detection in cp.*; nothing flags it."""
+          detection in cp.*; nothing flags it. (THE HEADLINE: 015 closed the
+          silent-path-pick, but the orphaned stale link STILL has no
+          supersede/validity flag and no orphan recon — the rot is UNCHANGED.)"""
     try:
         wfid = str(uuid.uuid4())
         ds = _ds("a5orphan")
@@ -567,12 +598,19 @@ def test_CONFIRMED_changed_content_leaves_discoverable_stale_link_unflagged(conn
             "AND target_ref->>'path'=%s", [run_id, path]).fetchone()[0]
         assert both == 2, "old link lingers alongside the new one"
 
-        # (2) The stale link is still DISCOVERABLE by a downstream consumer.
-        got = runs.run_output_link(
-            conn, run_id=run_id, edge_type="raw_to_curated", target_path=path)
-        assert got in {link_old, link_new}, (
-            "downstream discovery by path silently reaches one of the two — the "
-            "stale link is consumable")
+        # (2) Path-alone discovery now RAISES 'ambiguous' (THEME B/015) instead
+        # of silently reaching one of the two — the consumer must disambiguate.
+        conn.execute("SAVEPOINT c_orphan_path")
+        with pytest.raises(psycopg.errors.RaiseException, match="ambiguous"):
+            runs.run_output_link(
+                conn, run_id=run_id, edge_type="raw_to_curated", target_path=path)
+        conn.execute("ROLLBACK TO SAVEPOINT c_orphan_path")
+        # The stale link is STILL discoverable IF the consumer asks for it by
+        # content_hash — it was not removed; nothing superseded it (-> point 3).
+        got_stale = runs.run_output_link(
+            conn, run_id=run_id, edge_type="raw_to_curated",
+            target_path=path, content_hash="stale")
+        assert str(got_stale) == str(link_old), (got_stale, link_old)
 
         # (3) NO column flags the orphan and NO recon check marks it.
         cols = conn.execute(

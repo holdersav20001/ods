@@ -583,32 +583,32 @@ def test_CONFIRMED_5b_run_output_link_path_selector_ignores_content_hash(cc):
           f"selector raised={selector_raised}; selected={selected}; "
           f"H1={link_h1} H2={link_h2}")
 
-    # CONFIRMED defect condition: TWO links share the path AND the path-only
-    # selector silently returns ONE of them (no RAISE on ambiguity). A downstream
-    # consumer naming its upstream by path gets a NON-DETERMINISTIC / possibly
-    # STALE output after the correction.
+    # Defect precondition: TWO links share the path.
     assert n_at_path == 2, "could not construct the two-links-one-path state"
 
-    # This probe is a REGRESSION SENTINEL for a CONFIRMED defect: with the bug
-    # present, the path-only selector does NOT raise and silently returns one of
-    # the two links. We assert the BUGGY behaviour so the suite stays green while
-    # documenting the hole — the assert FLIPS (forcing a fix-side update) the day
-    # cp.run_output_link's path branch gains the same ambiguity guard the no-path
-    # branch has (010 F1).
-    assert not selector_raised, (
-        "EXPECTED-FAIL FLIPPED: cp.run_output_link's PATH branch now raises on "
-        "two-at-path — the refeed dual of Codex P1 appears FIXED. Update this "
-        "sentinel to the SOUND assertion.")
+    # FIXED (THEME B / migration 015): the path branch now carries the SAME
+    # ambiguity guard the no-path branch had (010 F1). Two links at one path =>
+    # the path-only selector RAISES (no silent stale pick). The refeed dual of
+    # Codex P1 is closed.
+    assert selector_raised, (
+        "REGRESSED: cp.run_output_link's PATH branch silently returned one of "
+        f"two same-path links ({selected}) instead of RAISING on ambiguity.")
+    assert "ambiguous" in sel_err, sel_err
+    print("[R2-A5b] FIXED (refeed dual of Codex P1): path-only selector RAISED "
+          f"on the two-at-path ambiguity ({sel_err[:120]}).")
+
+    # Disambiguating by content_hash resolves to the EXACT link — the corrected
+    # output is addressable, the stale one is not silently substituted.
+    got_corrected = runs.run_output_link(
+        conn, run_id=canon_run, edge_type="curated_to_canonical",
+        target_path=same_path, content_hash="HASH-CORRECTED")
+    assert str(got_corrected) == str(link_h2), (got_corrected, link_h2)
     wired_hash = conn.execute(
         "SELECT target_ref->>'content_hash' FROM cp.lineage_link "
-        "WHERE lineage_link_id=%s", (selected,)).fetchone()[0]
-    print(
-        "[R2-A5b] CONFIRMED (refeed dual of Codex P1): path-only selector "
-        f"returned a single link ({selected}, hash={wired_hash}) while TWO links "
-        "share that (run, edge_type, path) with different content_hashes — a "
-        "downstream consumer naming its upstream by PATH can wire to STALE "
-        "pre-correction content. The 010 F1 ambiguity guard is on the NO-PATH "
-        "branch only; the path branch does NO count check.")
+        "WHERE lineage_link_id=%s", (got_corrected,)).fetchone()[0]
+    assert wired_hash == "HASH-CORRECTED", wired_hash
+    print("[R2-A5b] content_hash disambiguator returned the EXACT corrected "
+          f"link ({got_corrected}, hash={wired_hash}).")
 
 
 # --------------------------------------------------------------------------- #
