@@ -23,9 +23,14 @@ all 5 CRITICAL + 8 HIGH + the MEDIUM items, with the 4 user decisions resolved.
    - **Restart-a-task** (Airflow clear-task / retry): operator clears a failed or stale task in the Airflow
      UI; Airflow re-runs **from that task forward** under the **same `dag_run_id`** = **same `workflow_run_id`**.
      `trigger_type` stays `'airflow'`. No new chain. Re-execution is **idempotent**: `register_file` dedups on
-     `(file_md5, business_date)`; `write_lineage_link` dedups on `(consumer_run_id, edge_type,
-     target_ref->>'content_hash')` → re-running an unchanged task produces the **same link** (counts stable).
-     This is intra-run recovery — the normal "restart from any task" Airflow gives you.
+     `(file_md5, business_date, domain, dataset)` (per-dataset files — audit F6/010); `write_lineage_link`
+     dedups on the **5-part output-identity key** `(consumer_run_id, edge_type, COALESCE(sink_type,''),
+     COALESCE(target_ref->>'path',''), COALESCE(target_ref->>'content_hash',''))` (P5/009 hardening; the old
+     3-part `(consumer_run_id, edge_type, content_hash)` key collapsed fan-out and is the original bug) →
+     re-running an unchanged task produces the **same link** (counts stable). An idempotent re-call that
+     supplies a **different edge set** for the same key now **RAISES** (`write_lineage_link: link exists with a
+     different edge set`) rather than silently discarding the change (audit F5/010). This is intra-run
+     recovery — the normal "restart from any task" Airflow gives you.
    - **Replay / refeed** (new or corrected file arrived): a **new** file (late data, vendor correction,
      reprocessing) → composer mints a **new `workflow_run_id`**, `trigger_type='replay'` (or `'manual'`/
      `'dlq_drain'`), `replay_of_run_id` → the original run. **Full provenance chain is re-written** plus a

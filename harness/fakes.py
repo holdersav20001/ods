@@ -216,18 +216,31 @@ def fake_canonicalize(conn, *, workflow_run_id, domain, dataset, business_date,
 
 
 def fake_merge(conn, *, workflow_run_id, domain, dataset, business_date,
-               slot_counts, transform_version="v1", commit=True) -> dict:
+               slot_counts=None, transform_version="v1", commit=True) -> dict:
     """The merge hop: N upstream ingest runs -> ONE canonical link (merge_to_canonical).
 
     1:N DISCOVERY HOP. Like fake_canonicalize it accepts NO upstream run id; it
     DISCOVERS *all* succeeded ingestion runs for the slice via
-    control.runs.succeeded_runs. The only synthetic input is `slot_counts` — a
-    list of per-slot row counts, zipped BY POSITION to the discovered upstreams.
+    control.runs.succeeded_runs.
+
+    PER-SLOT COUNT BINDING (audit F2): each slot's record_count is derived from
+    its OWN discovered upstream — that upstream run's record_count_out
+    (runs.run_record_count) — NOT from an external positional list. The previous
+    code zipped a file-order `slot_counts` list against the newest-first
+    discovery order, so each slot's count was bound to the WRONG upstream (the
+    total still balanced, hiding the per-slot misattribution). Binding from the
+    upstream itself makes slot i's count == the count the run it names actually
+    ingested, by construction.
+
+    `slot_counts` is an OPTIONAL override (default None = derive from upstreams);
+    when supplied it must have one entry per discovered upstream, aligned to
+    succeeded_runs order. Normal callers should not pass it.
 
     Produces ONE merge_to_canonical link with N edges (one per discovered
-    upstream), each carrying input_slot=i and upstream_run_id=upstreams[i]. The
-    link record_count and recon source/accounted counts are sum(slot_counts);
-    recon.metrics.per_slot records the per-slot breakdown.
+    upstream), each carrying input_slot=i, upstream_run_id=upstreams[i] and that
+    upstream's own count. The link record_count and recon source/accounted counts
+    are the SUM of the per-upstream counts; recon.metrics.per_slot records the
+    per-slot breakdown keyed by slot.
 
     Returns {run_id, link_id, upstream_run_ids}.
     """
@@ -244,14 +257,22 @@ def fake_merge(conn, *, workflow_run_id, domain, dataset, business_date,
             "merge needs >=2 succeeded ingestion runs, discovered "
             f"{len(upstreams)} for ({domain}/{dataset}/{business_date})"
         )
-    if len(upstreams) != len(slot_counts):
+    if slot_counts is not None and len(upstreams) != len(slot_counts):
         raise ValueError(
             f"slot_counts has {len(slot_counts)} entries but discovery found "
             f"{len(upstreams)} upstream runs — one count per discovered upstream "
             "is required"
         )
 
-    total = sum(slot_counts)
+    # F2: bind each slot's count to ITS OWN discovered upstream's real output
+    # count. slot_counts, if given, is an explicit override aligned to discovery
+    # order; otherwise we read record_count_out off each upstream run.
+    per_slot_counts = [
+        slot_counts[i] if slot_counts is not None
+        else runs.run_record_count(conn, run_id=up)
+        for i, up in enumerate(upstreams)
+    ]
+    total = sum(per_slot_counts)
 
     run_id = runs.start(
         conn,
@@ -278,9 +299,10 @@ def fake_merge(conn, *, workflow_run_id, domain, dataset, business_date,
             "input_slot": i,
             "edge_type": "merge_to_canonical",
             "source_ref": {"slot": i},
+            # F2: THIS upstream's own count, not a positional external count.
             "record_count": cnt,
         }
-        for i, (up, cnt) in enumerate(zip(upstreams, slot_counts))
+        for i, (up, cnt) in enumerate(zip(upstreams, per_slot_counts))
     ]
 
     link_id = lineage.write_link(
@@ -304,7 +326,7 @@ def fake_merge(conn, *, workflow_run_id, domain, dataset, business_date,
         check_type="merge",
         source_count=total,
         accounted_count=total,  # balanced: union of all slots accounted for
-        metrics={"per_slot": {str(i): c for i, c in enumerate(slot_counts)}},
+        metrics={"per_slot": {str(i): c for i, c in enumerate(per_slot_counts)}},
         commit=commit,
     )
 
