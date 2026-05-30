@@ -83,16 +83,18 @@ def _ingest(conn, *, wfid, dataset, md5, n, path_tag=""):
 # Restart-a-task creates a DUPLICATE succeeded run for one slice; a downstream #
 # 1:N discovery hop (merge) then binds BOTH runs and DOUBLE-COUNTS one file.   #
 # --------------------------------------------------------------------------- #
-def test_CONFIRMED_restart_ingest_duplicates_succeeded_run_for_one_slice(conn):
-    """CONFIRMED (CRITICAL). Decision #5 says a restart re-runs under the SAME
-    workflow_run_id and is idempotent. register_file and write_lineage_link DO
-    dedup. But cp.start_run mints a NEW run_id every call (no ON CONFLICT), so
-    after a clear-task the slice has TWO succeeded 'ingestion' runs that share
-    one workflow_run_id and one physical file.
+def test_FIXED_restart_ingest_reuses_run_for_one_slice(conn):
+    """FIXED (P10-A, migration 013) — FLIPPED from
+    test_CONFIRMED_restart_ingest_duplicates_succeeded_run_for_one_slice.
 
-    succeeded_runs() — the merge-hop discovery primitive — returns BOTH. There is
-    nothing tying run identity to workflow_run_id, so restart is NOT idempotent
-    at run grain. This is the precondition for the merge double-count below."""
+    Decision #5: a restart re-runs under the SAME workflow_run_id and is
+    idempotent. cp.start_run is now idempotent on the partial uq_run_identity
+    index (workflow_run_id, pipeline_type, slice, COALESCE(file_id,sentinel)),
+    so an Airflow clear-task on the ingest task REUSES the same run_id instead of
+    minting a new one. The slice therefore has exactly ONE succeeded 'ingestion'
+    run for the one physical file, and — because consumer_run_id is now stable —
+    write_lineage_link's 5-part dedup key ENGAGES, so the restart re-uses the
+    SAME link too (decision #5's "same task => same link, counts stable")."""
     try:
         wfid = str(uuid.uuid4())
         ds = _ds("a1dup")
@@ -104,70 +106,83 @@ def test_CONFIRMED_restart_ingest_duplicates_succeeded_run_for_one_slice(conn):
         restart_run, file_id2, restart_link = _ingest(conn, wfid=wfid,
                                                        dataset=ds, md5=md5, n=5)
 
-        # register_file DID dedup (its key is file-grain, not run-grain)...
+        # register_file dedups (file-grain key)...
         assert file_id2 == file_id, "register_file should dedup on restart"
-        # ...but RUN identity did NOT: two distinct run_ids, one workflow_run_id.
-        assert restart_run != orig_run, "start_run minted a NEW run on restart"
-        # ...AND the link did NOT dedup either: the 5-part ON CONFLICT key is
-        # SCOPED TO consumer_run_id, and the restart has a NEW consumer_run_id,
-        # so write_lineage_link mints a BRAND-NEW link. Decision #5's claim that
-        # 'an unchanged task produces the same link (counts stable)' is FALSE
-        # whenever the restart yields a new run_id — which it ALWAYS does. The
-        # link dedup only ever protects in-place re-calls under one run, never a
-        # real Airflow clear-task. This is a stronger defect than mere run dup.
-        assert restart_link != orig_link, (
-            "write_lineage_link did NOT dedup across restart — link key is "
-            "consumer_run_id-scoped; #5 link idempotency NEVER engages on a "
-            "real clear-task that mints a new run_id")
+        # ...AND run identity now holds: the restart REUSES the same run_id.
+        assert restart_run == orig_run, (
+            "start_run is idempotent on restart — same (wfid, ingestion, slice, "
+            "file) REUSES the run_id instead of minting a new one (013)")
+        # ...AND the link dedups too: same consumer_run_id => the 5-part
+        # ON CONFLICT key now engages => the SAME link, counts stable (#5).
+        assert restart_link == orig_link, (
+            "write_lineage_link dedup ENGAGES on restart now that consumer_run_id "
+            "is stable — #5 link idempotency holds on a real clear-task")
 
         all_runs = runs.succeeded_runs(
             conn, domain=DOM, dataset=ds, business_date=BDATE,
             pipeline_type="ingestion")
-        assert set(all_runs) == {orig_run, restart_run}, all_runs
-        # CONFIRMED: discovery sees TWO succeeded ingestion runs for ONE file
-        # under ONE workflow_run_id. Restart is non-idempotent at run grain.
-        assert len(all_runs) == 2, (
-            "restart created a duplicate succeeded run for one slice — "
-            "succeeded_runs() returns both; the merge hop will double-count")
+        # FIXED: discovery sees exactly ONE succeeded ingestion run for ONE file
+        # under ONE workflow_run_id. Restart is idempotent at run grain.
+        assert all_runs == [orig_run], all_runs
+        assert len(all_runs) == 1, (
+            "restart reused the run — succeeded_runs() returns exactly one; the "
+            "merge hop can no longer double-count")
 
         wfids = {conn.execute(
             "SELECT workflow_run_id FROM cp.run_log WHERE run_id=%s",
             [r]).fetchone()[0] for r in all_runs}
-        assert wfids == {wfid}, "both runs share the one workflow_run_id (#5)"
+        assert wfids == {wfid}, "the one run carries the one workflow_run_id (#5)"
     finally:
         conn.rollback()
 
 
-def test_CONFIRMED_restart_makes_merge_double_count_one_physical_file(conn):
-    """CONFIRMED (CRITICAL) — the payload of attack 1. After a restart of ONE
-    ingest, the merge hop (which DISCOVERS its upstreams via succeeded_runs, per
-    the harness contract) sees TWO slots for the SAME physical file and folds the
-    file's rows in TWICE. record_count of the merged canonical link = 2x the real
-    row count; provenance shows two parallel raw_to_curated inputs for one file.
+def test_FIXED_restart_merge_does_not_double_count_physical_file(conn):
+    """FIXED (P10-A, migration 013) — FLIPPED from
+    test_CONFIRMED_restart_makes_merge_double_count_one_physical_file.
 
-    This is the exact 'merge double-counts (two slots for one physical file)'
-    hazard. Decision #5's idempotency does NOT cover it because the dedup keys
-    (file, link) are per-output, while merge fans in per-RUN."""
+    Construct so the OLD code double-counted and the NEW code does not: ingest
+    file A, RESTART that ingest (same wfid/bytes), AND ingest a genuinely SECOND
+    physical file B into the same slice. A real 2-file merge must have exactly
+    TWO slots (one per PHYSICAL file) summing to the real total — NOT three slots
+    with A folded in twice.
+
+    Pre-013 succeeded_runs() returned THREE runs (A, A-restart, B) -> merge
+    double-counted A (3 slots, total = 3*N). Post-013 the A-restart reuses A's
+    run_id, so succeeded_runs() returns exactly TWO runs (A, B) -> two slots,
+    SUM(edges) == the real 2*N, and the two merge edges trace to the two DISTINCT
+    physical files."""
     try:
         wfid = str(uuid.uuid4())
         ds = _ds("a1merge")
-        md5 = uuid.uuid4().hex
+        md5_a = uuid.uuid4().hex
+        md5_b = uuid.uuid4().hex
         N = 5
 
-        orig_run, file_id, orig_link = _ingest(conn, wfid=wfid, dataset=ds,
-                                                md5=md5, n=N)
-        restart_run, _, restart_link = _ingest(conn, wfid=wfid, dataset=ds,
-                                                md5=md5, n=N)
+        run_a, file_a, link_a = _ingest(conn, wfid=wfid, dataset=ds,
+                                        md5=md5_a, n=N)
+        # Airflow clear-task on file A's ingest: SAME wfid, SAME bytes -> reuse.
+        run_a2, file_a2, link_a2 = _ingest(conn, wfid=wfid, dataset=ds,
+                                           md5=md5_a, n=N)
+        assert run_a2 == run_a, "restart of file A reused its run (013)"
+        assert file_a2 == file_a and link_a2 == link_a
+        # A genuinely SECOND physical file in the same slice (distinct file_id).
+        run_b, file_b, link_b = _ingest(conn, wfid=wfid, dataset=ds,
+                                        md5=md5_b, n=N)
+        assert run_b != run_a and file_b != file_a
 
         # Merge DISCOVERS all succeeded ingestion runs (succeeded_runs) and folds
-        # each in as a slot — this is exactly what harness.fakes.fake_merge does.
+        # each in as a slot — exactly what harness.fakes.fake_merge does.
         upstreams = runs.succeeded_runs(
             conn, domain=DOM, dataset=ds, business_date=BDATE,
             pipeline_type="ingestion")
-        assert len(upstreams) == 2
+        # FIXED: exactly TWO upstream runs (one per PHYSICAL file), not three.
+        assert set(upstreams) == {run_a, run_b}, upstreams
+        assert len(upstreams) == 2, (
+            "merge sees one run per physical file — the restart did NOT add a "
+            "third slot")
 
         merge_run = runs.start(
-            conn, workflow_run_id=wfid, pipeline_type="canonicalization",
+            conn, workflow_run_id=wfid, pipeline_type="merge",
             domain=DOM, dataset=ds, business_date=BDATE, trigger_type="airflow",
             commit=False)
         edges = []
@@ -186,23 +201,18 @@ def test_CONFIRMED_restart_makes_merge_double_count_one_physical_file(conn):
                         "content_hash": f"{ds}-merged", "version": 1},
             record_count=total, edges=edges, commit=False)
 
-        # CONFIRMED double-count: 2 slots * N rows for ONE physical file of N rows.
-        assert total == 2 * N, "merge folded the same file in twice"
-        edge_files = conn.execute(
-            "SELECT DISTINCT le.source_file_id "
-            "FROM cp.lineage_edge le "
-            "JOIN cp.lineage_link ul ON ul.lineage_link_id = le.upstream_lineage_link_id "
-            "WHERE le.lineage_link_id=%s", [merge_link]).fetchall()
-        # Both merge edges trace (via their upstream raw_to_curated link) to the
-        # SAME ONE registered file — provenance is ambiguous/duplicated.
+        # FIXED: SUM(edges) == the real total (2*N), NOT inflated to 3*N.
+        assert total == 2 * N, ("merge total is the real per-physical-file sum, "
+                                "not inflated by the restart")
+        # The two merge edges trace to the two DISTINCT physical files.
         raw_files = conn.execute(
             "SELECT DISTINCT le.source_file_id FROM cp.lineage_edge le "
             "WHERE le.lineage_link_id IN (%s,%s)" % (
-                "'" + orig_link + "'", "'" + restart_link + "'"),
+                "'" + link_a + "'", "'" + link_b + "'"),
         ).fetchall()
-        assert raw_files == [(uuid.UUID(file_id),)], (
-            "both raw_to_curated inputs of the merge point at the ONE physical "
-            "file — the merged link record_count is inflated 2x")
+        assert {r[0] for r in raw_files} == {uuid.UUID(file_a), uuid.UUID(file_b)}, (
+            "the merge's raw inputs are the two distinct physical files — no "
+            "duplicated provenance")
         merged_count = conn.execute(
             "SELECT record_count FROM cp.lineage_link WHERE lineage_link_id=%s",
             [merge_link]).fetchone()[0]
@@ -211,28 +221,33 @@ def test_CONFIRMED_restart_makes_merge_double_count_one_physical_file(conn):
         conn.rollback()
 
 
-def test_CONFIRMED_restart_ambiguates_latest_succeeded_run_binding(conn):
-    """CONFIRMED (HIGH). The canonicalize hop binds via latest_succeeded_run
-    (newest by finished_at, run_id). A restart mints a newer run, so canonicalize
-    silently re-binds to the RESTART run, NOT the original — even though both
-    produced the SAME bytes. latest_succeeded_run cannot express 'the run for
-    THIS workflow_run_id'; provenance now depends on restart timing, which is the
-    ambiguity decision #5's same-workflow_run_id rule was meant to remove."""
+def test_FIXED_restart_latest_succeeded_run_is_deterministic(conn):
+    """FIXED (P10-A, migration 013) — FLIPPED from
+    test_CONFIRMED_restart_ambiguates_latest_succeeded_run_binding.
+
+    The canonicalize/sink hop binds via latest_succeeded_run. Pre-013 a restart
+    minted a NEWER run, so discovery silently re-bound to the restart run and the
+    binding depended on restart timing / the finished_at,run_id tie-break. Post-
+    013 the restart REUSES the one run_id, so there is no second run to tie-break
+    against: latest_succeeded_run returns the one reused run deterministically,
+    and it IS the original run_id (the same logical run for this
+    workflow_run_id)."""
     try:
         wfid = str(uuid.uuid4())
         ds = _ds("a1bind")
         md5 = uuid.uuid4().hex
         orig_run, _, _ = _ingest(conn, wfid=wfid, dataset=ds, md5=md5, n=5)
         restart_run, _, _ = _ingest(conn, wfid=wfid, dataset=ds, md5=md5, n=5)
+        assert restart_run == orig_run, "restart reused the run (013)"
 
         latest = runs.latest_succeeded_run(
             conn, domain=DOM, dataset=ds, business_date=BDATE,
             pipeline_type="ingestion")
-        # CONFIRMED: discovery binds to the restart run, not the original.
-        assert latest == restart_run, (
-            "canonicalize discovers the RESTART run; binding depends on restart "
-            "timing, not on the workflow_run_id — provenance is non-deterministic")
-        assert latest != orig_run
+        # FIXED: discovery returns the one reused run, deterministically — no
+        # dependence on a 2nd run or a finished_at/run_id tie-break.
+        assert latest == orig_run, (
+            "latest_succeeded_run returns the one reused run deterministically — "
+            "binding no longer depends on restart timing")
     finally:
         conn.rollback()
 

@@ -237,14 +237,19 @@ def test_CONFIRMED_wholly_failed_upstream_loses_rows_with_no_breach(conn):
     wf = str(uuid.uuid4())
 
     def ingest(n):
-        r = conn.execute(
-            "INSERT INTO cp.run_log (workflow_run_id,pipeline_type,domain,dataset,"
-            "business_date,trigger_type,status) "
-            "VALUES (%s,'ingestion','sales','orders',%s,'manual','succeeded') "
-            "RETURNING run_id", (wf, BD)).fetchone()[0]
+        # Two genuinely-distinct physical files (NOT a restart): each ingest run
+        # stamps its OWN file_id on run_log — exactly as the real ingest path
+        # does — so the two runs are distinct under uq_run_identity (013). The
+        # earlier omission of file_id (NULL) relied on pre-013 absence of run
+        # identity and would now collide two separate files on the sentinel key.
         f = conn.execute(
             "SELECT cp.register_file(%s,%s,%s,'sales','orders')",
             (f"s3://raw/{uuid.uuid4()}.csv", uuid.uuid4().hex, BD)).fetchone()[0]
+        r = conn.execute(
+            "INSERT INTO cp.run_log (workflow_run_id,pipeline_type,domain,dataset,"
+            "business_date,trigger_type,status,file_id) "
+            "VALUES (%s,'ingestion','sales','orders',%s,'manual','succeeded',%s) "
+            "RETURNING run_id", (wf, BD, f)).fetchone()[0]
         return r, _raw_to_curated(conn, r, f, n=n)
 
     ok, fail = ingest(30), ingest(30)  # 60 arrived; both ingested

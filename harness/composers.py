@@ -170,6 +170,30 @@ def run_to_fanout_sinks(conn, *, file, sink_types=("postgres", "kafka"),
     }
 
 
+def restart_ingest(conn, *, workflow_run_id, file, commit=True) -> dict:
+    """MODEL an Airflow clear-task RESTART of the ingest stage (P10-A).
+
+    A clear-task re-runs a stage FROM THAT TASK FORWARD under the SAME
+    workflow_run_id (NOT a new chain, NOT a replay). This helper re-drives the
+    ingest hop under a workflow_run_id the caller already minted (e.g. from a
+    prior run_single_file / run_to_sink), modelling the restart that was never
+    modelled before — which is why the run-grain double-count bug shipped.
+
+    It simply calls fake_ingest again under the SAME workflow_run_id and file.
+    With migration 013, cp.start_run is idempotent on the run-identity key, so
+    the restart REUSES the original ingest run_id (one run per (wfid, slice,
+    file)); register_file and write_lineage_link dedup on their own keys. The
+    returned dict therefore carries the SAME run_id/file_id/link_id as the
+    original ingest under that workflow_run_id (proof of idempotent restart).
+
+    `file` is the same file dict the original ingest used (same bytes => same
+    restart, per decision #5's boundary rule). Returns fake_ingest's
+    {run_id, file_id, link_id}.
+    """
+    return fakes.fake_ingest(
+        conn, workflow_run_id=workflow_run_id, file=file, commit=commit)
+
+
 def replay_single_file(conn, *, original_run_id, file, commit=True) -> dict:
     """REPLAY (refeed) the full chain for a corrected file under a NEW execution.
 
