@@ -4,21 +4,25 @@ Mission: the DB is meant to be the AUTHORITY. Anything the schema accepts via a
 direct INSERT/UPDATE that would corrupt lineage or reconciliation is a finding,
 because the sanctioned cp.* functions are not the only writers we must trust.
 
-Each probe ASSERTS the CURRENT behaviour (almost always ACCEPT = the gap) so the
-suite stays green today and FLIPS RED the moment a CHECK/trigger closes the gap.
-Gaps are marked CONFIRMED_GAP_* in comments; the proposed DB constraint is noted
-inline next to each.
+Each probe originally ASSERTED the CURRENT behaviour (ACCEPT = the gap). As of
+P10-B (migration 014_integrity.sql) the constraints are LANDED, so each probe is
+FLIPPED to assert the nonsense value is now REJECTED. Gaps are marked
+GAP_* CLOSED in comments; the closing DB constraint is noted inline next to each.
 
-Audit only — no schema is dropped or altered here. Probes use the rolled-back
-`conn` fixture and per-probe SAVEPOINTs so one test can fire several inserts.
+Probes use the rolled-back `conn` fixture and per-probe SAVEPOINTs so one test can
+fire several inserts. The schema is never mutated by the tests themselves.
 
-Empirically verified against ods_cp at schema 001-012 (2026-05-30):
-the ONLY cp.* CHECK constraints are
-  lineage_link.sink_type_iff_sink, lineage_link.target_ref_contract,
-  lineage_edge.{raw_edge_requires_source_file, edge_must_anchor,
-               upstream_link_required_for_run_edges}.
-There is NO CHECK on any count column, status, trigger_type, business_date,
-attempt, input_slot, or any recon discrepancy/status consistency.
+As of schema 001-014 (2026-05-30) the cp.* integrity constraints added in 014 are:
+  * non-negative counts on lineage_link, lineage_edge, dlq, run_log,
+    run_stage_log, reconciliation_log (D1);
+  * lineage_link.target_ref_contract requiring NON-EMPTY version (D2);
+  * status_enum on run_log / run_stage_log / reconciliation_log (D3);
+  * run_log.trigger_type_enum (D4);
+  * run_stage_log.attempt_positive, lineage_edge.input_slot_non_negative (D5);
+  * reconciliation_log.recon_internally_consistent (D6 — recon cannot lie);
+  * a BEFORE INSERT trigger edge_type_matches_link on lineage_edge (Theme C).
+The cross-row SUM(edges)==link.record_count invariant (GAP 6) is DEFERRED to
+P10-C; its probe below still asserts the gap.
 """
 import json
 import uuid
@@ -93,10 +97,9 @@ def test_r4_negative_record_count_lineage_link(conn):
     sql = ("INSERT INTO cp.lineage_link "
            "(consumer_run_id, edge_type, target_ref, record_count) "
            "VALUES (%s,'raw_to_curated',%s::jsonb,-1)")
-    assert _accepts(conn, sql, (run, _good_target("neg-link"))), \
-        "expected -1 to be accepted (the gap)"
-    # CONFIRMED_GAP_1a: lineage_link.record_count accepts -1.
-    # PROPOSED: CHECK (record_count >= 0)
+    assert not _accepts(conn, sql, (run, _good_target("neg-link"))), \
+        "FIXED (014): record_count >= 0 must REJECT -1"
+    # GAP_1a CLOSED: lineage_link.record_count CHECK (record_count >= 0).
 
 
 def test_r4_negative_record_count_lineage_edge(conn):
@@ -106,17 +109,16 @@ def test_r4_negative_record_count_lineage_edge(conn):
     sql = ("INSERT INTO cp.lineage_edge "
            "(lineage_link_id, source_file_id, edge_type, record_count) "
            "VALUES (%s,%s,'raw_to_curated',-1)")
-    assert _accepts(conn, sql, (link, fil)), "expected -1 accepted (the gap)"
-    # CONFIRMED_GAP_1b: lineage_edge.record_count accepts -1.
-    # PROPOSED: CHECK (record_count >= 0)
+    assert not _accepts(conn, sql, (link, fil)), \
+        "FIXED (014): lineage_edge.record_count >= 0 must REJECT -1"
+    # GAP_1b CLOSED: lineage_edge.record_count CHECK (record_count >= 0).
 
 
 def test_r4_negative_counts_run_log(conn):
     run = _start_run(conn)
-    assert _accepts(conn, "UPDATE cp.run_log SET record_count_in=-5 WHERE run_id=%s", (run,))
-    assert _accepts(conn, "UPDATE cp.run_log SET record_count_out=-5 WHERE run_id=%s", (run,))
-    # CONFIRMED_GAP_1c/1d: run_log.record_count_in / record_count_out accept -5.
-    # PROPOSED: CHECK (record_count_in IS NULL OR record_count_in >= 0) and same for _out
+    assert not _accepts(conn, "UPDATE cp.run_log SET record_count_in=-5 WHERE run_id=%s", (run,))
+    assert not _accepts(conn, "UPDATE cp.run_log SET record_count_out=-5 WHERE run_id=%s", (run,))
+    # GAP_1c/1d CLOSED: run_log.record_count_in/_out CHECK (NULL OR >= 0) REJECT -5.
 
 
 def test_r4_negative_counts_run_stage_log(conn):
@@ -125,31 +127,34 @@ def test_r4_negative_counts_run_stage_log(conn):
         "INSERT INTO cp.run_stage_log (run_id, stage, status) "
         "VALUES (%s,'curate','running') RETURNING stage_log_id", (run,)
     ).fetchone()[0]
-    assert _accepts(conn, "UPDATE cp.run_stage_log SET record_count_in=-5 WHERE stage_log_id=%s", (sid,))
-    assert _accepts(conn, "UPDATE cp.run_stage_log SET record_count_out=-5 WHERE stage_log_id=%s", (sid,))
-    # CONFIRMED_GAP_1e/1f: run_stage_log.record_count_in / _out accept -5.
-    # PROPOSED: CHECK (record_count_in IS NULL OR record_count_in >= 0) and same for _out
+    assert not _accepts(conn, "UPDATE cp.run_stage_log SET record_count_in=-5 WHERE stage_log_id=%s", (sid,))
+    assert not _accepts(conn, "UPDATE cp.run_stage_log SET record_count_out=-5 WHERE stage_log_id=%s", (sid,))
+    # GAP_1e/1f CLOSED: run_stage_log.record_count_in/_out CHECK (NULL OR >= 0) REJECT -5.
 
 
 def test_r4_negative_count_dlq(conn):
     run = _start_run(conn)
     sql = ("INSERT INTO cp.dlq (run_id, stage, reason, record_count) "
            "VALUES (%s,'curate','bad',-1)")
-    assert _accepts(conn, sql, (run,))
-    # CONFIRMED_GAP_1g: dlq.record_count accepts -1.
-    # PROPOSED: CHECK (record_count >= 0)
+    assert not _accepts(conn, sql, (run,))
+    # GAP_1g CLOSED: dlq.record_count CHECK (record_count >= 0) REJECTS -1.
 
 
 def test_r4_negative_counts_reconciliation_log(conn):
     run = _start_run(conn)
     base = ("INSERT INTO cp.reconciliation_log "
             "(run_id, check_type, source_count, accounted_count, discrepancy, status) ")
-    assert _accepts(conn, base + "VALUES (%s,'arith',-1,0,-1,'breach')", (run,))
-    assert _accepts(conn, base + "VALUES (%s,'arith',0,-1,1,'breach')", (run,))
-    # CONFIRMED_GAP_1h/1i: reconciliation_log.source_count / accounted_count accept -1.
-    # PROPOSED: CHECK (source_count >= 0), CHECK (accounted_count >= 0)
-    # NOTE: discrepancy MAY legitimately be negative (over-accounting), so a
-    #       blanket discrepancy >= 0 is NOT proposed; see GAP 5 for its real bug.
+    # rows are otherwise D6-consistent (discrepancy/status match) so the ONLY
+    # reason for rejection is the negative count column under test.
+    #   row1: source=-1,accounted=0 -> disc=-1 -> status 'double_count' (D6 ok),
+    #         rejected by source_count >= 0.
+    #   row2: source=0,accounted=-1 -> disc=1  -> status 'breach' (D6 ok),
+    #         rejected by accounted_count >= 0.
+    assert not _accepts(conn, base + "VALUES (%s,'arith',-1,0,-1,'double_count')", (run,))
+    assert not _accepts(conn, base + "VALUES (%s,'arith',0,-1,1,'breach')", (run,))
+    # GAP_1h/1i CLOSED: reconciliation_log source_count/accounted_count CHECK (>= 0).
+    # NOTE: discrepancy MAY legitimately be negative (over-accounting / double_count),
+    #       so no blanket discrepancy >= 0; D6 governs its internal consistency.
 
 
 # =========================================================================== #
@@ -169,10 +174,12 @@ def test_r4_target_ref_version_null_empty(conn):
     vnull = json.dumps({"path": "p", "content_hash": "vnull", "version": None})
     vempty = json.dumps({"path": "p", "content_hash": "vempty", "version": ""})
     vmiss = json.dumps({"path": "p", "content_hash": "vmiss"})
-    assert _accepts(conn, ins, (run, vnull)), "version=null should currently pass (gap)"
-    assert _accepts(conn, ins, (run, vempty)), "version='' should currently pass (gap)"
-    # CONFIRMED_GAP_2: {"version": null} and {"version": ""} pass target_ref_contract.
-    # control: missing key is rejected -> proves the constraint is only `? 'version'`.
+    assert not _accepts(conn, ins, (run, vnull)), \
+        "FIXED (014): version=null must be REJECTED (non-empty version required)"
+    assert not _accepts(conn, ins, (run, vempty)), \
+        "FIXED (014): version='' must be REJECTED (non-empty version required)"
+    # GAP_2 CLOSED: target_ref_contract now requires coalesce(version,'') <> ''.
+    # control: a missing version key is also rejected (was already, still is).
     assert not _accepts(conn, ins, (run, vmiss)), "missing version key must be rejected"
 
 
@@ -190,22 +197,22 @@ def test_r4_freetext_status_columns(conn):
         "INSERT INTO cp.run_stage_log (run_id, stage, status) "
         "VALUES (%s,'curate','running') RETURNING stage_log_id", (run,)
     ).fetchone()[0]
-    assert _accepts(conn, "UPDATE cp.run_log SET status='banana' WHERE run_id=%s", (run,))
-    assert _accepts(conn, "UPDATE cp.run_stage_log SET status='banana' WHERE stage_log_id=%s", (sid,))
-    assert _accepts(conn,
+    assert not _accepts(conn, "UPDATE cp.run_log SET status='banana' WHERE run_id=%s", (run,))
+    assert not _accepts(conn, "UPDATE cp.run_stage_log SET status='banana' WHERE stage_log_id=%s", (sid,))
+    # recon row is internally consistent (disc=0) so it ONLY fails on status_enum.
+    assert not _accepts(conn,
         "INSERT INTO cp.reconciliation_log "
         "(run_id, check_type, source_count, accounted_count, discrepancy, status) "
         "VALUES (%s,'arith',5,5,0,'banana')", (run,))
-    # CONFIRMED_GAP_3a/3b/3c: run_log.status, run_stage_log.status,
-    #   reconciliation_log.status accept 'banana'. PROPOSED: CHECK status IN (...)
+    # GAP_3a/3b/3c CLOSED: run_log/run_stage_log/reconciliation_log status_enum
+    #   CHECK rejects 'banana'.
 
 
 def test_r4_freetext_trigger_type(conn):
     run = _start_run(conn)
-    assert _accepts(conn, "UPDATE cp.run_log SET trigger_type='banana' WHERE run_id=%s", (run,))
-    # CONFIRMED_GAP_3d: run_log.trigger_type accepts 'banana' (spec enumerates
-    #   airflow|manual|replay|dlq_drain).
-    # PROPOSED: CHECK (trigger_type IN ('airflow','manual','replay','dlq_drain'))
+    assert not _accepts(conn, "UPDATE cp.run_log SET trigger_type='banana' WHERE run_id=%s", (run,))
+    # GAP_3d CLOSED: run_log.trigger_type_enum CHECK rejects 'banana'
+    #   (only airflow|manual|replay|dlq_drain).
 
 
 # =========================================================================== #
@@ -230,23 +237,22 @@ def test_r4_attempt_non_positive(conn):
     run = _start_run(conn)
     ins = ("INSERT INTO cp.run_stage_log (run_id, stage, attempt, status) "
            "VALUES (%s,'curate',%s,'running')")
-    assert _accepts(conn, ins, (run, 0)),  "attempt=0 accepted (gap)"
-    assert _accepts(conn, ins, (run, -3)), "attempt=-3 accepted (gap)"
-    # CONFIRMED_GAP_4b: run_stage_log.attempt accepts 0 and -3 (spec: 1-based retry).
-    # PROPOSED: CHECK (attempt >= 1)
+    assert not _accepts(conn, ins, (run, 0)),  "FIXED (014): attempt=0 must be REJECTED"
+    assert not _accepts(conn, ins, (run, -3)), "FIXED (014): attempt=-3 must be REJECTED"
+    # GAP_4b CLOSED: run_stage_log.attempt_positive CHECK (attempt >= 1).
 
 
 def test_r4_input_slot_negative(conn):
     run = _start_run(conn)
     fil = _register_file(conn)
     link = _make_link(conn, run, "slot")
-    assert _accepts(conn,
+    assert not _accepts(conn,
         "INSERT INTO cp.lineage_edge "
         "(lineage_link_id, source_file_id, input_slot, edge_type, record_count) "
         "VALUES (%s,%s,-1,'raw_to_curated',1)", (link, fil))
-    # CONFIRMED_GAP_4c: lineage_edge.input_slot accepts -1 (merge slot binding is
-    #   0-based; a negative slot can never bind to a declared input).
-    # PROPOSED: CHECK (input_slot >= 0)
+    # GAP_4c CLOSED: lineage_edge.input_slot_non_negative CHECK (input_slot >= 0).
+    # (edge_type matches the 'raw_to_curated' link, so the C trigger passes; the
+    #  only rejection is the input_slot CHECK.)
 
 
 # =========================================================================== #
@@ -262,16 +268,15 @@ def test_r4_recon_status_discrepancy_inconsistent(conn):
     run = _start_run(conn)
     base = ("INSERT INTO cp.reconciliation_log "
             "(run_id, check_type, source_count, accounted_count, discrepancy, status) ")
-    # status='ok' but a 500-row discrepancy
-    assert _accepts(conn, base + "VALUES (%s,'arith',100,100,500,'ok')", (run,))
-    # CONFIRMED_GAP_5a: status='ok' with discrepancy=500 accepted.
-    # discrepancy disagrees with source-accounted (10-3=7, stored 0)
-    assert _accepts(conn, base + "VALUES (%s,'arith',10,3,0,'ok')", (run,))
-    # CONFIRMED_GAP_5b: discrepancy != source_count - accounted_count accepted.
-    # PROPOSED:
-    #   CHECK (discrepancy = source_count - accounted_count)       -- arithmetic truth
-    #   CHECK ((status='ok') = (discrepancy = 0))                  -- status derives from disc
-    #   (or derive both via a trigger / generated column so callers cannot lie).
+    # status='ok' but a 500-row discrepancy (the headline lie) — now impossible.
+    assert not _accepts(conn, base + "VALUES (%s,'arith',100,100,500,'ok')", (run,))
+    # GAP_5a CLOSED: status='ok' with discrepancy=500 REJECTED.
+    # discrepancy disagrees with source-accounted (10-3=7, stored 0) — now impossible.
+    assert not _accepts(conn, base + "VALUES (%s,'arith',10,3,0,'ok')", (run,))
+    # GAP_5b CLOSED: discrepancy != source_count - accounted_count REJECTED.
+    # control: a fully self-consistent row IS still accepted (the constraint only
+    # forbids LIES, not honest recon rows).
+    assert _accepts(conn, base + "VALUES (%s,'arith',10,3,7,'breach')", (run,))
 
 
 # =========================================================================== #

@@ -16,13 +16,14 @@ Isolation: the rollback `conn` fixture (autocommit off; rolled back at teardown)
 NOTHING is committed; the schema is NEVER dropped or mutated. Namespace p9r3_*.
 
 Headline findings (see docs/reviews/2026-05-30-team-r3-completeness.md):
-  P2  the edge_type-vs-link_type smuggling guard lives ONLY in
-      cp.write_lineage_link; a DIRECT INSERT into cp.lineage_edge bypasses it.
-      No trigger and no privilege restriction backs the table — the app role
-      `ods` is superuser/owner with full INSERT. The DB is NOT a self-defending
-      lineage authority.
-  A forged smuggled raw_to_curated edge makes trace_row.sql OVER-CLAIM a raw
-      file the canonical never derived from.
+  P2  [CLOSED in P10-B / migration 014] the edge_type-vs-link_type smuggling
+      guard formerly lived ONLY in cp.write_lineage_link, so a DIRECT INSERT into
+      cp.lineage_edge bypassed it. 014 adds a BEFORE INSERT trigger
+      (edge_type_matches_link) that enforces the match at the table, making the DB
+      authoritative for edge_type even under direct insert. The P2 probes below
+      are FLIPPED to assert the forge/smuggle now RAISE. (Privilege-revoke — which
+      would make the DB authoritative for ALL direct mutation — remains deployment
+      guidance in 014 and tests/README.md, not applied in this owner-run test DB.)
   A lineage_link with ZERO edges, and an ods.orders row under a 0-edge sink
       link, are both acceptable by direct insert and DEAD-END (trace to no raw).
   A4-S5 cross-hop loss: when a whole upstream fails downstream, its rows are
@@ -92,7 +93,11 @@ def _raw_paths(rows):
 #   (passing edge_must_anchor via source_file_id, and raw_edge_requires_source_
 #   file by naming a file) — the function guard never runs.
 # =========================================================================== #
-def test_CONFIRMED_direct_insert_bypasses_smuggling_guard(conn):
+def test_FIXED_direct_insert_smuggle_rejected_by_trigger(conn):
+    """P10-B (014): the edge_type-vs-link smuggling guard is now ALSO at the table
+    level (BEFORE INSERT trigger edge_type_matches_link), so the direct-INSERT
+    bypass is closed. Forging a raw_to_curated edge under a curated_to_canonical
+    link now RAISES whether it goes through the function OR a direct INSERT."""
     canon_run = _run(conn, "sink")
     up_run = _run(conn, "ingestion", status="succeeded")
     file_id = _file(conn)
@@ -105,7 +110,7 @@ def test_CONFIRMED_direct_insert_bypasses_smuggling_guard(conn):
               "record_count": 1}])),
     ).fetchone()[0]
 
-    # The SAME smuggle through the sanctioned function RAISES.
+    # The smuggle through the sanctioned function RAISES (function guard).
     with pytest.raises(psycopg.errors.RaiseException):
         with conn.transaction():
             conn.execute(
@@ -114,45 +119,53 @@ def test_CONFIRMED_direct_insert_bypasses_smuggling_guard(conn):
                     [{"edge_type": "raw_to_curated", "source_file_id": str(file_id),
                       "source_ref": {}, "record_count": 1}])))
 
-    # The DIRECT INSERT of the very same mismatched edge SUCCEEDS (the hole).
-    edge_id = conn.execute(
-        "INSERT INTO cp.lineage_edge "
-        "(lineage_link_id, edge_type, source_file_id, source_ref, record_count) "
-        "VALUES (%s,'raw_to_curated',%s,%s,1) RETURNING lineage_edge_id",
-        (canon, str(file_id), Jsonb({"smuggled": True})),
-    ).fetchone()[0]
-    assert edge_id is not None, "direct-insert smuggle was rejected (hole closed?)"
+    # The DIRECT INSERT of the very same mismatched edge now ALSO RAISES — the
+    # table trigger fires regardless of caller (the hole is closed).
+    with pytest.raises(psycopg.errors.RaiseException):
+        with conn.transaction():
+            conn.execute(
+                "INSERT INTO cp.lineage_edge "
+                "(lineage_link_id, edge_type, source_file_id, source_ref, record_count) "
+                "VALUES (%s,'raw_to_curated',%s,%s,1)",
+                (canon, str(file_id), Jsonb({"smuggled": True})))
 
-    # And the mismatched edge is LIVE in v_provenance under the canonical link.
+    # Nothing smuggled landed: no mismatched edge is visible under the canonical link.
     seen = conn.execute(
         "SELECT count(*) FROM cp.v_provenance "
         "WHERE lineage_link_id=%s AND edge_type='raw_to_curated'", (canon,),
     ).fetchone()[0]
-    assert seen == 1, "smuggled edge not visible in v_provenance"
+    assert seen == 0, "a smuggled edge is live in v_provenance — trigger failed"
 
 
-def test_CONFIRMED_no_trigger_and_app_role_can_write_lineage_edge(conn):
-    """The DB is not the authority by structure: no trigger guards
-    cp.lineage_edge, and the application role has direct INSERT (here it is even
-    superuser/owner). Anything that can reach the table can forge lineage."""
+def test_FIXED_trigger_now_guards_lineage_edge(conn):
+    """P10-B (014): the DB IS now authoritative for edge_type by structure — a
+    BEFORE INSERT trigger guards cp.lineage_edge, so a direct INSERT can no longer
+    forge a mismatched edge_type. (The app role still holds direct INSERT in this
+    owner-run test DB; the privilege-revoke that would make the DB authoritative
+    for ALL direct mutation is deployment guidance documented in 014 and
+    tests/README.md, not applied here.)"""
     triggers = conn.execute(
         "SELECT count(*) FROM pg_trigger t "
         "JOIN pg_class c ON c.oid=t.tgrelid "
         "JOIN pg_namespace n ON n.oid=c.relnamespace "
         "WHERE n.nspname='cp' AND c.relname='lineage_edge' AND NOT t.tgisinternal",
     ).fetchone()[0]
-    assert triggers == 0, "a trigger now guards lineage_edge — re-evaluate P2"
+    assert triggers >= 1, "edge_type_matches_link trigger missing — P2 fix regressed"
 
+    # Privilege is intentionally NOT revoked in this owner-run test DB; documented
+    # as deployment guidance. The trigger — not the privilege — is what now makes
+    # edge_type unforgeable.
     can_insert = conn.execute(
         "SELECT has_table_privilege(current_user,'cp.lineage_edge','INSERT')",
     ).fetchone()[0]
-    assert can_insert is True, "app role lost direct INSERT (privilege fix landed?)"
+    assert can_insert is True, "test DB role unexpectedly lost direct INSERT"
 
 
-def test_CONFIRMED_forged_edge_makes_trace_overclaim_a_false_raw(conn):
-    """A forged raw_to_curated edge naming an UNRELATED file, smuggled under a
-    canonical link, makes trace_row.sql report a raw path the canonical never
-    derived from — an over-claim that corrupts trace-to-raw."""
+def test_FIXED_forged_edge_rejected_trace_cannot_overclaim(conn):
+    """P10-B (014): forging a raw_to_curated edge naming an UNRELATED file under a
+    canonical link — which previously made trace_row.sql over-claim a raw the
+    canonical never derived from — is now REJECTED by the edge_type_matches_link
+    trigger, so the trace stays honest (legit raw only, no forged raw)."""
     sink_run = _run(conn, "sink")
     up_run = _run(conn, "ingestion", status="succeeded")
     f_legit = _file(conn)
@@ -166,11 +179,14 @@ def test_CONFIRMED_forged_edge_makes_trace_overclaim_a_false_raw(conn):
     ).fetchone()[0]
 
     f_fake = _file(conn)  # a raw file this canonical NEVER came from
-    conn.execute(
-        "INSERT INTO cp.lineage_edge "
-        "(lineage_link_id, edge_type, source_file_id, source_ref, record_count) "
-        "VALUES (%s,'raw_to_curated',%s,%s,1)",
-        (canon, str(f_fake), Jsonb({"forged": True})))
+    # The forge (raw_to_curated edge under a curated_to_canonical link) RAISES.
+    with pytest.raises(psycopg.errors.RaiseException):
+        with conn.transaction():
+            conn.execute(
+                "INSERT INTO cp.lineage_edge "
+                "(lineage_link_id, edge_type, source_file_id, source_ref, record_count) "
+                "VALUES (%s,'raw_to_curated',%s,%s,1)",
+                (canon, str(f_fake), Jsonb({"forged": True})))
 
     paths = _raw_paths(_trace(conn, canon))
     legit = conn.execute(
@@ -180,7 +196,7 @@ def test_CONFIRMED_forged_edge_makes_trace_overclaim_a_false_raw(conn):
         "SELECT s3_raw_path FROM cp.file_catalogue WHERE file_id=%s",
         (f_fake,)).fetchone()[0]
     assert legit in paths, "legit raw vanished from trace"
-    assert fake in paths, "forged raw NOT over-claimed (guard caught it?)"
+    assert fake not in paths, "forged raw over-claimed — trigger failed to block it"
 
 
 # =========================================================================== #

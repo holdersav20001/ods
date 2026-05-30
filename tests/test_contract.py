@@ -427,6 +427,10 @@ def test_every_cp_function_is_asserted(conn):
         "quarantine", "latest_succeeded_run", "succeeded_runs", "run_output_link",
         # F7: graph-derived sink recon — asserted in tests/test_graph_recon.py.
         "reconcile_sink",
+        # P10-B (014): BEFORE INSERT trigger fn enforcing edge_type == link type
+        # at the table — asserted in tests/test_team_r3.py (test_FIXED_* probes)
+        # and tests/test_team_r4.py.
+        "trg_edge_type_matches_link",
     }
     missing = fns - ASSERTED
     assert not missing, f"cp functions with no contract assertion: {missing}"
