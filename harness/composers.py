@@ -52,11 +52,13 @@ def run_multi_file(conn, *, files, commit=True) -> dict:
     MERGE the N ingest runs into ONE canonical link (merge_to_canonical).
 
     Mints ONE workflow_run_id and threads it to every ingest AND the merge run.
-    The merge hop DISCOVERS its N upstream ingest runs (via succeeded_runs); it
-    is handed only `slot_counts` (the synthetic per-slot row counts), never any
-    upstream run id. slot_counts is taken positionally from the files' record
-    counts; how those counts zip to the discovered upstreams (by position) is
-    the merge hop's concern.
+    The merge hop DISCOVERS its N upstream ingest runs (via succeeded_runs) AND
+    derives each slot's count from THAT upstream's own record_count_out — it is
+    handed no upstream id and no per-slot count list. The previous code passed a
+    FILE-order `slot_counts` list which fake_merge then zipped against
+    newest-first discovery, binding each slot's count to the WRONG upstream
+    (audit F2). The counts now come from the upstreams themselves, so the merge
+    composer no longer threads any positional count.
 
     `files` is a list of file dicts (same domain/dataset/business_date,
     different file_md5). Returns {workflow_run_id, ingests:[...], merge:{...}}.
@@ -75,7 +77,6 @@ def run_multi_file(conn, *, files, commit=True) -> dict:
         domain=files[0]["domain"],
         dataset=files[0]["dataset"],
         business_date=files[0]["business_date"],
-        slot_counts=[f["record_count"] for f in files],
         commit=commit,
     )
 

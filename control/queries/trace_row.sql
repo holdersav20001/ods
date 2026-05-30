@@ -65,6 +65,16 @@ WITH RECURSIVE chain AS (
     JOIN cp.v_provenance  p  ON p.lineage_link_id = ce.upstream_lineage_link_id
     WHERE ce.upstream_lineage_link_id IS NOT NULL
 )
+-- CYCLE GUARD (F3 / A4-S7a): this query runs its OWN WITH RECURSIVE, separate
+-- from cp.v_provenance's guarded walk. Without a guard, a forged/malformed
+-- cyclic upstream_lineage_link_id (e.g. an edge whose upstream is its own link)
+-- makes this recursion never terminate and the trace-to-raw query HANGS
+-- (QueryCanceled under statement_timeout). Mirror the v_provenance guard (mig
+-- 006/009): track the set of lineage_link_id visited on each path; when the walk
+-- would revisit a link it has already seen, mark is_cycle=true and STOP recursing
+-- that branch — guaranteeing termination on a cycle while leaving a legitimate
+-- (acyclic) deep chain fully traced.
+CYCLE lineage_link_id SET is_cycle USING path
 -- DISTINCT dedupes the fan-in case: cp.v_provenance is itself recursive, so for
 -- a multi-edge link (e.g. an N-edge merge_to_canonical) the anchor already
 -- surfaces both this link's edges AND the upstream edges those runs produced;

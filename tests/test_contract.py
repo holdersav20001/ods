@@ -287,32 +287,57 @@ def test_succeeded_runs_returns_all_succeeded_newest_first(conn):
 
 # ---- run_output_link --------------------------------------------------------
 
-def test_run_output_link_returns_newest_link_for_edge_type(conn):
-    # A run with no link of that edge_type -> NULL.
+def test_run_output_link_output_identity_contract(conn):
+    """cp.run_output_link contract (migration 010 / audit F1): OUTPUT-IDENTITY
+    discovery, no random pick.
+      * no output of that edge_type      -> RAISES (not NULL).
+      * exactly one output               -> that link.
+      * multiple outputs, no target_path -> RAISES (ambiguous).
+      * target_path given                -> the EXACT matching output.
+    """
+    import psycopg
     run_id, _ = _start_run(conn)
-    assert conn.execute(
-        "SELECT cp.run_output_link(%s,'raw_to_curated')", (run_id,)
-    ).fetchone()[0] is None
+
+    # No link of that edge_type -> RAISE (was: returned NULL).
+    conn.execute("SAVEPOINT c_none")
+    with pytest.raises(psycopg.errors.RaiseException, match="no raw_to_curated"):
+        conn.execute("SELECT cp.run_output_link(%s,'raw_to_curated')", (run_id,)).fetchone()
+    conn.execute("ROLLBACK TO SAVEPOINT c_none")
 
     edges = [{"edge_type": "raw_to_curated", "source_ref": {"k": 1}, "record_count": 1}]
     l1 = conn.execute(
         "SELECT cp.write_lineage_link(%s,'raw_to_curated',%s,%s,%s)",
         (run_id, json.dumps({"path": "p1", "content_hash": "h1"}), 1, json.dumps(edges)),
     ).fetchone()[0]
-    # Same run, a DIFFERENT output (distinct path) -> two links; run_output_link
-    # returns the newest (created_at DESC, lineage_link_id DESC).
+    # Exactly one output -> returns that link (no target_path needed).
+    got = conn.execute(
+        "SELECT cp.run_output_link(%s,'raw_to_curated')", (run_id,)
+    ).fetchone()[0]
+    assert str(got) == str(l1)
+
+    # Same run, a DIFFERENT output (distinct path) -> two links.
     l2 = conn.execute(
         "SELECT cp.write_lineage_link(%s,'raw_to_curated',%s,%s,%s)",
         (run_id, json.dumps({"path": "p2", "content_hash": "h2"}), 1, json.dumps(edges)),
     ).fetchone()[0]
-    got = conn.execute(
-        "SELECT cp.run_output_link(%s,'raw_to_curated')", (run_id,)
-    ).fetchone()[0]
-    assert str(got) in {str(l1), str(l2)}
-    # A different edge_type returns null for this run.
-    assert conn.execute(
-        "SELECT cp.run_output_link(%s,'canonical_to_sink')", (run_id,)
-    ).fetchone()[0] is None
+    # Ambiguous (no target_path) -> RAISES instead of arbitrarily picking.
+    conn.execute("SAVEPOINT c_ambig")
+    with pytest.raises(psycopg.errors.RaiseException, match="ambiguous"):
+        conn.execute("SELECT cp.run_output_link(%s,'raw_to_curated')", (run_id,)).fetchone()
+    conn.execute("ROLLBACK TO SAVEPOINT c_ambig")
+    # Each output addressable by its EXACT path.
+    assert str(conn.execute(
+        "SELECT cp.run_output_link(%s,'raw_to_curated','p1')", (run_id,)
+    ).fetchone()[0]) == str(l1)
+    assert str(conn.execute(
+        "SELECT cp.run_output_link(%s,'raw_to_curated','p2')", (run_id,)
+    ).fetchone()[0]) == str(l2)
+
+    # A different edge_type the run never produced -> RAISES.
+    conn.execute("SAVEPOINT c_other")
+    with pytest.raises(psycopg.errors.RaiseException, match="no canonical_to_sink"):
+        conn.execute("SELECT cp.run_output_link(%s,'canonical_to_sink')", (run_id,)).fetchone()
+    conn.execute("ROLLBACK TO SAVEPOINT c_other")
 
 
 # ---- start_stage / finish_stage / patch_run --------------------------------
@@ -382,6 +407,8 @@ def test_every_cp_function_is_asserted(conn):
         "start_run", "patch_run", "register_file", "start_stage", "finish_stage",
         "write_lineage_link", "write_link_then_rows", "write_reconciliation_check",
         "quarantine", "latest_succeeded_run", "succeeded_runs", "run_output_link",
+        # F7: graph-derived sink recon — asserted in tests/test_graph_recon.py.
+        "reconcile_sink",
     }
     missing = fns - ASSERTED
     assert not missing, f"cp functions with no contract assertion: {missing}"

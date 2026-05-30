@@ -72,18 +72,36 @@ def latest_succeeded_run(conn, *, domain, dataset, business_date, pipeline_type)
     return str(run_id) if run_id is not None else None
 
 
-def run_output_link(conn, *, run_id, edge_type) -> str | None:
+def run_output_link(conn, *, run_id, edge_type, target_path=None) -> str:
     """The output link a given run produced for a given edge_type — how a
     downstream stage names its EXACT upstream output (the input-side
-    disambiguator for run-to-run lineage edges; see migration 009 / decision C3).
+    disambiguator for run-to-run lineage edges; see migration 009/010, decision
+    C3, audit F1).
 
-    Returns the newest such lineage_link_id (cp.run_output_link orders by
-    created_at DESC, lineage_link_id DESC) or None if the run produced no link
-    of that edge_type. Pure read (matches latest_succeeded_run: no commit)."""
+    OUTPUT-IDENTITY discovery (010): there is NO random pick. The function
+    RAISES rather than guess:
+      * target_path given  -> the EXACT output at that path (RAISES if none).
+      * target_path None   -> the run's SOLE output of that edge_type; RAISES if
+        the run produced zero outputs of that type, and RAISES (ambiguous) if it
+        produced more than one (the caller must then pass target_path).
+
+    Returns the lineage_link_id (never None — absence/ambiguity is an error).
+    Pure read (matches latest_succeeded_run: no commit)."""
     link_id = conn.execute(
-        "SELECT cp.run_output_link(%s,%s)", [run_id, edge_type]
+        "SELECT cp.run_output_link(%s,%s,%s)", [run_id, edge_type, target_path]
     ).fetchone()[0]
-    return str(link_id) if link_id is not None else None
+    return str(link_id)
+
+
+def run_record_count(conn, *, run_id) -> int:
+    """The output row count a run actually produced (run_log.record_count_out).
+
+    The merge hop's per-slot count source (audit F2): each discovered upstream's
+    own record_count_out is the count bound to its slot — NOT an external
+    positional list. Pure read."""
+    return conn.execute(
+        "SELECT record_count_out FROM cp.run_log WHERE run_id=%s", [run_id]
+    ).fetchone()[0]
 
 
 def succeeded_runs(conn, *, domain, dataset, business_date, pipeline_type) -> list[str]:

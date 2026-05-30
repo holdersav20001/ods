@@ -50,6 +50,17 @@ CREATE UNIQUE INDEX uq_lineage_link_target ON cp.lineage_link (
 --     002 except: ON CONFLICT inference matches the 5-part index, the re-select
 --     branch uses the SAME 5-part key, and the edge insert carries
 --     upstream_lineage_link_id.
+--
+--     ╔══════════════════════════════════════════════════════════════════╗
+--     ║ SUPERSEDED by 010_audit_fixes.sql (F5).                           ║
+--     ║ This 009 body has the audit defect F5: its idempotent-reuse       ║
+--     ║ branch (v_link IS NULL) returns the existing link WITHOUT checking ║
+--     ║ that the supplied p_edges match the stored edges — a CHANGED edge  ║
+--     ║ set is silently discarded. 010 re-declares this function with an   ║
+--     ║ edge-set comparison that RAISES on non-idempotent reuse. 010       ║
+--     ║ applies last, so the 010 definition is the live one. This copy is  ║
+--     ║ kept only for the migration history.                              ║
+--     ╚══════════════════════════════════════════════════════════════════╝
 -- =====================================================================
 CREATE OR REPLACE FUNCTION cp.write_lineage_link(
     p_consumer_run_id uuid, p_edge_type text, p_target_ref jsonb, p_record_count bigint,
