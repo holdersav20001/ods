@@ -120,7 +120,7 @@
                     edge,
                     outputLink: link,
                   }))
-                : e("div", { className: "flow-mini-card muted" }, "No upstream input. This stage starts from a registered raw file or creates no lineage edge input.")
+                : e("div", { className: "flow-mini-card muted" }, "No upstream input. This stage starts from a registered raw file or creates no input edge.")
             }),
             e(Arrow, { label: "creates / updates" }),
             e(LaneBlock, {
@@ -139,7 +139,7 @@
                     link,
                     expanded,
                   }))
-                : e("div", { className: "flow-mini-card muted" }, "No lineage output link recorded for this run.")
+                : e("div", { className: "flow-mini-card muted" }, "No output link recorded for this run.")
             })
           ),
           targetRows.length > 0 && e("div", { className: "target-row-summary" },
@@ -150,7 +150,7 @@
         )
       ),
       !isLast && e("div", { className: "between-step-arrow" },
-        e("span", null, "next step discovers or consumes exact upstream lineage_link_id")
+        e("span", null, "next step discovers or consumes the exact upstream output (upstream_output_link_id)")
       )
     );
   }
@@ -175,7 +175,8 @@
     if (edge.source_file_id) {
       const file = data.fileById[edge.source_file_id];
       return e("div", { className: "flow-mini-card input" },
-        e("strong", null, "cp.file_catalogue raw anchor"),
+        e("strong", null, "Input edge — raw file anchor"),
+        e("span", { className: "card-table-ref" }, "cp.input_edge -> cp.file_catalogue"),
         e(Fact, { label: "source_file_id", value: edge.source_file_id }),
         e(Fact, { label: "raw path", value: file?.s3_raw_path || edge.source_ref?.path || "-" }),
         e(Fact, { label: "file_md5", value: file?.file_md5 || "-" }),
@@ -186,12 +187,13 @@
     const upstreamLink = data.linkById[edge.upstream_lineage_link_id];
     const upstreamRun = upstreamLink ? data.runById[upstreamLink.consumer_run_id] : data.runById[edge.upstream_run_id];
     return e("div", { className: "flow-mini-card input" },
-      e("strong", null, "cp.lineage_edge upstream output"),
+      e("strong", null, "Input edge — consumes upstream output"),
+      e("span", { className: "card-table-ref" }, "cp.input_edge"),
       e(Fact, {
         label: "upstream run",
         value: upstreamRun ? `${upstreamRun.pipeline_type} / ${upstreamRun.dataset}` : edge.upstream_run_id || "-"
       }),
-      e(Fact, { label: "upstream_lineage_link_id", value: edge.upstream_lineage_link_id || "-" }),
+      e(Fact, { label: "upstream_output_link_id", value: edge.upstream_lineage_link_id || "-" }),
       e(Fact, { label: "upstream target", value: upstreamLink?.target_ref?.path || "-" }),
       e(Fact, { label: "record_count", value: edge.record_count })
     );
@@ -223,8 +225,9 @@
     const consumers = data.consumersByLink[link.lineage_link_id] || [];
     const targetRows = data.targetRowsByLink[link.lineage_link_id] || [];
     return e("div", { className: "flow-mini-card output" },
-      e("strong", null, "cp.lineage_link output"),
-      e(Fact, { label: "lineage_link_id", value: link.lineage_link_id }),
+      e("strong", null, "Output link — what this run produced"),
+      e("span", { className: "card-table-ref" }, "cp.output_link"),
+      e(Fact, { label: "output_link_id", value: link.lineage_link_id }),
       e(Fact, { label: "edge_type", value: link.edge_type }),
       e(Fact, { label: "target_ref.path", value: link.target_ref?.path || "-" }),
       e(Fact, { label: "content_hash", value: link.target_ref?.content_hash || "-" }),
@@ -319,18 +322,18 @@
       return "Starts from a raw file. The output link is anchored to cp.file_catalogue through source_file_id.";
     }
     if (run.pipeline_type === "canonicalization") {
-      return "Reads the exact raw_to_curated lineage link and creates the silver output link.";
+      return "Consumes the exact raw_to_curated output link and creates the silver output link.";
     }
     if (run.pipeline_type === "merge") {
-      return "Reads the customer and transaction silver links and creates the joined detail output.";
+      return "Consumes the customer and transaction silver output links and creates the joined detail output.";
     }
     if (run.pipeline_type === "sink") {
-      return "Writes target rows and stamps each row with the canonical_to_sink lineage link.";
+      return "Writes target rows and stamps each row with the canonical_to_sink output link.";
     }
     if (run.pipeline_type === "aggregation") {
-      return "Reads detail lineage and creates the daily aggregate output link.";
+      return "Consumes the detail output and creates the daily aggregate output link.";
     }
-    return "Reads lineage inputs and creates lineage outputs.";
+    return "Consumes upstream output links and creates new output links.";
   }
 
   function unique(items) {

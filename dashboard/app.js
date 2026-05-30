@@ -38,8 +38,8 @@
       writes: [
         "cp.run_log: one logical run for the raw-to-silver task",
         "cp.run_stage_log: validate_schema, transform, write_silver",
-        "cp.lineage_link: one output link for the silver S3 object",
-        "cp.lineage_edge: source_file_id points back to the raw file",
+        "Output link (cp.output_link): one output for the silver S3 object",
+        "Input edge (cp.input_edge): source_file_id points back to the raw file",
       ],
       code: `# Airflow task
 # Purpose: pass Airflow identity and the registered raw file_id into Glue.
@@ -178,15 +178,15 @@ register_customer_raw = PythonOperator(
         "If merge and sink are separate tasks, create separate runs and links. If they are one atomic Glue job, one run with clear stages is acceptable.",
       ],
       inputs: [
-        "customer silver lineage_link_id",
-        "transaction silver lineage_link_id",
+        "customer silver output_link_id",
+        "transaction silver output_link_id",
         "business_date and workflow_run_id",
       ],
       writes: [
         "cp.run_log: merge run and sink run, or one run with two stages if the job is intentionally atomic",
-        "cp.lineage_edge: two upstream_lineage_link_id values",
-        "cp.lineage_link: one canonical_to_sink output link",
-        "ods.customer_transaction: _ods_lineage_link_id, _ods_workflow_run_id, _ods_active_flag",
+        "Input edges (cp.input_edge): two upstream_output_link_id values",
+        "Output link (cp.output_link): one canonical_to_sink output",
+        "ods.customer_transaction: _ods_output_link_id, _ods_workflow_run_id, _ods_active_flag",
       ],
       code: `# Glue job skeleton
 # Purpose: read two active silver outputs and publish one business target.
@@ -248,23 +248,23 @@ control.finish_run(run.run_id, record_count_out=merged_df.count())`,
       id: "aggregate-to-postgres",
       title: "Aggregate detail rows to Postgres",
       stage: "aggregation",
-      summary: "Read the active detail slice for one business date, aggregate it, and preserve traceability back to the detail lineage link.",
+      summary: "Read the active detail slice for one business date, aggregate it, and preserve traceability back to the detail output link.",
       purpose: "Use this when a lower-granularity table feeds a higher-granularity table. The aggregate should not just say it came from a table; it should say which active detail slice was used.",
       commentary: [
         "The aggregate reads through the active-slice control table so a refeed for one business date naturally changes the aggregate input for that date.",
-        "The aggregate output gets its own lineage_link_id. That link points to the detail link as an upstream edge, preserving the chain from daily totals back to raw files.",
+        "The aggregate output gets its own output_link_id. That output points to the detail output as an upstream input edge, preserving the chain from daily totals back to raw files.",
         "For restartability, publish the aggregate and flip visibility in one transaction where possible, so business readers do not see half-refreshed totals.",
       ],
       inputs: [
-        "active customer_transaction lineage_link_id",
+        "active customer_transaction output_link_id",
         "ods.customer_transaction rows for a business date",
         "target visibility table says which slice is active",
       ],
       writes: [
         "cp.run_log and cp.run_stage_log for aggregate task",
-        "cp.lineage_link: detail_to_aggregate output link",
-        "cp.lineage_edge: upstream_lineage_link_id points to the detail sink link",
-        "ods.customer_transaction_daily rows stamped with _ods_lineage_link_id",
+        "Output link (cp.output_link): detail_to_aggregate output",
+        "Input edge (cp.input_edge): upstream_output_link_id points to the detail sink output",
+        "ods.customer_transaction_daily rows stamped with _ods_output_link_id",
       ],
       code: `-- Purpose: aggregate only the current business-visible detail slice.
 -- This prevents a refeed from leaving old detail rows mixed into new totals.
@@ -410,7 +410,7 @@ except Exception as exc:
       {
         step: "6",
         title: "Publish output link",
-        meta: "cp.lineage_link + cp.lineage_edge",
+        meta: "Output link + input edge (cp.output_link + cp.input_edge)",
         note: "Downstream jobs consume this exact silver output.",
       },
     ],
@@ -450,20 +450,20 @@ except Exception as exc:
       {
         step: "1",
         title: "Find active customer",
-        meta: "customer lineage_link_id",
+        meta: "customer output_link_id",
         note: "The control plane chooses the current customer silver slice.",
       },
       {
         step: "2",
         title: "Find active transactions",
-        meta: "transaction lineage_link_id",
+        meta: "transaction output_link_id",
         note: "The transaction silver slice is selected the same way.",
       },
       {
         step: "3",
         title: "Join silver data",
-        meta: "cp.lineage_edge inputs",
-        note: "Both upstream links become explicit merge inputs.",
+        meta: "Input edges (cp.input_edge)",
+        note: "Both upstream outputs become explicit input edges.",
       },
       {
         step: "4",
@@ -474,14 +474,14 @@ except Exception as exc:
       {
         step: "5",
         title: "Stamp rows",
-        meta: "_ods_lineage_link_id",
+        meta: "_ods_output_link_id",
         note: "Each row can point back to the exact sink output.",
       },
       {
         step: "6",
         title: "Publish target slice",
-        meta: "cp.lineage_link",
-        note: "Downstream aggregate tasks consume this target link.",
+        meta: "Output link (cp.output_link)",
+        note: "Downstream aggregate tasks consume this target output.",
       },
     ],
     "aggregate-to-postgres": [
@@ -513,7 +513,7 @@ except Exception as exc:
         step: "5",
         title: "Write daily rows",
         meta: "ods.customer_transaction_daily",
-        note: "Daily rows are stamped with the aggregate lineage link.",
+        note: "Daily rows are stamped with the aggregate output link.",
       },
     ],
     "refeed-restart-template": [
@@ -532,7 +532,7 @@ except Exception as exc:
       {
         step: "3",
         title: "Create new output",
-        meta: "cp.lineage_link",
+        meta: "Output link (cp.output_link)",
         note: "A refeed creates history instead of overwriting history.",
       },
       {
@@ -565,7 +565,7 @@ except Exception as exc:
       purpose: "Use this for the common case where one raw file produces one target dataset. It is the smallest useful product pattern: identify the file, start the run, validate and write the output, create lineage, stamp target rows, then mark the slice active.",
       commentary: [
         "This is the baseline template. If a team can implement this correctly, they can use the product for file-level lineage, row trace-back, and safe reprocessing.",
-        "The minimum is not just start_run and finish_run. The minimum useful lineage contract also needs the input file_id, output lineage_link_id, target row stamping, and active-slice publish.",
+        "The minimum is not just start_run and finish_run. The minimum useful lineage contract also needs the input file_id, output_link_id, target row stamping, and active-slice publish.",
         "Use the existing edge types for the production relationship. Today that means raw_to_curated for file-to-S3 outputs and canonical_to_sink for business target writes.",
         "target_ref must carry path, content_hash, and version. You can add layer/schema/table/kind fields, but those are descriptive extras.",
       ],
@@ -578,8 +578,8 @@ except Exception as exc:
         "cp.file_catalogue: raw transaction file identity",
         "cp.run_log: one logical run for the transaction task",
         "cp.run_stage_log: validate, transform, write_target",
-        "cp.lineage_link and cp.lineage_edge: target output linked to the raw file with layer metadata",
-        "ods.transaction rows stamped with _ods_lineage_link_id and _ods_workflow_run_id",
+        "Output link + input edge (cp.output_link + cp.input_edge): target output linked to the raw file with layer metadata",
+        "ods.transaction rows stamped with _ods_output_link_id and _ods_workflow_run_id",
         "cp.target_visibility: active_flag Y only after the write succeeds",
       ],
       code: `# Simple transaction file template

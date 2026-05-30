@@ -106,6 +106,12 @@ ALTER TABLE ods.orders
     ADD COLUMN _ods_source_file_id UUID;
 
 -- =====================================================================
+-- SUPERSEDED BY 018: this 016 copy of cp.write_link_then_rows is itself
+--   re-declared in db/migrations/018_output_link_target_col.sql, which applies
+--   last and ALSO best-effort stamps _ods_output_link_id (the new-name mirror).
+--   This 016 body is preserved verbatim for history; the 018 body wins at apply
+--   time. Behaviour below is unchanged — see 018 for the additive column.
+-- =====================================================================
 -- §4 (stamping) — cp.write_link_then_rows RE-DECLARED to optionally stamp
 --   _ods_source_file_id on the target rows.
 --

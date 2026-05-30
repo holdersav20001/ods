@@ -2,8 +2,54 @@
 
 target_ref / edges / rows are Python objects; psycopg sends them as jsonb via
 the Jsonb wrapper.
+
+NAMING (spec docs/specs/2026-05-30-output-link-input-edge-rename.md, Option B):
+  output_link             = what a run produced  (physical: cp.lineage_link;
+                            new-name read view: cp.output_link)
+  input_edge              = what that output was made from (physical:
+                            cp.lineage_edge; new-name read view: cp.input_edge)
+  upstream_output_link_id = a previous output used as input (physical column:
+                            upstream_lineage_link_id)
+
+The PREFERRED new API is ``write_output_link`` / ``write_output_then_rows``,
+which take ``inputs`` (list of dicts keyed with the NEW name
+``upstream_output_link_id``). They translate that key to the physical
+``upstream_lineage_link_id`` and delegate to the existing write path. The OLD
+names ``write_link`` / ``write_link_then_rows`` (taking ``edges`` keyed with
+``upstream_lineage_link_id``) keep working unchanged for existing callers.
 """
 from psycopg.types.json import Jsonb
+
+
+# New-name -> physical-name translation for input/edge dict keys (Option B).
+# Only the upstream pointer was renamed; every other input key is unchanged.
+_INPUT_KEY_TRANSLATION = {
+    "upstream_output_link_id": "upstream_lineage_link_id",
+}
+
+
+def _translate_inputs(inputs):
+    """Translate new-name ``inputs`` dicts into physical-name ``edges`` dicts.
+
+    Each input may use the new key ``upstream_output_link_id``; it is mapped to
+    the physical ``upstream_lineage_link_id``. All other keys (source_file_id,
+    edge_type, input_slot, source_ref, record_count, upstream_run_id) pass
+    through unchanged. A dict that already uses the physical key is accepted as-is
+    (translation is idempotent), but supplying BOTH the new and old key for the
+    same input is a conflict and raises.
+    """
+    edges = []
+    for item in inputs:
+        edge = {}
+        for key, value in item.items():
+            physical = _INPUT_KEY_TRANSLATION.get(key, key)
+            if physical in edge:
+                raise ValueError(
+                    f"input supplies both new and old key for {physical!r}; "
+                    f"use only upstream_output_link_id")
+            edge[physical] = value
+        edges.append(edge)
+    return edges
 
 
 def _validate_target_ref(target_ref) -> None:
@@ -65,6 +111,59 @@ def write_link_then_rows(conn, *, consumer_run_id, edge_type, target_ref,
     if commit:
         conn.commit()
     return str(link_id)
+
+
+def write_output_link(conn, *, consumer_run_id, edge_type, target_ref,
+                      record_count, inputs, sink_type=None,
+                      transform_version=None, commit=True) -> str:
+    """Record ONE produced output (an output_link) and its input edges.
+
+    PREFERRED new-name API (spec §"API / Wrapper Changes"). ``inputs`` is a list
+    of input-edge dicts using the NEW key ``upstream_output_link_id`` (a previous
+    output used as input), plus the unchanged keys ``source_file_id``,
+    ``edge_type``, ``input_slot``, ``source_ref``, ``record_count``,
+    ``upstream_run_id``. The inputs are translated to physical-name edges and the
+    existing sanctioned write path (cp.write_lineage_link via ``write_link``) is
+    used. Returns the output_link_id (the produced output's id).
+    """
+    return write_link(
+        conn,
+        consumer_run_id=consumer_run_id,
+        edge_type=edge_type,
+        target_ref=target_ref,
+        record_count=record_count,
+        edges=_translate_inputs(inputs),
+        sink_type=sink_type,
+        transform_version=transform_version,
+        commit=commit,
+    )
+
+
+def write_output_then_rows(conn, *, consumer_run_id, edge_type, target_ref,
+                           record_count, inputs, rows, sink_type=None,
+                           transform_version=None, source_file_id=None,
+                           commit=True) -> str:
+    """Record an output_link + its input edges, THEN the target rows, atomically.
+
+    PREFERRED new-name API. Same ``inputs`` translation as ``write_output_link``;
+    delegates to the existing ``write_link_then_rows`` (cp.write_link_then_rows),
+    which stamps each target row with the output id under BOTH
+    ``_ods_lineage_link_id`` and (where the target table carries it)
+    ``_ods_output_link_id``. Returns the output_link_id.
+    """
+    return write_link_then_rows(
+        conn,
+        consumer_run_id=consumer_run_id,
+        edge_type=edge_type,
+        target_ref=target_ref,
+        record_count=record_count,
+        edges=_translate_inputs(inputs),
+        rows=rows,
+        sink_type=sink_type,
+        transform_version=transform_version,
+        source_file_id=source_file_id,
+        commit=commit,
+    )
 
 
 def write_trigger(conn, *, triggered_run_id, trigger_source, commit=True) -> str:

@@ -11,10 +11,19 @@
 --   walk terminates there at the registered raw file).
 --
 -- USAGE
---   Given a single lineage_link_id, walk cp.v_provenance (the recursive
---   provenance view, which only follows is_provenance edges) from that link
---   all the way back to the raw source file, and join each terminal edge to
+--   Given a single output id, walk cp.v_provenance (the recursive provenance
+--   view, which only follows is_provenance edges) from that output all the way
+--   back to the raw source file, and join each terminal edge to
 --   cp.file_catalogue for the raw S3 path.
+--
+--   NAMING (output_link cleanup, spec 2026-05-30-output-link-input-edge-rename):
+--   the %(link_id)s bind parameter is an OUTPUT-LINK id — i.e. the value a target
+--   row carries as _ods_output_link_id (the new-name mirror) which equals its
+--   _ods_lineage_link_id and equals cp.output_link.output_link_id. The physical
+--   column is still named lineage_link_id, so the query body below is unchanged
+--   and OLD callers passing {"link_id": <lineage_link_id>} keep working verbatim;
+--   the bind name is kept as link_id for backward compatibility. To trace a
+--   target row by the new name, pass {"link_id": row["_ods_output_link_id"]}.
 --
 --   python: cur.execute(open('control/queries/trace_row.sql').read(), {"link_id": link_id})
 --   psql:   \set link_id '<uuid>'   then run with the param substituted, or

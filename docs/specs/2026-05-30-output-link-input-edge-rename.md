@@ -376,6 +376,44 @@ upstream_output_link_id = a previous output used as input
 - Do not change target visibility semantics.
 - Do not remove backward compatibility unless all consumers are updated in the same PR.
 
+## Mental Model (read this first)
+
+```text
+output_link             = what a run produced
+input_edge              = what that output was made from
+upstream_output_link_id = a previous output used as input
+```
+
+## Implementation Note — Option B landed (additive, no physical rename)
+
+This change implemented Option B. Nothing was physically renamed; old names keep
+working verbatim.
+
+- New read views (migration `017_output_link_views.sql`):
+  - `cp.output_link` over `cp.lineage_link` (`output_link_id` <- `lineage_link_id`).
+  - `cp.input_edge` over `cp.lineage_edge` (`input_edge_id` <- `lineage_edge_id`,
+    `output_link_id` <- `lineage_link_id`,
+    `upstream_output_link_id` <- `upstream_lineage_link_id`).
+- Target rows (migration `018_output_link_target_col.sql`): `cp.write_link_then_rows`
+  now ALSO stamps `_ods_output_link_id` (the new-name mirror, same id) WHEN the
+  target table carries that column. The authoritative FK stays on
+  `_ods_lineage_link_id`. `ods.orders` and the two demo tables carry both columns.
+- Python wrappers (`control/lineage.py`): the preferred new-name API is
+  `write_output_link` / `write_output_then_rows`, taking `inputs` keyed with the
+  new `upstream_output_link_id` (translated to `upstream_lineage_link_id`). The
+  old `write_link` / `write_link_then_rows` remain primary and unchanged.
+  `control.write_output_link` / `control.write_output_then_rows` are exported at
+  the package top level.
+- Visibility (`control/visibility.py`): `activate()` accepts the preferred kwarg
+  `output_link_id` (alias of the still-accepted `lineage_link_id`); the SQL keeps
+  its physical `p_lineage_link_id` parameter (Python-forward rename).
+- Row trace: `control/queries/trace_row.sql` is unchanged in body; its `link_id`
+  bind parameter is now documented as an output-link id, so passing a row's
+  `_ods_output_link_id` traces it back to the raw file.
+
+A later, separate change MAY decide to physically rename (Option A) or keep these
+views permanently.
+
 ## Suggested Implementation Order
 
 1. Add compatibility views `cp.output_link` and `cp.input_edge`.

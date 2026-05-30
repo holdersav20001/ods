@@ -87,9 +87,21 @@ def ensure_demo_targets(conn) -> None:
                 payload JSONB NOT NULL,
                 _ods_workflow_run_id TEXT,
                 _ods_lineage_link_id UUID NOT NULL
-                    REFERENCES cp.lineage_link(lineage_link_id)
+                    REFERENCES cp.lineage_link(lineage_link_id),
+                -- output_link naming cleanup (Option B / spec §"Target Row
+                -- Columns" option 1): additive new-name mirror of the link id
+                -- (= cp.output_link.output_link_id). NO FK — the authoritative
+                -- FK stays on _ods_lineage_link_id. write_link_then_rows
+                -- best-effort stamps this column when the target table has it.
+                _ods_output_link_id UUID
             )
             """
+        )
+        # Idempotent backfill of the additive column on tables that already exist
+        # (CREATE TABLE IF NOT EXISTS would otherwise skip the new column).
+        conn.execute(
+            f"ALTER TABLE ods.{table} "
+            f"ADD COLUMN IF NOT EXISTS _ods_output_link_id UUID"
         )
 
 
@@ -781,7 +793,8 @@ def export_demo_snapshot(conn, executions_meta: list[dict[str, Any]]) -> dict[st
         tables[table] = _rows_as_dicts(conn.execute(
             f"""
             SELECT row_id, payload, _ods_workflow_run_id,
-                   _ods_lineage_link_id::text
+                   _ods_lineage_link_id::text,
+                   _ods_output_link_id::text
             FROM ods.{table}
             WHERE _ods_workflow_run_id = ANY(%s)
             ORDER BY row_id

@@ -1417,6 +1417,16 @@ tbody tr:hover {
   margin-top: 6px;
 }
 
+/* Secondary raw-table reference under the human-readable card heading
+   (output_link cleanup: lead with the human name, show cp.* as detail). */
+.flow-mini-card .card-table-ref {
+  display: block;
+  margin: 2px 0 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: #6b7280;
+}
+
 .flow-fact {
   display: grid;
   grid-template-columns: 150px minmax(0, 1fr);
