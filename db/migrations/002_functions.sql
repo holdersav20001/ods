@@ -161,6 +161,17 @@ BEGIN
 END $$;
 
 -- cp.quarantine: insert dlq row AND surface a 'quarantine' link+edge in lineage.
+--     ╔══════════════════════════════════════════════════════════════════╗
+--     ║ SUPERSEDED by 012_edge_validity.sql (P2 target_ref contract).     ║
+--     ║ This body builds a target_ref WITHOUT a 'version' key, which      ║
+--     ║ violates the tightened target_ref_contract CHECK added in 012     ║
+--     ║ (path AND content_hash non-empty AND a present 'version'). It     ║
+--     ║ also uses p_payload_ref directly as the path, which can be NULL.  ║
+--     ║ 012 re-declares this function with 'version', 1 and a non-empty    ║
+--     ║ path fallback ('dlq:'||v_dlq when payload_ref is NULL/empty). 012 ║
+--     ║ applies last, so the 012 body is live; this copy is kept only for ║
+--     ║ the migration history.                                            ║
+--     ╚══════════════════════════════════════════════════════════════════╝
 CREATE OR REPLACE FUNCTION cp.quarantine(
     p_run_id uuid, p_stage text, p_reason text, p_source_ref jsonb,
     p_payload_ref text, p_record_count bigint

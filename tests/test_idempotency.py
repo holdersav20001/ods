@@ -111,14 +111,16 @@ def _write_link_only_chain(conn, run_id, file_id, n):
     curated link id, keeping the upstream reference stable across replays."""
     curated = lineage.write_link(
         conn, consumer_run_id=run_id, edge_type="raw_to_curated",
-        target_ref={"path": "s3://curated/c.parquet", "content_hash": "fix-curated"},
+        target_ref={"path": "s3://curated/c.parquet",
+                    "content_hash": "fix-curated", "version": 1},
         record_count=n,
         edges=[{"source_file_id": file_id, "edge_type": "raw_to_curated",
                 "source_ref": {"p": "raw"}, "record_count": n}],
         commit=True)
     lineage.write_link(
         conn, consumer_run_id=run_id, edge_type="canonical_to_sink",
-        target_ref={"path": "postgres://orders", "content_hash": "fix-sink"},
+        target_ref={"path": "postgres://orders", "content_hash": "fix-sink",
+                    "version": 1},
         record_count=n,
         edges=[{"upstream_lineage_link_id": curated, "edge_type": "canonical_to_sink",
                 "source_ref": {"note": "x"}, "record_count": n}],
@@ -205,7 +207,8 @@ def test_link_then_rows_rows_are_idempotent(committing_conn):
     # mint a stable curated link to reference (idempotent, same id on retry).
     up_link = lineage.write_link(
         conn, consumer_run_id=run_id, edge_type="raw_to_curated",
-        target_ref={"path": "s3://curated/fix2", "content_hash": "fix2-curated"},
+        target_ref={"path": "s3://curated/fix2", "content_hash": "fix2-curated",
+                    "version": 1},
         record_count=n,
         edges=[{"source_file_id": file_id, "edge_type": "raw_to_curated",
                 "source_ref": {"p": "raw"}, "record_count": n}],
@@ -214,7 +217,8 @@ def test_link_then_rows_rows_are_idempotent(committing_conn):
     def _sink_write():
         return lineage.write_link_then_rows(
             conn, consumer_run_id=run_id, edge_type="canonical_to_sink",
-            target_ref={"path": "postgres://orders", "content_hash": "fix2-sink"},
+            target_ref={"path": "postgres://orders", "content_hash": "fix2-sink",
+                        "version": 1},
             record_count=n,
             edges=[{"upstream_lineage_link_id": up_link,
                     "edge_type": "canonical_to_sink",

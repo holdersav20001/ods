@@ -135,13 +135,15 @@ def test_s1_multioutput_same_edgetype_FIXED_discovery_raises_then_addresses(conn
     # TWO raw_to_curated outputs from ONE run, distinct files/paths/hashes.
     la = lineage.write_link(
         conn, consumer_run_id=run, edge_type="raw_to_curated",
-        target_ref={"path": "s3://cur/A.parquet", "content_hash": "hA"},
+        target_ref={"path": "s3://cur/A.parquet", "content_hash": "hA",
+                    "version": 1},
         record_count=10,
         edges=[{"source_file_id": fa, "edge_type": "raw_to_curated",
                 "source_ref": {"p": "A"}, "record_count": 10}], commit=False)
     lb = lineage.write_link(
         conn, consumer_run_id=run, edge_type="raw_to_curated",
-        target_ref={"path": "s3://cur/B.parquet", "content_hash": "hB"},
+        target_ref={"path": "s3://cur/B.parquet", "content_hash": "hB",
+                    "version": 1},
         record_count=20,
         edges=[{"source_file_id": fb, "edge_type": "raw_to_curated",
                 "source_ref": {"p": "B"}, "record_count": 20}], commit=False)
@@ -198,12 +200,14 @@ def test_s1_downstream_traces_to_chosen_sibling_FIXED(conn):
                      file_id=fa, commit=False)
     la = lineage.write_link(
         conn, consumer_run_id=ing, edge_type="raw_to_curated",
-        target_ref={"path": "s3://cur/A", "content_hash": "hA"}, record_count=10,
+        target_ref={"path": "s3://cur/A", "content_hash": "hA", "version": 1},
+        record_count=10,
         edges=[{"source_file_id": fa, "edge_type": "raw_to_curated",
                 "source_ref": {}, "record_count": 10}], commit=False)
     lb = lineage.write_link(
         conn, consumer_run_id=ing, edge_type="raw_to_curated",
-        target_ref={"path": "s3://cur/B", "content_hash": "hB"}, record_count=20,
+        target_ref={"path": "s3://cur/B", "content_hash": "hB", "version": 1},
+        record_count=20,
         edges=[{"source_file_id": fb, "edge_type": "raw_to_curated",
                 "source_ref": {}, "record_count": 20}], commit=False)
     runs.finalise(conn, ing, status="succeeded", record_count_out=30, commit=False)
@@ -221,7 +225,7 @@ def test_s1_downstream_traces_to_chosen_sibling_FIXED(conn):
                      trigger_type="manual", commit=False)
     can_link = lineage.write_link(
         conn, consumer_run_id=can, edge_type="curated_to_canonical",
-        target_ref={"path": "s3://canon/AB", "content_hash": "cAB"},
+        target_ref={"path": "s3://canon/AB", "content_hash": "cAB", "version": 1},
         record_count=10,
         edges=[{"upstream_run_id": ing, "upstream_lineage_link_id": picked,
                 "edge_type": "curated_to_canonical", "source_ref": {},
@@ -371,7 +375,8 @@ def test_s4_concurrent_writers_one_workflow(cc):
                         trigger_type="manual", commit=False)
         lA = lineage.write_link(
             cc, consumer_run_id=rA, edge_type="curated_to_canonical",
-            target_ref={"path": "s3://canon/A", "content_hash": "cA"},
+            target_ref={"path": "s3://canon/A", "content_hash": "cA",
+                        "version": 1},
             record_count=10,
             edges=[{"upstream_run_id": ing["run_id"],
                     "upstream_lineage_link_id": up_link,
@@ -379,7 +384,8 @@ def test_s4_concurrent_writers_one_workflow(cc):
                     "record_count": 10}], commit=False)
         lB = lineage.write_link(
             c2, consumer_run_id=rB, edge_type="curated_to_canonical",
-            target_ref={"path": "s3://canon/B", "content_hash": "cB"},
+            target_ref={"path": "s3://canon/B", "content_hash": "cB",
+                        "version": 1},
             record_count=10,
             edges=[{"upstream_run_id": ing["run_id"],
                     "upstream_lineage_link_id": up_link,
@@ -552,7 +558,7 @@ def test_s7a_cycle_view_and_trace_row_both_terminate_FIXED(conn):
                      file_id=fcat, commit=False)
     anchor = lineage.write_link(
         conn, consumer_run_id=ing, edge_type="raw_to_curated",
-        target_ref={"path": "s3://cur/s7a", "content_hash": "s7a"},
+        target_ref={"path": "s3://cur/s7a", "content_hash": "s7a", "version": 1},
         record_count=1, edges=[{"source_file_id": fcat,
                                 "edge_type": "raw_to_curated",
                                 "source_ref": {}, "record_count": 1}],
@@ -565,7 +571,8 @@ def test_s7a_cycle_view_and_trace_row_both_terminate_FIXED(conn):
     # Write a valid run-edge naming the anchor (passes the non-null CHECK)...
     link = lineage.write_link(
         conn, consumer_run_id=run, edge_type="curated_to_canonical",
-        target_ref={"path": "s3://canon/self", "content_hash": "self"},
+        target_ref={"path": "s3://canon/self", "content_hash": "self",
+                    "version": 1},
         record_count=1,
         edges=[{"upstream_run_id": ing, "upstream_lineage_link_id": anchor,
                 "edge_type": "curated_to_canonical", "source_ref": {},
@@ -613,7 +620,8 @@ def test_s7b_deep_chain_5hops_fully_traces(conn):
                     domain=dom, dataset="orders", business_date="2026-05-01",
                     trigger_type="manual", file_id=fcat, commit=False)
     l1 = lineage.write_link(conn, consumer_run_id=r1, edge_type="raw_to_curated",
-                            target_ref={"path": "s3://c/1", "content_hash": "1"},
+                            target_ref={"path": "s3://c/1", "content_hash": "1",
+                                        "version": 1},
                             record_count=5,
                             edges=[{"source_file_id": fcat,
                                     "edge_type": "raw_to_curated",
@@ -629,7 +637,8 @@ def test_s7b_deep_chain_5hops_fully_traces(conn):
                         trigger_type="manual", commit=False)
         lN = lineage.write_link(
             conn, consumer_run_id=rN, edge_type="curated_to_canonical",
-            target_ref={"path": f"s3://c/{hop}", "content_hash": str(hop)},
+            target_ref={"path": f"s3://c/{hop}", "content_hash": str(hop),
+                        "version": 1},
             record_count=5,
             edges=[{"upstream_run_id": prev_run,
                     "upstream_lineage_link_id": prev_link,

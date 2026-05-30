@@ -95,6 +95,19 @@ END $$;
 --   returns the link silently (decision-#5 idempotency). (A1-4 / probe 6.)
 --   NOTE: the 009 copy of this function is SUPERSEDED by this one (banner added
 --   to 009); 010 applies last so this definition wins.
+--
+--     ╔══════════════════════════════════════════════════════════════════╗
+--     ║ SUPERSEDED by 012_edge_validity.sql (P1b smuggling guard).        ║
+--     ║ This 010 body still accepts a per-edge edge_type override that    ║
+--     ║ DIFFERS from the link's edge_type with no check — the Codex P1b   ║
+--     ║ "edge_type smuggling" hole (a raw_to_curated edge under a         ║
+--     ║ curated_to_canonical link is accepted, creating a dangling leaf). ║
+--     ║ 012 re-declares this function verbatim PLUS a guard that RAISES   ║
+--     ║ when v_edge_type <> p_edge_type unless the edge is the allowed    ║
+--     ║ annotation 'replay'. The F5 changed-edge-set guard below is       ║
+--     ║ reproduced unchanged. 012 applies last, so the 012 body is live;  ║
+--     ║ this copy is kept only for the migration history.                 ║
+--     ╚══════════════════════════════════════════════════════════════════╝
 -- =====================================================================
 CREATE OR REPLACE FUNCTION cp.write_lineage_link(
     p_consumer_run_id uuid, p_edge_type text, p_target_ref jsonb, p_record_count bigint,
