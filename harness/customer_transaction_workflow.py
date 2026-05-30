@@ -1,0 +1,855 @@
+"""Customer + transaction lineage DEMO workflow (multi-day + refeed).
+
+A self-contained demo fixture on top of the existing ODS control plane. It proves
+multi-input lineage, target-row traceability, and original-vs-corrected (refeed)
+provenance across three business dates plus one Day-2 transaction refeed.
+
+Shape per NORMAL execution (8 runs, one shared workflow_run_id):
+
+  raw customer file    -> ingest customer      -> customer silver
+  raw transaction file -> ingest transaction   -> transaction silver
+  customer + transaction silver -> merge customer_transaction -> ods.customer_transaction
+  detail output        -> aggregate            -> ods.customer_transaction_daily
+
+The Day-2 REFEED execution (6 runs, its own workflow_run_id) REUSES the original
+Day-2 customer silver output and re-ingests a CORRECTED transaction file:
+
+  corrected raw transaction -> ingest -> corrected transaction silver
+  ORIGINAL customer silver + corrected transaction silver -> merge -> detail sink
+  -> aggregate -> aggregate sink
+
+Every control-plane write goes through the sanctioned client wrappers in
+``control/`` so the dashboard can be built purely from control tables plus the
+stamped target rows. No raw ``cp.*`` inserts in the harness; read-only SELECTs
+for the snapshot/tests are fine.
+"""
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import hashlib
+import json
+import pathlib
+import uuid
+from typing import Any
+
+from control import lineage, recon, runs, stages
+from control.db import connect
+
+
+DOMAIN = "sales"
+CUSTOMER_DATASET = "customer"
+TRANSACTION_DATASET = "transaction"
+DETAIL_DATASET = "customer_transaction"
+AGG_DATASET = "customer_transaction_daily"
+
+BUSINESS_DATES = [
+    dt.date(2026, 5, 28),
+    dt.date(2026, 5, 29),
+    dt.date(2026, 5, 30),
+]
+REFEED_BUSINESS_DATE = dt.date(2026, 5, 29)
+
+# Stable customer roster per the spec (§Input Files). Same two customers each day.
+CUSTOMER_ROWS = [
+    {"customer_id": "C001", "customer_name": "Ada Lovelace", "segment": "premium"},
+    {"customer_id": "C002", "customer_name": "Grace Hopper", "segment": "standard"},
+]
+
+# Original transaction file per the spec (§Input Files).
+TRANSACTION_ROWS = [
+    {"transaction_id": "T100", "customer_id": "C001", "amount": 125.50},
+    {"transaction_id": "T101", "customer_id": "C001", "amount": 74.50},
+    {"transaction_id": "T102", "customer_id": "C002", "amount": 33.00},
+]
+
+# Corrected Day-2 transaction refeed (§"Corrected Transaction Refeed File").
+# Same ids/structure, T101 amount corrected 74.50 -> 79.50. Distinct content =>
+# distinct file_md5 => distinct raw file identity.
+CORRECTED_TRANSACTION_ROWS = [
+    {"transaction_id": "T100", "customer_id": "C001", "amount": 125.50},
+    {"transaction_id": "T101", "customer_id": "C001", "amount": 79.50},
+    {"transaction_id": "T102", "customer_id": "C002", "amount": 33.00},
+]
+
+
+def ensure_demo_targets(conn) -> None:
+    """Create the two demo target tables expected by write_link_then_rows.
+
+    Ad-hoc demo tables (spec lines 313-318 / 373-378). NOT a core migration —
+    this stays a self-contained demo fixture.
+    """
+    for table in (DETAIL_DATASET, AGG_DATASET):
+        conn.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS ods.{table} (
+                row_id BIGSERIAL PRIMARY KEY,
+                payload JSONB NOT NULL,
+                _ods_workflow_run_id TEXT,
+                _ods_lineage_link_id UUID NOT NULL
+                    REFERENCES cp.lineage_link(lineage_link_id)
+            )
+            """
+        )
+
+
+def _content_md5(rows: list[dict[str, Any]]) -> str:
+    """Deterministic content hash of a raw file's rows.
+
+    Distinct content (e.g. the corrected T101 amount) yields a distinct md5, so
+    the corrected refeed gets a genuinely different raw file identity.
+    """
+    blob = json.dumps(rows, sort_keys=True, separators=(",", ":"))
+    return hashlib.md5(blob.encode("utf-8")).hexdigest()
+
+
+def _file(dataset: str, business_date: dt.date, rows: list[dict[str, Any]], *,
+          raw_suffix: str | None = None) -> dict[str, Any]:
+    """Build a raw-file descriptor with a business-date-specific path.
+
+    ``raw_suffix`` distinguishes the corrected refeed path from the original
+    Day-2 path so traces are visibly distinguishable.
+    """
+    leaf = raw_suffix if raw_suffix is not None else str(business_date)
+    return {
+        "s3_raw_path": f"s3://raw/{DOMAIN}/{dataset}/{leaf}.json",
+        "file_md5": _content_md5(rows),
+        "business_date": business_date,
+        "domain": DOMAIN,
+        "dataset": dataset,
+        "record_count": len(rows),
+        "rows": rows,
+    }
+
+
+# --------------------------------------------------------------------------- #
+# Per-hop helpers. Each returns the run/link/file ids the next hop needs.
+# --------------------------------------------------------------------------- #
+def _ingest(conn, *, workflow_run_id: str, file: dict[str, Any],
+            trigger_type: str, replay_of_run_id: str | None = None,
+            commit: bool) -> dict[str, str]:
+    """Register the raw file and run the ingestion hop -> raw_to_curated link."""
+    rows = file["rows"]
+    n = file["record_count"]
+    file_id = runs.register_file(
+        conn,
+        s3_raw_path=file["s3_raw_path"],
+        file_md5=file["file_md5"],
+        business_date=file["business_date"],
+        domain=file["domain"],
+        dataset=file["dataset"],
+        commit=commit,
+    )
+    run_id = runs.start(
+        conn,
+        workflow_run_id=workflow_run_id,
+        pipeline_type="ingestion",
+        domain=file["domain"],
+        dataset=file["dataset"],
+        business_date=file["business_date"],
+        trigger_type=trigger_type,
+        file_id=file_id,
+        replay_of_run_id=replay_of_run_id,
+        commit=commit,
+    )
+    with stages.stage_scope(conn, run_id, "ingest_raw", commit=commit) as st:
+        st.record_in = n
+        st.record_out = n
+        st.metrics = {"sample_ids": [r.get("transaction_id") or r.get("customer_id")
+                                     for r in rows]}
+
+    link_id = lineage.write_link(
+        conn,
+        consumer_run_id=run_id,
+        edge_type="raw_to_curated",
+        target_ref={
+            "path": f"s3://bronze/{file['dataset']}/{file['business_date']}.json",
+            "content_hash": f"bronze-{file['file_md5']}",
+            "version": 1,
+        },
+        record_count=n,
+        edges=[{
+            "source_file_id": file_id,
+            "edge_type": "raw_to_curated",
+            "source_ref": {"path": file["s3_raw_path"]},
+            "record_count": n,
+        }],
+        transform_version="raw-v1",
+        commit=commit,
+    )
+    recon.write_check(
+        conn, run_id=run_id, check_type="ingest",
+        source_count=n, accounted_count=n, commit=commit)
+    runs.finalise(conn, run_id, status="succeeded", record_count_out=n,
+                  commit=commit)
+    return {"run_id": run_id, "file_id": file_id, "link_id": link_id}
+
+
+def _canonicalize_to_silver(conn, *, workflow_run_id: str, file: dict[str, Any],
+                            ingest_run_id: str, ingest_link_id: str,
+                            trigger_type: str, commit: bool) -> dict[str, str]:
+    """Transform a raw file's curated output into a silver canonical output.
+
+    The upstream is passed EXPLICITLY (ingest run/link of THIS execution) rather
+    than discovered, so the refeed binds to its own corrected ingest and a normal
+    day binds to its own — no cross-execution ``latest_succeeded_run`` ambiguity.
+    """
+    n = file["record_count"]
+    # content_hash includes the file md5 so the corrected transaction silver has
+    # a DIFFERENT target_ref.content_hash than the original (spec line 129).
+    run_id = runs.start(
+        conn,
+        workflow_run_id=workflow_run_id,
+        pipeline_type="canonicalization",
+        domain=file["domain"],
+        dataset=file["dataset"],
+        business_date=file["business_date"],
+        trigger_type=trigger_type,
+        commit=commit,
+    )
+    with stages.stage_scope(conn, run_id, "canonicalize_to_silver",
+                            commit=commit) as st:
+        st.record_in = n
+        st.record_out = n
+
+    link_id = lineage.write_link(
+        conn,
+        consumer_run_id=run_id,
+        edge_type="curated_to_canonical",
+        target_ref={
+            "path": f"s3://silver/{file['dataset']}/{file['business_date']}.parquet",
+            "content_hash": f"silver-{file['file_md5']}",
+            "version": 1,
+        },
+        record_count=n,
+        edges=[{
+            "upstream_run_id": ingest_run_id,
+            "upstream_lineage_link_id": ingest_link_id,
+            "edge_type": "curated_to_canonical",
+            "source_ref": {"layer": "bronze", "dataset": file["dataset"]},
+            "record_count": n,
+        }],
+        transform_version="silver-v1",
+        commit=commit,
+    )
+    recon.write_check(
+        conn, run_id=run_id, check_type="canonicalize_to_silver",
+        source_count=n, accounted_count=n, commit=commit)
+    runs.finalise(conn, run_id, status="succeeded", record_count_out=n,
+                  commit=commit)
+    return {"run_id": run_id, "link_id": link_id}
+
+
+def _merge_rows(business_date: dt.date,
+                transaction_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    customers = {row["customer_id"]: row for row in CUSTOMER_ROWS}
+    merged = []
+    for tx in transaction_rows:
+        customer = customers[tx["customer_id"]]
+        merged.append({
+            "transaction_id": tx["transaction_id"],
+            "customer_id": tx["customer_id"],
+            "customer_name": customer["customer_name"],
+            "segment": customer["segment"],
+            "amount": tx["amount"],
+            "business_date": str(business_date),
+        })
+    return merged
+
+
+def _aggregate_rows(detail_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    by_customer: dict[str, dict[str, Any]] = {}
+    for row in detail_rows:
+        bucket = by_customer.setdefault(row["customer_id"], {
+            "business_date": row["business_date"],
+            "customer_id": row["customer_id"],
+            "customer_name": row["customer_name"],
+            "transaction_count": 0,
+            "total_amount": 0.0,
+        })
+        bucket["transaction_count"] += 1
+        bucket["total_amount"] += float(row["amount"])
+    return [
+        {**row, "total_amount": round(row["total_amount"], 2)}
+        for row in by_customer.values()
+    ]
+
+
+def _merge_to_detail(conn, *, workflow_run_id: str, business_date: dt.date,
+                     customer_silver: dict[str, str],
+                     transaction_silver: dict[str, str],
+                     detail_rows: list[dict[str, Any]], content_tag: str,
+                     trigger_type: str, commit: bool) -> dict[str, str]:
+    """Join customer + transaction silver. TWO upstream merge_to_canonical edges:
+    customer silver in slot 0, transaction silver in slot 1. Each edge names the
+    EXACT upstream output via upstream_lineage_link_id (provenance to each silver).
+    """
+    run_id = runs.start(
+        conn,
+        workflow_run_id=workflow_run_id,
+        pipeline_type="merge",
+        domain=DOMAIN,
+        dataset=DETAIL_DATASET,
+        business_date=business_date,
+        trigger_type=trigger_type,
+        commit=commit,
+    )
+    with stages.stage_scope(conn, run_id, "merge_customer_transaction",
+                            commit=commit) as st:
+        st.record_in = len(CUSTOMER_ROWS) + len(detail_rows)
+        st.record_out = len(detail_rows)
+        st.metrics = {
+            "inputs": [CUSTOMER_DATASET, TRANSACTION_DATASET],
+            "join_key": "customer_id",
+        }
+
+    link_id = lineage.write_link(
+        conn,
+        consumer_run_id=run_id,
+        edge_type="merge_to_canonical",
+        target_ref={
+            "path": f"s3://silver/{DETAIL_DATASET}/{business_date}.parquet",
+            # content_tag differs original vs corrected => distinct content_hash
+            # for the corrected merge output (spec line 130).
+            "content_hash": f"silver-{DETAIL_DATASET}-{content_tag}",
+            "version": 1,
+        },
+        record_count=len(detail_rows),
+        edges=[
+            {
+                "upstream_run_id": customer_silver["run_id"],
+                "upstream_lineage_link_id": customer_silver["link_id"],
+                "input_slot": 0,
+                "edge_type": "merge_to_canonical",
+                "source_ref": {"dataset": CUSTOMER_DATASET, "role": "dimension"},
+                "record_count": len(CUSTOMER_ROWS),
+            },
+            {
+                "upstream_run_id": transaction_silver["run_id"],
+                "upstream_lineage_link_id": transaction_silver["link_id"],
+                "input_slot": 1,
+                "edge_type": "merge_to_canonical",
+                "source_ref": {"dataset": TRANSACTION_DATASET, "role": "fact"},
+                "record_count": len(detail_rows),
+            },
+        ],
+        transform_version="join-v1",
+        commit=commit,
+    )
+    recon.write_check(
+        conn, run_id=run_id, check_type="merge_customer_transaction",
+        source_count=len(detail_rows), accounted_count=len(detail_rows),
+        metrics={"source_records_read": len(CUSTOMER_ROWS) + len(detail_rows)},
+        commit=commit)
+    runs.finalise(conn, run_id, status="succeeded",
+                  record_count_out=len(detail_rows), commit=commit)
+    return {"run_id": run_id, "link_id": link_id}
+
+
+def _sink_rows(conn, *, workflow_run_id: str, business_date: dt.date, dataset: str,
+               upstream_run_id: str, upstream_link_id: str,
+               upstream_edge_type: str, rows: list[dict[str, Any]],
+               content_tag: str, stage_name: str, trigger_type: str,
+               commit: bool) -> dict[str, str]:
+    """Upsert rows to ods.<dataset> via the sanctioned link-then-rows path.
+
+    write_link_then_rows stamps each target row with _ods_workflow_run_id and
+    _ods_lineage_link_id. The canonical_to_sink link's content_hash carries the
+    content_tag so a corrected sink link is a DISTINCT output (distinct id +
+    content_hash) from the original (spec lines 131-132).
+    """
+    run_id = runs.start(
+        conn,
+        workflow_run_id=workflow_run_id,
+        pipeline_type="sink",
+        domain=DOMAIN,
+        dataset=dataset,
+        business_date=business_date,
+        trigger_type=trigger_type,
+        commit=commit,
+    )
+    with stages.stage_scope(conn, run_id, stage_name, commit=commit) as st:
+        st.record_in = len(rows)
+        st.record_out = len(rows)
+
+    link_id = lineage.write_link_then_rows(
+        conn,
+        consumer_run_id=run_id,
+        edge_type="canonical_to_sink",
+        target_ref={
+            "path": f"postgres://ods/{dataset}",
+            "content_hash": f"postgres-{dataset}-{content_tag}",
+            "version": 1,
+        },
+        record_count=len(rows),
+        edges=[{
+            "upstream_run_id": upstream_run_id,
+            "upstream_lineage_link_id": upstream_link_id,
+            "edge_type": "canonical_to_sink",
+            "source_ref": {"upstream_edge_type": upstream_edge_type},
+            "record_count": len(rows),
+        }],
+        rows=rows,
+        sink_type="postgres",
+        transform_version="postgres-upsert-v1",
+        commit=commit,
+    )
+    # Per-OUTPUT graph-derived recon (P10-C): accounted = rows stamped with THIS
+    # link only. Avoids the run-scoped false breach reconcile_sink would raise.
+    recon.reconcile_sink_link(conn, lineage_link_id=link_id,
+                              source_count=len(rows), commit=commit)
+    runs.finalise(conn, run_id, status="succeeded",
+                  record_count_out=len(rows), commit=commit)
+    return {"run_id": run_id, "link_id": link_id}
+
+
+def _aggregate_from_detail(conn, *, workflow_run_id: str, business_date: dt.date,
+                           detail_sink: dict[str, str],
+                           detail_rows: list[dict[str, Any]],
+                           aggregate_rows: list[dict[str, Any]],
+                           content_tag: str, trigger_type: str,
+                           commit: bool) -> dict[str, str]:
+    """Aggregate the detail output as a first-class run.
+
+    The aggregate output link reuses edge_type 'merge_to_canonical' (no
+    'aggregate' edge type exists) and consumes the detail SINK link, so an
+    aggregate row traces through the detail lineage to both raw files.
+    """
+    run_id = runs.start(
+        conn,
+        workflow_run_id=workflow_run_id,
+        pipeline_type="aggregation",
+        domain=DOMAIN,
+        dataset=AGG_DATASET,
+        business_date=business_date,
+        trigger_type=trigger_type,
+        commit=commit,
+    )
+    with stages.stage_scope(conn, run_id, "aggregate_customer_daily",
+                            commit=commit) as st:
+        st.record_in = len(detail_rows)
+        st.record_out = len(aggregate_rows)
+        st.metrics = {"group_by": ["business_date", "customer_id"]}
+
+    link_id = lineage.write_link(
+        conn,
+        consumer_run_id=run_id,
+        edge_type="merge_to_canonical",
+        target_ref={
+            "path": f"s3://gold/{AGG_DATASET}/{business_date}.parquet",
+            "content_hash": f"gold-{AGG_DATASET}-{content_tag}",
+            "version": 1,
+        },
+        record_count=len(aggregate_rows),
+        edges=[{
+            "upstream_run_id": detail_sink["run_id"],
+            "upstream_lineage_link_id": detail_sink["link_id"],
+            "edge_type": "merge_to_canonical",
+            "source_ref": {"table": f"ods.{DETAIL_DATASET}"},
+            "record_count": len(detail_rows),
+        }],
+        transform_version="agg-v1",
+        commit=commit,
+    )
+    recon.write_check(
+        conn, run_id=run_id, check_type="aggregate_customer_daily",
+        source_count=len(detail_rows), accounted_count=len(detail_rows),
+        metrics={"aggregate_rows": len(aggregate_rows)}, commit=commit)
+    runs.finalise(conn, run_id, status="succeeded",
+                  record_count_out=len(aggregate_rows), commit=commit)
+    return {"run_id": run_id, "link_id": link_id}
+
+
+# --------------------------------------------------------------------------- #
+# Executions.
+# --------------------------------------------------------------------------- #
+def normal_execution(conn, business_date: dt.date,
+                     customer_rows: list[dict[str, Any]],
+                     transaction_rows: list[dict[str, Any]], *,
+                     workflow_run_id: str, trigger_type: str = "manual",
+                     commit: bool) -> dict[str, Any]:
+    """Full 8-run normal shape for one (business_date, customer, transaction)."""
+    customer_file = _file(CUSTOMER_DATASET, business_date, customer_rows)
+    transaction_file = _file(TRANSACTION_DATASET, business_date, transaction_rows)
+
+    customer_ingest = _ingest(
+        conn, workflow_run_id=workflow_run_id, file=customer_file,
+        trigger_type=trigger_type, commit=commit)
+    transaction_ingest = _ingest(
+        conn, workflow_run_id=workflow_run_id, file=transaction_file,
+        trigger_type=trigger_type, commit=commit)
+    customer_silver = _canonicalize_to_silver(
+        conn, workflow_run_id=workflow_run_id, file=customer_file,
+        ingest_run_id=customer_ingest["run_id"],
+        ingest_link_id=customer_ingest["link_id"],
+        trigger_type=trigger_type, commit=commit)
+    transaction_silver = _canonicalize_to_silver(
+        conn, workflow_run_id=workflow_run_id, file=transaction_file,
+        ingest_run_id=transaction_ingest["run_id"],
+        ingest_link_id=transaction_ingest["link_id"],
+        trigger_type=trigger_type, commit=commit)
+
+    detail_rows = _merge_rows(business_date, transaction_rows)
+    content_tag = f"{workflow_run_id}-orig"
+    merge = _merge_to_detail(
+        conn, workflow_run_id=workflow_run_id, business_date=business_date,
+        customer_silver=customer_silver, transaction_silver=transaction_silver,
+        detail_rows=detail_rows, content_tag=content_tag,
+        trigger_type=trigger_type, commit=commit)
+    detail_sink = _sink_rows(
+        conn, workflow_run_id=workflow_run_id, business_date=business_date,
+        dataset=DETAIL_DATASET, upstream_run_id=merge["run_id"],
+        upstream_link_id=merge["link_id"], upstream_edge_type="merge_to_canonical",
+        rows=detail_rows, content_tag=content_tag,
+        stage_name="upsert_customer_transaction", trigger_type=trigger_type,
+        commit=commit)
+
+    aggregate_rows = _aggregate_rows(detail_rows)
+    aggregate = _aggregate_from_detail(
+        conn, workflow_run_id=workflow_run_id, business_date=business_date,
+        detail_sink=detail_sink, detail_rows=detail_rows,
+        aggregate_rows=aggregate_rows, content_tag=content_tag,
+        trigger_type=trigger_type, commit=commit)
+    aggregate_sink = _sink_rows(
+        conn, workflow_run_id=workflow_run_id, business_date=business_date,
+        dataset=AGG_DATASET, upstream_run_id=aggregate["run_id"],
+        upstream_link_id=aggregate["link_id"],
+        upstream_edge_type="merge_to_canonical", rows=aggregate_rows,
+        content_tag=content_tag, stage_name="upsert_customer_transaction_daily",
+        trigger_type=trigger_type, commit=commit)
+
+    return {
+        "workflow_run_id": workflow_run_id,
+        "business_date": business_date,
+        "execution_type": "normal",
+        "files": {"customer": customer_file, "transaction": transaction_file},
+        "customer_ingest": customer_ingest,
+        "transaction_ingest": transaction_ingest,
+        "customer_silver": customer_silver,
+        "transaction_silver": transaction_silver,
+        "merge": merge,
+        "detail_sink": detail_sink,
+        "aggregate": aggregate,
+        "aggregate_sink": aggregate_sink,
+        "detail_rows": detail_rows,
+        "aggregate_rows": aggregate_rows,
+    }
+
+
+def refeed_execution(conn, *, original_day2_result: dict[str, Any],
+                     corrected_transaction_rows: list[dict[str, Any]],
+                     workflow_run_id: str, commit: bool) -> dict[str, Any]:
+    """Day-2 corrected-transaction refeed (6 runs, NEW workflow_run_id).
+
+    Per spec lines 296-301 + test 10: REUSE the ORIGINAL Day-2 customer silver
+    output (do NOT re-run customer). Re-ingest the corrected transaction (new
+    file_id on the new md5; replay_of_run_id = original Day-2 transaction ingest),
+    re-canonicalize transaction silver (different content_hash), merge with the
+    ORIGINAL customer silver + CORRECTED transaction silver, sink detail,
+    aggregate, sink aggregate. trigger_type='replay'.
+    """
+    business_date = original_day2_result["business_date"]
+    corrected_file = _file(
+        TRANSACTION_DATASET, business_date, corrected_transaction_rows,
+        raw_suffix=f"{business_date}-refeed")
+
+    transaction_ingest = _ingest(
+        conn, workflow_run_id=workflow_run_id, file=corrected_file,
+        trigger_type="replay",
+        replay_of_run_id=original_day2_result["transaction_ingest"]["run_id"],
+        commit=commit)
+    transaction_silver = _canonicalize_to_silver(
+        conn, workflow_run_id=workflow_run_id, file=corrected_file,
+        ingest_run_id=transaction_ingest["run_id"],
+        ingest_link_id=transaction_ingest["link_id"],
+        trigger_type="replay", commit=commit)
+
+    # REUSE original Day-2 customer silver run + link (no re-run of customer).
+    customer_silver = original_day2_result["customer_silver"]
+
+    detail_rows = _merge_rows(business_date, corrected_transaction_rows)
+    content_tag = f"{workflow_run_id}-corrected"
+    merge = _merge_to_detail(
+        conn, workflow_run_id=workflow_run_id, business_date=business_date,
+        customer_silver=customer_silver, transaction_silver=transaction_silver,
+        detail_rows=detail_rows, content_tag=content_tag,
+        trigger_type="replay", commit=commit)
+    detail_sink = _sink_rows(
+        conn, workflow_run_id=workflow_run_id, business_date=business_date,
+        dataset=DETAIL_DATASET, upstream_run_id=merge["run_id"],
+        upstream_link_id=merge["link_id"], upstream_edge_type="merge_to_canonical",
+        rows=detail_rows, content_tag=content_tag,
+        stage_name="upsert_customer_transaction", trigger_type="replay",
+        commit=commit)
+
+    aggregate_rows = _aggregate_rows(detail_rows)
+    aggregate = _aggregate_from_detail(
+        conn, workflow_run_id=workflow_run_id, business_date=business_date,
+        detail_sink=detail_sink, detail_rows=detail_rows,
+        aggregate_rows=aggregate_rows, content_tag=content_tag,
+        trigger_type="replay", commit=commit)
+    aggregate_sink = _sink_rows(
+        conn, workflow_run_id=workflow_run_id, business_date=business_date,
+        dataset=AGG_DATASET, upstream_run_id=aggregate["run_id"],
+        upstream_link_id=aggregate["link_id"],
+        upstream_edge_type="merge_to_canonical", rows=aggregate_rows,
+        content_tag=content_tag, stage_name="upsert_customer_transaction_daily",
+        trigger_type="replay", commit=commit)
+
+    return {
+        "workflow_run_id": workflow_run_id,
+        "business_date": business_date,
+        "execution_type": "refeed",
+        "refeed_of_workflow_run_id": original_day2_result["workflow_run_id"],
+        "files": {"transaction": corrected_file},
+        "customer_silver": customer_silver,
+        "transaction_ingest": transaction_ingest,
+        "transaction_silver": transaction_silver,
+        "merge": merge,
+        "detail_sink": detail_sink,
+        "aggregate": aggregate,
+        "aggregate_sink": aggregate_sink,
+        "detail_rows": detail_rows,
+        "aggregate_rows": aggregate_rows,
+    }
+
+
+# --------------------------------------------------------------------------- #
+# Orchestrator.
+# --------------------------------------------------------------------------- #
+def run_demo(conn, *, commit: bool = True) -> dict[str, Any]:
+    """Run Day1/2/3 normal + Day2 refeed, each its own workflow_run_id."""
+    ensure_demo_targets(conn)
+
+    normals = {}
+    for business_date in BUSINESS_DATES:
+        wfid = str(uuid.uuid4())
+        normals[business_date] = normal_execution(
+            conn, business_date, CUSTOMER_ROWS, TRANSACTION_ROWS,
+            workflow_run_id=wfid, trigger_type="manual", commit=commit)
+
+    refeed_wfid = str(uuid.uuid4())
+    refeed = refeed_execution(
+        conn, original_day2_result=normals[REFEED_BUSINESS_DATE],
+        corrected_transaction_rows=CORRECTED_TRANSACTION_ROWS,
+        workflow_run_id=refeed_wfid, commit=commit)
+
+    day1 = normals[BUSINESS_DATES[0]]
+    day2 = normals[BUSINESS_DATES[1]]
+    day3 = normals[BUSINESS_DATES[2]]
+
+    executions_meta = [
+        {
+            "workflow_run_id": day1["workflow_run_id"],
+            "business_date": str(day1["business_date"]),
+            "execution_type": "normal",
+            "refeed_of_workflow_run_id": None,
+            "description": "Day 1 normal load (2026-05-28)",
+        },
+        {
+            "workflow_run_id": day2["workflow_run_id"],
+            "business_date": str(day2["business_date"]),
+            "execution_type": "normal",
+            "refeed_of_workflow_run_id": None,
+            "description": "Day 2 normal load (2026-05-29)",
+        },
+        {
+            "workflow_run_id": day3["workflow_run_id"],
+            "business_date": str(day3["business_date"]),
+            "execution_type": "normal",
+            "refeed_of_workflow_run_id": None,
+            "description": "Day 3 normal load (2026-05-30)",
+        },
+        {
+            "workflow_run_id": refeed["workflow_run_id"],
+            "business_date": str(refeed["business_date"]),
+            "execution_type": "refeed",
+            "refeed_of_workflow_run_id": refeed["refeed_of_workflow_run_id"],
+            "description": "Day 2 transaction refeed (corrected T101)",
+        },
+    ]
+
+    return {
+        # Back-compat: a single workflow_run_id pointer (Day-1 normal).
+        "workflow_run_id": day1["workflow_run_id"],
+        "day1": day1,
+        "day2": day2,
+        "day3": day3,
+        "refeed": refeed,
+        "normals_by_date": {str(d): r for d, r in normals.items()},
+        "executions": executions_meta,
+    }
+
+
+# --------------------------------------------------------------------------- #
+# Snapshot export.
+# --------------------------------------------------------------------------- #
+def _rows_as_dicts(cursor) -> list[dict[str, Any]]:
+    cols = [desc.name for desc in cursor.description]
+    return [dict(zip(cols, row)) for row in cursor.fetchall()]
+
+
+def _jsonify(value: Any) -> Any:
+    if isinstance(value, (uuid.UUID, dt.date, dt.datetime)):
+        return str(value)
+    if isinstance(value, list):
+        return [_jsonify(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _jsonify(v) for k, v in value.items()}
+    return value
+
+
+_TRACE_SQL = (pathlib.Path(__file__).resolve().parents[1]
+              / "control" / "queries" / "trace_row.sql").read_text()
+
+
+def export_demo_snapshot(conn, executions_meta: list[dict[str, Any]]) -> dict[str, Any]:
+    """Export control-table + target-row state across ALL demo executions."""
+    workflow_run_ids = [e["workflow_run_id"] for e in executions_meta]
+
+    runs_cur = conn.execute(
+        """
+        SELECT run_id::text, workflow_run_id, pipeline_type, domain, dataset,
+               business_date::text, trigger_type, status, record_count_in,
+               record_count_out, replay_of_run_id::text,
+               started_at::text, finished_at::text
+        FROM cp.run_log
+        WHERE workflow_run_id = ANY(%s)
+        ORDER BY workflow_run_id, started_at, pipeline_type, dataset
+        """,
+        (workflow_run_ids,),
+    )
+    run_rows = _rows_as_dicts(runs_cur)
+    run_ids = [row["run_id"] for row in run_rows]
+
+    stages_by_run = {run_id: [] for run_id in run_ids}
+    if run_ids:
+        for row in _rows_as_dicts(conn.execute(
+            """
+            SELECT run_id::text, stage, attempt, status, record_count_in,
+                   record_count_out, metrics, started_at::text, finished_at::text
+            FROM cp.run_stage_log
+            WHERE run_id = ANY(%s::uuid[])
+            ORDER BY started_at, stage_log_id
+            """,
+            (run_ids,),
+        )):
+            stages_by_run[row.pop("run_id")].append(row)
+
+    links = _rows_as_dicts(conn.execute(
+        """
+        SELECT l.lineage_link_id::text, l.consumer_run_id::text,
+               r.workflow_run_id, l.edge_type, l.sink_type, l.target_ref,
+               l.transform_version, l.record_count, l.created_at::text
+        FROM cp.lineage_link l
+        JOIN cp.run_log r ON r.run_id = l.consumer_run_id
+        WHERE r.workflow_run_id = ANY(%s)
+        ORDER BY r.workflow_run_id, l.created_at, l.edge_type
+        """,
+        (workflow_run_ids,),
+    ))
+    link_ids = [row["lineage_link_id"] for row in links]
+
+    edges_by_link = {link_id: [] for link_id in link_ids}
+    if link_ids:
+        for row in _rows_as_dicts(conn.execute(
+            """
+            SELECT lineage_link_id::text, lineage_edge_id::text,
+                   upstream_run_id::text, upstream_lineage_link_id::text,
+                   source_file_id::text, input_slot, edge_type, source_ref,
+                   record_count
+            FROM cp.lineage_edge
+            WHERE lineage_link_id = ANY(%s::uuid[])
+            ORDER BY lineage_link_id, input_slot, lineage_edge_id
+            """,
+            (link_ids,),
+        )):
+            edges_by_link[row.pop("lineage_link_id")].append(row)
+
+    traces = {}
+    for link_id in link_ids:
+        traces[link_id] = _rows_as_dicts(
+            conn.execute(_TRACE_SQL, {"link_id": link_id}))
+
+    for row in run_rows:
+        row["stages"] = stages_by_run.get(row["run_id"], [])
+    for row in links:
+        row["edges"] = edges_by_link.get(row["lineage_link_id"], [])
+
+    tables = {}
+    for table in (DETAIL_DATASET, AGG_DATASET):
+        tables[table] = _rows_as_dicts(conn.execute(
+            f"""
+            SELECT row_id, payload, _ods_workflow_run_id,
+                   _ods_lineage_link_id::text
+            FROM ods.{table}
+            WHERE _ods_workflow_run_id = ANY(%s)
+            ORDER BY row_id
+            """,
+            (workflow_run_ids,),
+        ))
+
+    files = _rows_as_dicts(conn.execute(
+        """
+        SELECT f.file_id::text, f.s3_raw_path, f.file_md5,
+               f.business_date::text, f.state, f.domain, f.dataset
+        FROM cp.file_catalogue f
+        WHERE f.file_id IN (
+            SELECT DISTINCT r.file_id FROM cp.run_log r
+            WHERE r.workflow_run_id = ANY(%s) AND r.file_id IS NOT NULL
+        )
+        ORDER BY f.dataset, f.business_date, f.s3_raw_path
+        """,
+        (workflow_run_ids,),
+    ))
+
+    return _jsonify({
+        # Back-compat single pointer = the first (Day-1 normal) execution.
+        "workflow_run_id": workflow_run_ids[0],
+        "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+        "scenario": {
+            "business_dates": [str(d) for d in BUSINESS_DATES],
+            "refeed_business_date": str(REFEED_BUSINESS_DATE),
+        },
+        "executions": executions_meta,
+        "runs": run_rows,
+        "links": links,
+        "files": files,
+        "tables": tables,
+        "traces": traces,
+    })
+
+
+def write_dashboard_snapshot(path: str | pathlib.Path) -> dict[str, Any]:
+    """Run the demo against Postgres (LEAVING data committed) and write JSON."""
+    out = pathlib.Path(path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with connect() as conn:
+        conn.autocommit = False
+        result = run_demo(conn, commit=True)
+        snapshot = export_demo_snapshot(conn, result["executions"])
+        conn.commit()
+    out.write_text(json.dumps(snapshot, indent=2), encoding="utf-8")
+    return snapshot
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Customer-transaction lineage demo.")
+    parser.add_argument(
+        "--out",
+        default="dashboard/data/demo-workflow.json",
+        help="Path to write dashboard JSON.",
+    )
+    args = parser.parse_args()
+    snapshot = write_dashboard_snapshot(args.out)
+    print(f"wrote {args.out}")
+    print(f"executions={len(snapshot['executions'])} "
+          f"runs={len(snapshot['runs'])} links={len(snapshot['links'])} "
+          f"files={len(snapshot['files'])}")
+    for ex in snapshot["executions"]:
+        print(f"  {ex['execution_type']:7s} {ex['business_date']} "
+              f"{ex['workflow_run_id']}  {ex['description']}")
+
+
+if __name__ == "__main__":
+    main()

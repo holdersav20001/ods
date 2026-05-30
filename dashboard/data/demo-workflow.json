@@ -1,0 +1,3385 @@
+{
+  "workflow_run_id": "e190001c-f2fb-456c-8b2e-c66be6b119cf",
+  "generated_at": "2026-05-30T09:13:29+00:00",
+  "scenario": {
+    "business_dates": [
+      "2026-05-28",
+      "2026-05-29",
+      "2026-05-30"
+    ],
+    "refeed_business_date": "2026-05-29"
+  },
+  "executions": [
+    {
+      "workflow_run_id": "e190001c-f2fb-456c-8b2e-c66be6b119cf",
+      "business_date": "2026-05-28",
+      "execution_type": "normal",
+      "refeed_of_workflow_run_id": null,
+      "description": "Day 1 normal load (2026-05-28)"
+    },
+    {
+      "workflow_run_id": "3423e0a3-9ab3-4777-9012-55c3d74a1ace",
+      "business_date": "2026-05-29",
+      "execution_type": "normal",
+      "refeed_of_workflow_run_id": null,
+      "description": "Day 2 normal load (2026-05-29)"
+    },
+    {
+      "workflow_run_id": "e688af9a-8df7-4480-9ed5-a295a247a8a5",
+      "business_date": "2026-05-30",
+      "execution_type": "normal",
+      "refeed_of_workflow_run_id": null,
+      "description": "Day 3 normal load (2026-05-30)"
+    },
+    {
+      "workflow_run_id": "c6b43c9f-2a4b-4d6c-b79e-0774edcea4c6",
+      "business_date": "2026-05-29",
+      "execution_type": "refeed",
+      "refeed_of_workflow_run_id": "3423e0a3-9ab3-4777-9012-55c3d74a1ace",
+      "description": "Day 2 transaction refeed (corrected T101)"
+    }
+  ],
+  "runs": [
+    {
+      "run_id": "6c2f1a02-55fa-486a-ae9d-38b79eeb5989",
+      "workflow_run_id": "3423e0a3-9ab3-4777-9012-55c3d74a1ace",
+      "pipeline_type": "ingestion",
+      "domain": "sales",
+      "dataset": "customer",
+      "business_date": "2026-05-29",
+      "trigger_type": "manual",
+      "status": "succeeded",
+      "record_count_in": null,
+      "record_count_out": 2,
+      "replay_of_run_id": null,
+      "started_at": "2026-05-30 09:13:29.850815+00",
+      "finished_at": "2026-05-30 09:13:29.862151+00",
+      "stages": [
+        {
+          "stage": "ingest_raw",
+          "attempt": 1,
+          "status": "succeeded",
+          "record_count_in": 2,
+          "record_count_out": 2,
+          "metrics": {
+            "sample_ids": [
+              "C001",
+              "C002"
+            ]
+          },
+          "started_at": "2026-05-30 09:13:29.853763+00",
+          "finished_at": "2026-05-30 09:13:29.854804+00"
+        }
+      ]
+    },
+    {
+      "run_id": "b6e6da99-b0cb-4883-859a-e5cf9821faf6",
+      "workflow_run_id": "3423e0a3-9ab3-4777-9012-55c3d74a1ace",
+      "pipeline_type": "ingestion",
+      "domain": "sales",
+      "dataset": "transaction",
+      "business_date": "2026-05-29",
+      "trigger_type": "manual",
+      "status": "succeeded",
+      "record_count_in": null,
+      "record_count_out": 3,
+      "replay_of_run_id": null,
+      "started_at": "2026-05-30 09:13:29.866884+00",
+      "finished_at": "2026-05-30 09:13:29.878962+00",
+      "stages": [
+        {
+          "stage": "ingest_raw",
+          "attempt": 1,
+          "status": "succeeded",
+          "record_count_in": 3,
+          "record_count_out": 3,
+          "metrics": {
+            "sample_ids": [
+              "T100",
+              "T101",
+              "T102"
+            ]
+          },
+          "started_at": "2026-05-30 09:13:29.869734+00",
+          "finished_at": "2026-05-30 09:13:29.871126+00"
+        }
+      ]
+    },
+    {
+      "run_id": "09b640ef-3fb8-40a0-a28f-57e3157c0bc8",
+      "workflow_run_id": "3423e0a3-9ab3-4777-9012-55c3d74a1ace",
+      "pipeline_type": "canonicalization",
+      "domain": "sales",
+      "dataset": "customer",
+      "business_date": "2026-05-29",
+      "trigger_type": "manual",
+      "status": "succeeded",
+      "record_count_in": null,
+      "record_count_out": 2,
+      "replay_of_run_id": null,
+      "started_at": "2026-05-30 09:13:29.88094+00",
+      "finished_at": "2026-05-30 09:13:29.893756+00",
+      "stages": [
+        {
+          "stage": "canonicalize_to_silver",
+          "attempt": 1,
+          "status": "succeeded",
+          "record_count_in": 2,
+          "record_count_out": 2,
+          "metrics": null,
+          "started_at": "2026-05-30 09:13:29.883932+00",
+          "finished_at": "2026-05-30 09:13:29.884948+00"
+        }
+      ]
+    },
+    {
+      "run_id": "915b9bac-7c38-4de3-b885-cfc9fc393a95",
+      "workflow_run_id": "3423e0a3-9ab3-4777-9012-55c3d74a1ace",
+      "pipeline_type": "canonicalization",
+      "domain": "sales",
+      "dataset": "transaction",
+      "business_date": "2026-05-29",
+      "trigger_type": "manual",
+      "status": "succeeded",
+      "record_count_in": null,
+      "record_count_out": 3,
+      "replay_of_run_id": null,
+      "started_at": "2026-05-30 09:13:29.895771+00",
+      "finished_at": "2026-05-30 09:13:29.907313+00",
+      "stages": [
+        {
+          "stage": "canonicalize_to_silver",
+          "attempt": 1,
+          "status": "succeeded",
+          "record_count_in": 3,
+          "record_count_out": 3,
+          "metrics": null,
+          "started_at": "2026-05-30 09:13:29.898222+00",
+          "finished_at": "2026-05-30 09:13:29.89994+00"
+        }
+      ]
+    },
+    {
+      "run_id": "e5cde73e-d905-4736-ba9a-a4e73e7db85e",
+      "workflow_run_id": "3423e0a3-9ab3-4777-9012-55c3d74a1ace",
+      "pipeline_type": "merge",
+      "domain": "sales",
+      "dataset": "customer_transaction",
+      "business_date": "2026-05-29",
+      "trigger_type": "manual",
+      "status": "succeeded",
+      "record_count_in": null,
+      "record_count_out": 3,
+      "replay_of_run_id": null,
+      "started_at": "2026-05-30 09:13:29.909235+00",
+      "finished_at": "2026-05-30 09:13:29.921173+00",
+      "stages": [
+        {
+          "stage": "merge_customer_transaction",
+          "attempt": 1,
+          "status": "succeeded",
+          "record_count_in": 5,
+          "record_count_out": 3,
+          "metrics": {
+            "inputs": [
+              "customer",
+              "transaction"
+            ],
+            "join_key": "customer_id"
+          },
+          "started_at": "2026-05-30 09:13:29.911612+00",
+          "finished_at": "2026-05-30 09:13:29.912849+00"
+        }
+      ]
+    },
+    {
+      "run_id": "b3c9d298-b370-4ddd-b287-598c02342243",
+      "workflow_run_id": "3423e0a3-9ab3-4777-9012-55c3d74a1ace",
+      "pipeline_type": "sink",
+      "domain": "sales",
+      "dataset": "customer_transaction",
+      "business_date": "2026-05-29",
+      "trigger_type": "manual",
+      "status": "succeeded",
+      "record_count_in": null,
+      "record_count_out": 3,
+      "replay_of_run_id": null,
+      "started_at": "2026-05-30 09:13:29.923043+00",
+      "finished_at": "2026-05-30 09:13:29.936393+00",
+      "stages": [
+        {
+          "stage": "upsert_customer_transaction",
+          "attempt": 1,
+          "status": "succeeded",
+          "record_count_in": 3,
+          "record_count_out": 3,
+          "metrics": null,
+          "started_at": "2026-05-30 09:13:29.925479+00",
+          "finished_at": "2026-05-30 09:13:29.926443+00"
+        }
+      ]
+    },
+    {
+      "run_id": "fc74b73d-b6ba-42a2-b05c-6bfb865fedee",
+      "workflow_run_id": "3423e0a3-9ab3-4777-9012-55c3d74a1ace",
+      "pipeline_type": "aggregation",
+      "domain": "sales",
+      "dataset": "customer_transaction_daily",
+      "business_date": "2026-05-29",
+      "trigger_type": "manual",
+      "status": "succeeded",
+      "record_count_in": null,
+      "record_count_out": 2,
+      "replay_of_run_id": null,
+      "started_at": "2026-05-30 09:13:29.938572+00",
+      "finished_at": "2026-05-30 09:13:29.949956+00",
+      "stages": [
+        {
+          "stage": "aggregate_customer_daily",
+          "attempt": 1,
+          "status": "succeeded",
+          "record_count_in": 3,
+          "record_count_out": 2,
+          "metrics": {
+            "group_by": [
+              "business_date",
+              "customer_id"
+            ]
+          },
+          "started_at": "2026-05-30 09:13:29.941003+00",
+          "finished_at": "2026-05-30 09:13:29.94199+00"
+        }
+      ]
+    },
+    {
+      "run_id": "3b7bbdfa-5f5d-4da2-80fe-865e5d22a933",
+      "workflow_run_id": "3423e0a3-9ab3-4777-9012-55c3d74a1ace",
+      "pipeline_type": "sink",
+      "domain": "sales",
+      "dataset": "customer_transaction_daily",
+      "business_date": "2026-05-29",
+      "trigger_type": "manual",
+      "status": "succeeded",
+      "record_count_in": null,
+      "record_count_out": 2,
+      "replay_of_run_id": null,
+      "started_at": "2026-05-30 09:13:29.952053+00",
+      "finished_at": "2026-05-30 09:13:29.967194+00",
+      "stages": [
+        {
+          "stage": "upsert_customer_transaction_daily",
+          "attempt": 1,
+          "status": "succeeded",
+          "record_count_in": 2,
+          "record_count_out": 2,
+          "metrics": null,
+          "started_at": "2026-05-30 09:13:29.954626+00",
+          "finished_at": "2026-05-30 09:13:29.955788+00"
+        }
+      ]
+    },
+    {
+      "run_id": "3d0eb137-5ce6-4b94-916b-537ab190d0e3",
+      "workflow_run_id": "c6b43c9f-2a4b-4d6c-b79e-0774edcea4c6",
+      "pipeline_type": "ingestion",
+      "domain": "sales",
+      "dataset": "transaction",
+      "business_date": "2026-05-29",
+      "trigger_type": "replay",
+      "status": "succeeded",
+      "record_count_in": null,
+      "record_count_out": 3,
+      "replay_of_run_id": "b6e6da99-b0cb-4883-859a-e5cf9821faf6",
+      "started_at": "2026-05-30 09:13:30.107656+00",
+      "finished_at": "2026-05-30 09:13:30.121585+00",
+      "stages": [
+        {
+          "stage": "ingest_raw",
+          "attempt": 1,
+          "status": "succeeded",
+          "record_count_in": 3,
+          "record_count_out": 3,
+          "metrics": {
+            "sample_ids": [
+              "T100",
+              "T101",
+              "T102"
+            ]
+          },
+          "started_at": "2026-05-30 09:13:30.110995+00",
+          "finished_at": "2026-05-30 09:13:30.112971+00"
+        }
+      ]
+    },
+    {
+      "run_id": "b5294909-21cc-4424-824d-6cad8f4ba77e",
+      "workflow_run_id": "c6b43c9f-2a4b-4d6c-b79e-0774edcea4c6",
+      "pipeline_type": "canonicalization",
+      "domain": "sales",
+      "dataset": "transaction",
+      "business_date": "2026-05-29",
+      "trigger_type": "replay",
+      "status": "succeeded",
+      "record_count_in": null,
+      "record_count_out": 3,
+      "replay_of_run_id": null,
+      "started_at": "2026-05-30 09:13:30.123862+00",
+      "finished_at": "2026-05-30 09:13:30.137158+00",
+      "stages": [
+        {
+          "stage": "canonicalize_to_silver",
+          "attempt": 1,
+          "status": "succeeded",
+          "record_count_in": 3,
+          "record_count_out": 3,
+          "metrics": null,
+          "started_at": "2026-05-30 09:13:30.12685+00",
+          "finished_at": "2026-05-30 09:13:30.128314+00"
+        }
+      ]
+    },
+    {
+      "run_id": "b7a6422a-f4db-4520-ab5b-2d08bd384e13",
+      "workflow_run_id": "c6b43c9f-2a4b-4d6c-b79e-0774edcea4c6",
+      "pipeline_type": "merge",
+      "domain": "sales",
+      "dataset": "customer_transaction",
+      "business_date": "2026-05-29",
+      "trigger_type": "replay",
+      "status": "succeeded",
+      "record_count_in": null,
+      "record_count_out": 3,
+      "replay_of_run_id": null,
+      "started_at": "2026-05-30 09:13:30.139327+00",
+      "finished_at": "2026-05-30 09:13:30.153046+00",
+      "stages": [
+        {
+          "stage": "merge_customer_transaction",
+          "attempt": 1,
+          "status": "succeeded",
+          "record_count_in": 5,
+          "record_count_out": 3,
+          "metrics": {
+            "inputs": [
+              "customer",
+              "transaction"
+            ],
+            "join_key": "customer_id"
+          },
+          "started_at": "2026-05-30 09:13:30.142226+00",
+          "finished_at": "2026-05-30 09:13:30.143414+00"
+        }
+      ]
+    },
+    {
+      "run_id": "b841b62b-ece6-46c9-950e-7bf5d4ad5673",
+      "workflow_run_id": "c6b43c9f-2a4b-4d6c-b79e-0774edcea4c6",
+      "pipeline_type": "sink",
+      "domain": "sales",
+      "dataset": "customer_transaction",
+      "business_date": "2026-05-29",
+      "trigger_type": "replay",
+      "status": "succeeded",
+      "record_count_in": null,
+      "record_count_out": 3,
+      "replay_of_run_id": null,
+      "started_at": "2026-05-30 09:13:30.155291+00",
+      "finished_at": "2026-05-30 09:13:30.169027+00",
+      "stages": [
+        {
+          "stage": "upsert_customer_transaction",
+          "attempt": 1,
+          "status": "succeeded",
+          "record_count_in": 3,
+          "record_count_out": 3,
+          "metrics": null,
+          "started_at": "2026-05-30 09:13:30.15798+00",
+          "finished_at": "2026-05-30 09:13:30.159066+00"
+        }
+      ]
+    },
+    {
+      "run_id": "bdee9ae2-3912-4530-82dd-7281c4d25cd3",
+      "workflow_run_id": "c6b43c9f-2a4b-4d6c-b79e-0774edcea4c6",
+      "pipeline_type": "aggregation",
+      "domain": "sales",
+      "dataset": "customer_transaction_daily",
+      "business_date": "2026-05-29",
+      "trigger_type": "replay",
+      "status": "succeeded",
+      "record_count_in": null,
+      "record_count_out": 2,
+      "replay_of_run_id": null,
+      "started_at": "2026-05-30 09:13:30.171252+00",
+      "finished_at": "2026-05-30 09:13:30.185022+00",
+      "stages": [
+        {
+          "stage": "aggregate_customer_daily",
+          "attempt": 1,
+          "status": "succeeded",
+          "record_count_in": 3,
+          "record_count_out": 2,
+          "metrics": {
+            "group_by": [
+              "business_date",
+              "customer_id"
+            ]
+          },
+          "started_at": "2026-05-30 09:13:30.174383+00",
+          "finished_at": "2026-05-30 09:13:30.175577+00"
+        }
+      ]
+    },
+    {
+      "run_id": "c3c435e5-65d7-4c38-83e6-69385a3ad126",
+      "workflow_run_id": "c6b43c9f-2a4b-4d6c-b79e-0774edcea4c6",
+      "pipeline_type": "sink",
+      "domain": "sales",
+      "dataset": "customer_transaction_daily",
+      "business_date": "2026-05-29",
+      "trigger_type": "replay",
+      "status": "succeeded",
+      "record_count_in": null,
+      "record_count_out": 2,
+      "replay_of_run_id": null,
+      "started_at": "2026-05-30 09:13:30.187181+00",
+      "finished_at": "2026-05-30 09:13:30.201221+00",
+      "stages": [
+        {
+          "stage": "upsert_customer_transaction_daily",
+          "attempt": 1,
+          "status": "succeeded",
+          "record_count_in": 2,
+          "record_count_out": 2,
+          "metrics": null,
+          "started_at": "2026-05-30 09:13:30.189966+00",
+          "finished_at": "2026-05-30 09:13:30.191523+00"
+        }
+      ]
+    },
+    {
+      "run_id": "a0e975d9-5695-44f5-b224-8bde402c00eb",
+      "workflow_run_id": "e190001c-f2fb-456c-8b2e-c66be6b119cf",
+      "pipeline_type": "ingestion",
+      "domain": "sales",
+      "dataset": "customer",
+      "business_date": "2026-05-28",
+      "trigger_type": "manual",
+      "status": "succeeded",
+      "record_count_in": null,
+      "record_count_out": 2,
+      "replay_of_run_id": null,
+      "started_at": "2026-05-30 09:13:29.721457+00",
+      "finished_at": "2026-05-30 09:13:29.736822+00",
+      "stages": [
+        {
+          "stage": "ingest_raw",
+          "attempt": 1,
+          "status": "succeeded",
+          "record_count_in": 2,
+          "record_count_out": 2,
+          "metrics": {
+            "sample_ids": [
+              "C001",
+              "C002"
+            ]
+          },
+          "started_at": "2026-05-30 09:13:29.725164+00",
+          "finished_at": "2026-05-30 09:13:29.726921+00"
+        }
+      ]
+    },
+    {
+      "run_id": "103d7788-e4d6-4e32-adea-9265bd93f670",
+      "workflow_run_id": "e190001c-f2fb-456c-8b2e-c66be6b119cf",
+      "pipeline_type": "ingestion",
+      "domain": "sales",
+      "dataset": "transaction",
+      "business_date": "2026-05-28",
+      "trigger_type": "manual",
+      "status": "succeeded",
+      "record_count_in": null,
+      "record_count_out": 3,
+      "replay_of_run_id": null,
+      "started_at": "2026-05-30 09:13:29.741855+00",
+      "finished_at": "2026-05-30 09:13:29.754138+00",
+      "stages": [
+        {
+          "stage": "ingest_raw",
+          "attempt": 1,
+          "status": "succeeded",
+          "record_count_in": 3,
+          "record_count_out": 3,
+          "metrics": {
+            "sample_ids": [
+              "T100",
+              "T101",
+              "T102"
+            ]
+          },
+          "started_at": "2026-05-30 09:13:29.744485+00",
+          "finished_at": "2026-05-30 09:13:29.745547+00"
+        }
+      ]
+    },
+    {
+      "run_id": "386cda9a-64f2-49c0-9654-3713cada28f2",
+      "workflow_run_id": "e190001c-f2fb-456c-8b2e-c66be6b119cf",
+      "pipeline_type": "canonicalization",
+      "domain": "sales",
+      "dataset": "customer",
+      "business_date": "2026-05-28",
+      "trigger_type": "manual",
+      "status": "succeeded",
+      "record_count_in": null,
+      "record_count_out": 2,
+      "replay_of_run_id": null,
+      "started_at": "2026-05-30 09:13:29.756067+00",
+      "finished_at": "2026-05-30 09:13:29.76771+00",
+      "stages": [
+        {
+          "stage": "canonicalize_to_silver",
+          "attempt": 1,
+          "status": "succeeded",
+          "record_count_in": 2,
+          "record_count_out": 2,
+          "metrics": null,
+          "started_at": "2026-05-30 09:13:29.758717+00",
+          "finished_at": "2026-05-30 09:13:29.759784+00"
+        }
+      ]
+    },
+    {
+      "run_id": "7d1f4386-cef9-4e13-82aa-786d1e309fbd",
+      "workflow_run_id": "e190001c-f2fb-456c-8b2e-c66be6b119cf",
+      "pipeline_type": "canonicalization",
+      "domain": "sales",
+      "dataset": "transaction",
+      "business_date": "2026-05-28",
+      "trigger_type": "manual",
+      "status": "succeeded",
+      "record_count_in": null,
+      "record_count_out": 3,
+      "replay_of_run_id": null,
+      "started_at": "2026-05-30 09:13:29.770429+00",
+      "finished_at": "2026-05-30 09:13:29.782547+00",
+      "stages": [
+        {
+          "stage": "canonicalize_to_silver",
+          "attempt": 1,
+          "status": "succeeded",
+          "record_count_in": 3,
+          "record_count_out": 3,
+          "metrics": null,
+          "started_at": "2026-05-30 09:13:29.773395+00",
+          "finished_at": "2026-05-30 09:13:29.774451+00"
+        }
+      ]
+    },
+    {
+      "run_id": "78e89b4b-1a88-4d2a-8679-59a6b6304341",
+      "workflow_run_id": "e190001c-f2fb-456c-8b2e-c66be6b119cf",
+      "pipeline_type": "merge",
+      "domain": "sales",
+      "dataset": "customer_transaction",
+      "business_date": "2026-05-28",
+      "trigger_type": "manual",
+      "status": "succeeded",
+      "record_count_in": null,
+      "record_count_out": 3,
+      "replay_of_run_id": null,
+      "started_at": "2026-05-30 09:13:29.784466+00",
+      "finished_at": "2026-05-30 09:13:29.796333+00",
+      "stages": [
+        {
+          "stage": "merge_customer_transaction",
+          "attempt": 1,
+          "status": "succeeded",
+          "record_count_in": 5,
+          "record_count_out": 3,
+          "metrics": {
+            "inputs": [
+              "customer",
+              "transaction"
+            ],
+            "join_key": "customer_id"
+          },
+          "started_at": "2026-05-30 09:13:29.787155+00",
+          "finished_at": "2026-05-30 09:13:29.788216+00"
+        }
+      ]
+    },
+    {
+      "run_id": "c4d6cd64-bbf2-43ec-9c76-f438a02b8172",
+      "workflow_run_id": "e190001c-f2fb-456c-8b2e-c66be6b119cf",
+      "pipeline_type": "sink",
+      "domain": "sales",
+      "dataset": "customer_transaction",
+      "business_date": "2026-05-28",
+      "trigger_type": "manual",
+      "status": "succeeded",
+      "record_count_in": null,
+      "record_count_out": 3,
+      "replay_of_run_id": null,
+      "started_at": "2026-05-30 09:13:29.798208+00",
+      "finished_at": "2026-05-30 09:13:29.816411+00",
+      "stages": [
+        {
+          "stage": "upsert_customer_transaction",
+          "attempt": 1,
+          "status": "succeeded",
+          "record_count_in": 3,
+          "record_count_out": 3,
+          "metrics": null,
+          "started_at": "2026-05-30 09:13:29.800957+00",
+          "finished_at": "2026-05-30 09:13:29.802566+00"
+        }
+      ]
+    },
+    {
+      "run_id": "00e000c5-8e69-40c2-a929-59bda2731dbc",
+      "workflow_run_id": "e190001c-f2fb-456c-8b2e-c66be6b119cf",
+      "pipeline_type": "aggregation",
+      "domain": "sales",
+      "dataset": "customer_transaction_daily",
+      "business_date": "2026-05-28",
+      "trigger_type": "manual",
+      "status": "succeeded",
+      "record_count_in": null,
+      "record_count_out": 2,
+      "replay_of_run_id": null,
+      "started_at": "2026-05-30 09:13:29.818518+00",
+      "finished_at": "2026-05-30 09:13:29.830339+00",
+      "stages": [
+        {
+          "stage": "aggregate_customer_daily",
+          "attempt": 1,
+          "status": "succeeded",
+          "record_count_in": 3,
+          "record_count_out": 2,
+          "metrics": {
+            "group_by": [
+              "business_date",
+              "customer_id"
+            ]
+          },
+          "started_at": "2026-05-30 09:13:29.821035+00",
+          "finished_at": "2026-05-30 09:13:29.822209+00"
+        }
+      ]
+    },
+    {
+      "run_id": "19da3324-fef9-4c00-8d4c-a749a3b00eb6",
+      "workflow_run_id": "e190001c-f2fb-456c-8b2e-c66be6b119cf",
+      "pipeline_type": "sink",
+      "domain": "sales",
+      "dataset": "customer_transaction_daily",
+      "business_date": "2026-05-28",
+      "trigger_type": "manual",
+      "status": "succeeded",
+      "record_count_in": null,
+      "record_count_out": 2,
+      "replay_of_run_id": null,
+      "started_at": "2026-05-30 09:13:29.832354+00",
+      "finished_at": "2026-05-30 09:13:29.845663+00",
+      "stages": [
+        {
+          "stage": "upsert_customer_transaction_daily",
+          "attempt": 1,
+          "status": "succeeded",
+          "record_count_in": 2,
+          "record_count_out": 2,
+          "metrics": null,
+          "started_at": "2026-05-30 09:13:29.834811+00",
+          "finished_at": "2026-05-30 09:13:29.835789+00"
+        }
+      ]
+    },
+    {
+      "run_id": "c5eb0d15-3234-420d-8d27-b318a33dbfde",
+      "workflow_run_id": "e688af9a-8df7-4480-9ed5-a295a247a8a5",
+      "pipeline_type": "ingestion",
+      "domain": "sales",
+      "dataset": "customer",
+      "business_date": "2026-05-30",
+      "trigger_type": "manual",
+      "status": "succeeded",
+      "record_count_in": null,
+      "record_count_out": 2,
+      "replay_of_run_id": null,
+      "started_at": "2026-05-30 09:13:29.972632+00",
+      "finished_at": "2026-05-30 09:13:29.984951+00",
+      "stages": [
+        {
+          "stage": "ingest_raw",
+          "attempt": 1,
+          "status": "succeeded",
+          "record_count_in": 2,
+          "record_count_out": 2,
+          "metrics": {
+            "sample_ids": [
+              "C001",
+              "C002"
+            ]
+          },
+          "started_at": "2026-05-30 09:13:29.975405+00",
+          "finished_at": "2026-05-30 09:13:29.976522+00"
+        }
+      ]
+    },
+    {
+      "run_id": "eadf79b4-aca3-4a0c-a9fe-ed9620b802cd",
+      "workflow_run_id": "e688af9a-8df7-4480-9ed5-a295a247a8a5",
+      "pipeline_type": "ingestion",
+      "domain": "sales",
+      "dataset": "transaction",
+      "business_date": "2026-05-30",
+      "trigger_type": "manual",
+      "status": "succeeded",
+      "record_count_in": null,
+      "record_count_out": 3,
+      "replay_of_run_id": null,
+      "started_at": "2026-05-30 09:13:29.992364+00",
+      "finished_at": "2026-05-30 09:13:30.005386+00",
+      "stages": [
+        {
+          "stage": "ingest_raw",
+          "attempt": 1,
+          "status": "succeeded",
+          "record_count_in": 3,
+          "record_count_out": 3,
+          "metrics": {
+            "sample_ids": [
+              "T100",
+              "T101",
+              "T102"
+            ]
+          },
+          "started_at": "2026-05-30 09:13:29.995369+00",
+          "finished_at": "2026-05-30 09:13:29.99648+00"
+        }
+      ]
+    },
+    {
+      "run_id": "119121db-1562-46ab-af21-257fcbc3bcf6",
+      "workflow_run_id": "e688af9a-8df7-4480-9ed5-a295a247a8a5",
+      "pipeline_type": "canonicalization",
+      "domain": "sales",
+      "dataset": "customer",
+      "business_date": "2026-05-30",
+      "trigger_type": "manual",
+      "status": "succeeded",
+      "record_count_in": null,
+      "record_count_out": 2,
+      "replay_of_run_id": null,
+      "started_at": "2026-05-30 09:13:30.007743+00",
+      "finished_at": "2026-05-30 09:13:30.020869+00",
+      "stages": [
+        {
+          "stage": "canonicalize_to_silver",
+          "attempt": 1,
+          "status": "succeeded",
+          "record_count_in": 2,
+          "record_count_out": 2,
+          "metrics": null,
+          "started_at": "2026-05-30 09:13:30.010652+00",
+          "finished_at": "2026-05-30 09:13:30.011742+00"
+        }
+      ]
+    },
+    {
+      "run_id": "2eb43952-6a9f-4b8c-b51e-7f3495ec0c0a",
+      "workflow_run_id": "e688af9a-8df7-4480-9ed5-a295a247a8a5",
+      "pipeline_type": "canonicalization",
+      "domain": "sales",
+      "dataset": "transaction",
+      "business_date": "2026-05-30",
+      "trigger_type": "manual",
+      "status": "succeeded",
+      "record_count_in": null,
+      "record_count_out": 3,
+      "replay_of_run_id": null,
+      "started_at": "2026-05-30 09:13:30.023084+00",
+      "finished_at": "2026-05-30 09:13:30.035843+00",
+      "stages": [
+        {
+          "stage": "canonicalize_to_silver",
+          "attempt": 1,
+          "status": "succeeded",
+          "record_count_in": 3,
+          "record_count_out": 3,
+          "metrics": null,
+          "started_at": "2026-05-30 09:13:30.025631+00",
+          "finished_at": "2026-05-30 09:13:30.026689+00"
+        }
+      ]
+    },
+    {
+      "run_id": "b78c963e-e902-4748-b5c6-6c7bddceb5b0",
+      "workflow_run_id": "e688af9a-8df7-4480-9ed5-a295a247a8a5",
+      "pipeline_type": "merge",
+      "domain": "sales",
+      "dataset": "customer_transaction",
+      "business_date": "2026-05-30",
+      "trigger_type": "manual",
+      "status": "succeeded",
+      "record_count_in": null,
+      "record_count_out": 3,
+      "replay_of_run_id": null,
+      "started_at": "2026-05-30 09:13:30.040275+00",
+      "finished_at": "2026-05-30 09:13:30.052707+00",
+      "stages": [
+        {
+          "stage": "merge_customer_transaction",
+          "attempt": 1,
+          "status": "succeeded",
+          "record_count_in": 5,
+          "record_count_out": 3,
+          "metrics": {
+            "inputs": [
+              "customer",
+              "transaction"
+            ],
+            "join_key": "customer_id"
+          },
+          "started_at": "2026-05-30 09:13:30.042903+00",
+          "finished_at": "2026-05-30 09:13:30.044213+00"
+        }
+      ]
+    },
+    {
+      "run_id": "3e588df9-77ec-4585-90cf-bf5b18e1c590",
+      "workflow_run_id": "e688af9a-8df7-4480-9ed5-a295a247a8a5",
+      "pipeline_type": "sink",
+      "domain": "sales",
+      "dataset": "customer_transaction",
+      "business_date": "2026-05-30",
+      "trigger_type": "manual",
+      "status": "succeeded",
+      "record_count_in": null,
+      "record_count_out": 3,
+      "replay_of_run_id": null,
+      "started_at": "2026-05-30 09:13:30.054831+00",
+      "finished_at": "2026-05-30 09:13:30.069335+00",
+      "stages": [
+        {
+          "stage": "upsert_customer_transaction",
+          "attempt": 1,
+          "status": "succeeded",
+          "record_count_in": 3,
+          "record_count_out": 3,
+          "metrics": null,
+          "started_at": "2026-05-30 09:13:30.057524+00",
+          "finished_at": "2026-05-30 09:13:30.058601+00"
+        }
+      ]
+    },
+    {
+      "run_id": "9886965c-8531-4ea3-a8cb-70947e31e90f",
+      "workflow_run_id": "e688af9a-8df7-4480-9ed5-a295a247a8a5",
+      "pipeline_type": "aggregation",
+      "domain": "sales",
+      "dataset": "customer_transaction_daily",
+      "business_date": "2026-05-30",
+      "trigger_type": "manual",
+      "status": "succeeded",
+      "record_count_in": null,
+      "record_count_out": 2,
+      "replay_of_run_id": null,
+      "started_at": "2026-05-30 09:13:30.071428+00",
+      "finished_at": "2026-05-30 09:13:30.084708+00",
+      "stages": [
+        {
+          "stage": "aggregate_customer_daily",
+          "attempt": 1,
+          "status": "succeeded",
+          "record_count_in": 3,
+          "record_count_out": 2,
+          "metrics": {
+            "group_by": [
+              "business_date",
+              "customer_id"
+            ]
+          },
+          "started_at": "2026-05-30 09:13:30.074257+00",
+          "finished_at": "2026-05-30 09:13:30.075538+00"
+        }
+      ]
+    },
+    {
+      "run_id": "d56a3131-4973-49c7-8439-a9b99bef778b",
+      "workflow_run_id": "e688af9a-8df7-4480-9ed5-a295a247a8a5",
+      "pipeline_type": "sink",
+      "domain": "sales",
+      "dataset": "customer_transaction_daily",
+      "business_date": "2026-05-30",
+      "trigger_type": "manual",
+      "status": "succeeded",
+      "record_count_in": null,
+      "record_count_out": 2,
+      "replay_of_run_id": null,
+      "started_at": "2026-05-30 09:13:30.086773+00",
+      "finished_at": "2026-05-30 09:13:30.102609+00",
+      "stages": [
+        {
+          "stage": "upsert_customer_transaction_daily",
+          "attempt": 1,
+          "status": "succeeded",
+          "record_count_in": 2,
+          "record_count_out": 2,
+          "metrics": null,
+          "started_at": "2026-05-30 09:13:30.089388+00",
+          "finished_at": "2026-05-30 09:13:30.090465+00"
+        }
+      ]
+    }
+  ],
+  "links": [
+    {
+      "lineage_link_id": "ceb25e2b-ed22-4f5e-b725-4b9a7b109db1",
+      "consumer_run_id": "6c2f1a02-55fa-486a-ae9d-38b79eeb5989",
+      "workflow_run_id": "3423e0a3-9ab3-4777-9012-55c3d74a1ace",
+      "edge_type": "raw_to_curated",
+      "sink_type": null,
+      "target_ref": {
+        "path": "s3://bronze/customer/2026-05-29.json",
+        "version": 1,
+        "content_hash": "bronze-f1f0df8d6f0237fa8a7705b9e134bb3d"
+      },
+      "transform_version": "raw-v1",
+      "record_count": 2,
+      "created_at": "2026-05-30 09:13:29.856758+00",
+      "edges": [
+        {
+          "lineage_edge_id": "a8034e69-c266-4484-99c6-8006485e3fab",
+          "upstream_run_id": null,
+          "upstream_lineage_link_id": null,
+          "source_file_id": "60802d9f-9eb3-4515-921b-30877a0d073e",
+          "input_slot": 0,
+          "edge_type": "raw_to_curated",
+          "source_ref": {
+            "path": "s3://raw/sales/customer/2026-05-29.json"
+          },
+          "record_count": 2
+        }
+      ]
+    },
+    {
+      "lineage_link_id": "676e31b6-c543-459c-a027-ced1a4b856ea",
+      "consumer_run_id": "b6e6da99-b0cb-4883-859a-e5cf9821faf6",
+      "workflow_run_id": "3423e0a3-9ab3-4777-9012-55c3d74a1ace",
+      "edge_type": "raw_to_curated",
+      "sink_type": null,
+      "target_ref": {
+        "path": "s3://bronze/transaction/2026-05-29.json",
+        "version": 1,
+        "content_hash": "bronze-e0f2c2d71dad5ce33cba0064e0461a26"
+      },
+      "transform_version": "raw-v1",
+      "record_count": 3,
+      "created_at": "2026-05-30 09:13:29.873098+00",
+      "edges": [
+        {
+          "lineage_edge_id": "b86f00bd-edd7-4b9e-aea5-dc5775d23649",
+          "upstream_run_id": null,
+          "upstream_lineage_link_id": null,
+          "source_file_id": "7e30b0b3-489d-4401-8dab-29de044ac3de",
+          "input_slot": 0,
+          "edge_type": "raw_to_curated",
+          "source_ref": {
+            "path": "s3://raw/sales/transaction/2026-05-29.json"
+          },
+          "record_count": 3
+        }
+      ]
+    },
+    {
+      "lineage_link_id": "71582796-8c36-469e-89a4-371df425242b",
+      "consumer_run_id": "09b640ef-3fb8-40a0-a28f-57e3157c0bc8",
+      "workflow_run_id": "3423e0a3-9ab3-4777-9012-55c3d74a1ace",
+      "edge_type": "curated_to_canonical",
+      "sink_type": null,
+      "target_ref": {
+        "path": "s3://silver/customer/2026-05-29.parquet",
+        "version": 1,
+        "content_hash": "silver-f1f0df8d6f0237fa8a7705b9e134bb3d"
+      },
+      "transform_version": "silver-v1",
+      "record_count": 2,
+      "created_at": "2026-05-30 09:13:29.887284+00",
+      "edges": [
+        {
+          "lineage_edge_id": "b11d3ae2-4a43-44e5-afc2-4ae0f2a13777",
+          "upstream_run_id": "6c2f1a02-55fa-486a-ae9d-38b79eeb5989",
+          "upstream_lineage_link_id": "ceb25e2b-ed22-4f5e-b725-4b9a7b109db1",
+          "source_file_id": null,
+          "input_slot": 0,
+          "edge_type": "curated_to_canonical",
+          "source_ref": {
+            "layer": "bronze",
+            "dataset": "customer"
+          },
+          "record_count": 2
+        }
+      ]
+    },
+    {
+      "lineage_link_id": "6f21de07-cfe4-482f-870f-5f7073267230",
+      "consumer_run_id": "915b9bac-7c38-4de3-b885-cfc9fc393a95",
+      "workflow_run_id": "3423e0a3-9ab3-4777-9012-55c3d74a1ace",
+      "edge_type": "curated_to_canonical",
+      "sink_type": null,
+      "target_ref": {
+        "path": "s3://silver/transaction/2026-05-29.parquet",
+        "version": 1,
+        "content_hash": "silver-e0f2c2d71dad5ce33cba0064e0461a26"
+      },
+      "transform_version": "silver-v1",
+      "record_count": 3,
+      "created_at": "2026-05-30 09:13:29.901891+00",
+      "edges": [
+        {
+          "lineage_edge_id": "e90d2967-32d4-4ca9-8aa8-20f1438d3d21",
+          "upstream_run_id": "b6e6da99-b0cb-4883-859a-e5cf9821faf6",
+          "upstream_lineage_link_id": "676e31b6-c543-459c-a027-ced1a4b856ea",
+          "source_file_id": null,
+          "input_slot": 0,
+          "edge_type": "curated_to_canonical",
+          "source_ref": {
+            "layer": "bronze",
+            "dataset": "transaction"
+          },
+          "record_count": 3
+        }
+      ]
+    },
+    {
+      "lineage_link_id": "bdfe9b35-66a6-4aa7-908b-d51ac7eb81f8",
+      "consumer_run_id": "e5cde73e-d905-4736-ba9a-a4e73e7db85e",
+      "workflow_run_id": "3423e0a3-9ab3-4777-9012-55c3d74a1ace",
+      "edge_type": "merge_to_canonical",
+      "sink_type": null,
+      "target_ref": {
+        "path": "s3://silver/customer_transaction/2026-05-29.parquet",
+        "version": 1,
+        "content_hash": "silver-customer_transaction-3423e0a3-9ab3-4777-9012-55c3d74a1ace-orig"
+      },
+      "transform_version": "join-v1",
+      "record_count": 3,
+      "created_at": "2026-05-30 09:13:29.914882+00",
+      "edges": [
+        {
+          "lineage_edge_id": "d2c41830-c756-43be-b940-c7c9ea047eea",
+          "upstream_run_id": "09b640ef-3fb8-40a0-a28f-57e3157c0bc8",
+          "upstream_lineage_link_id": "71582796-8c36-469e-89a4-371df425242b",
+          "source_file_id": null,
+          "input_slot": 0,
+          "edge_type": "merge_to_canonical",
+          "source_ref": {
+            "role": "dimension",
+            "dataset": "customer"
+          },
+          "record_count": 2
+        },
+        {
+          "lineage_edge_id": "8a204ab2-26a8-4b06-8bdc-262f8cd383ad",
+          "upstream_run_id": "915b9bac-7c38-4de3-b885-cfc9fc393a95",
+          "upstream_lineage_link_id": "6f21de07-cfe4-482f-870f-5f7073267230",
+          "source_file_id": null,
+          "input_slot": 1,
+          "edge_type": "merge_to_canonical",
+          "source_ref": {
+            "role": "fact",
+            "dataset": "transaction"
+          },
+          "record_count": 3
+        }
+      ]
+    },
+    {
+      "lineage_link_id": "2a5ce3d7-a78e-449a-8c06-bd1382fb7637",
+      "consumer_run_id": "b3c9d298-b370-4ddd-b287-598c02342243",
+      "workflow_run_id": "3423e0a3-9ab3-4777-9012-55c3d74a1ace",
+      "edge_type": "canonical_to_sink",
+      "sink_type": "postgres",
+      "target_ref": {
+        "path": "postgres://ods/customer_transaction",
+        "version": 1,
+        "content_hash": "postgres-customer_transaction-3423e0a3-9ab3-4777-9012-55c3d74a1ace-orig"
+      },
+      "transform_version": "postgres-upsert-v1",
+      "record_count": 3,
+      "created_at": "2026-05-30 09:13:29.928362+00",
+      "edges": [
+        {
+          "lineage_edge_id": "1071373b-112a-4888-b5e9-db014a47c5c9",
+          "upstream_run_id": "e5cde73e-d905-4736-ba9a-a4e73e7db85e",
+          "upstream_lineage_link_id": "bdfe9b35-66a6-4aa7-908b-d51ac7eb81f8",
+          "source_file_id": null,
+          "input_slot": 0,
+          "edge_type": "canonical_to_sink",
+          "source_ref": {
+            "upstream_edge_type": "merge_to_canonical"
+          },
+          "record_count": 3
+        }
+      ]
+    },
+    {
+      "lineage_link_id": "a21eb493-f50f-49e1-99d6-ae258e653a49",
+      "consumer_run_id": "fc74b73d-b6ba-42a2-b05c-6bfb865fedee",
+      "workflow_run_id": "3423e0a3-9ab3-4777-9012-55c3d74a1ace",
+      "edge_type": "merge_to_canonical",
+      "sink_type": null,
+      "target_ref": {
+        "path": "s3://gold/customer_transaction_daily/2026-05-29.parquet",
+        "version": 1,
+        "content_hash": "gold-customer_transaction_daily-3423e0a3-9ab3-4777-9012-55c3d74a1ace-orig"
+      },
+      "transform_version": "agg-v1",
+      "record_count": 2,
+      "created_at": "2026-05-30 09:13:29.944143+00",
+      "edges": [
+        {
+          "lineage_edge_id": "40478b7d-ca7f-421c-bb20-4e4cde049682",
+          "upstream_run_id": "b3c9d298-b370-4ddd-b287-598c02342243",
+          "upstream_lineage_link_id": "2a5ce3d7-a78e-449a-8c06-bd1382fb7637",
+          "source_file_id": null,
+          "input_slot": 0,
+          "edge_type": "merge_to_canonical",
+          "source_ref": {
+            "table": "ods.customer_transaction"
+          },
+          "record_count": 3
+        }
+      ]
+    },
+    {
+      "lineage_link_id": "48f714d4-abe9-4026-b552-9df9b6ee3f29",
+      "consumer_run_id": "3b7bbdfa-5f5d-4da2-80fe-865e5d22a933",
+      "workflow_run_id": "3423e0a3-9ab3-4777-9012-55c3d74a1ace",
+      "edge_type": "canonical_to_sink",
+      "sink_type": "postgres",
+      "target_ref": {
+        "path": "postgres://ods/customer_transaction_daily",
+        "version": 1,
+        "content_hash": "postgres-customer_transaction_daily-3423e0a3-9ab3-4777-9012-55c3d74a1ace-orig"
+      },
+      "transform_version": "postgres-upsert-v1",
+      "record_count": 2,
+      "created_at": "2026-05-30 09:13:29.958611+00",
+      "edges": [
+        {
+          "lineage_edge_id": "738e3365-bc46-408c-afa7-ae4211c899e8",
+          "upstream_run_id": "fc74b73d-b6ba-42a2-b05c-6bfb865fedee",
+          "upstream_lineage_link_id": "a21eb493-f50f-49e1-99d6-ae258e653a49",
+          "source_file_id": null,
+          "input_slot": 0,
+          "edge_type": "canonical_to_sink",
+          "source_ref": {
+            "upstream_edge_type": "merge_to_canonical"
+          },
+          "record_count": 2
+        }
+      ]
+    },
+    {
+      "lineage_link_id": "fb796ddb-eef5-4364-b536-967d4ce8db42",
+      "consumer_run_id": "3d0eb137-5ce6-4b94-916b-537ab190d0e3",
+      "workflow_run_id": "c6b43c9f-2a4b-4d6c-b79e-0774edcea4c6",
+      "edge_type": "raw_to_curated",
+      "sink_type": null,
+      "target_ref": {
+        "path": "s3://bronze/transaction/2026-05-29.json",
+        "version": 1,
+        "content_hash": "bronze-25b64ba69c60c7c98e73bd70db61b657"
+      },
+      "transform_version": "raw-v1",
+      "record_count": 3,
+      "created_at": "2026-05-30 09:13:30.115355+00",
+      "edges": [
+        {
+          "lineage_edge_id": "582c6da7-2453-4ca1-afa1-130796a9463e",
+          "upstream_run_id": null,
+          "upstream_lineage_link_id": null,
+          "source_file_id": "559a8f44-3a7b-4300-8a61-9bc459d05e7f",
+          "input_slot": 0,
+          "edge_type": "raw_to_curated",
+          "source_ref": {
+            "path": "s3://raw/sales/transaction/2026-05-29-refeed.json"
+          },
+          "record_count": 3
+        }
+      ]
+    },
+    {
+      "lineage_link_id": "2cea7463-a1d9-497c-b890-042d69ae1cbe",
+      "consumer_run_id": "b5294909-21cc-4424-824d-6cad8f4ba77e",
+      "workflow_run_id": "c6b43c9f-2a4b-4d6c-b79e-0774edcea4c6",
+      "edge_type": "curated_to_canonical",
+      "sink_type": null,
+      "target_ref": {
+        "path": "s3://silver/transaction/2026-05-29.parquet",
+        "version": 1,
+        "content_hash": "silver-25b64ba69c60c7c98e73bd70db61b657"
+      },
+      "transform_version": "silver-v1",
+      "record_count": 3,
+      "created_at": "2026-05-30 09:13:30.130543+00",
+      "edges": [
+        {
+          "lineage_edge_id": "ceeb8de6-5d4a-4e5d-934f-e2d582da5dcd",
+          "upstream_run_id": "3d0eb137-5ce6-4b94-916b-537ab190d0e3",
+          "upstream_lineage_link_id": "fb796ddb-eef5-4364-b536-967d4ce8db42",
+          "source_file_id": null,
+          "input_slot": 0,
+          "edge_type": "curated_to_canonical",
+          "source_ref": {
+            "layer": "bronze",
+            "dataset": "transaction"
+          },
+          "record_count": 3
+        }
+      ]
+    },
+    {
+      "lineage_link_id": "ac6ceabe-a1d3-4b5f-babc-55ea1f3d2c63",
+      "consumer_run_id": "b7a6422a-f4db-4520-ab5b-2d08bd384e13",
+      "workflow_run_id": "c6b43c9f-2a4b-4d6c-b79e-0774edcea4c6",
+      "edge_type": "merge_to_canonical",
+      "sink_type": null,
+      "target_ref": {
+        "path": "s3://silver/customer_transaction/2026-05-29.parquet",
+        "version": 1,
+        "content_hash": "silver-customer_transaction-c6b43c9f-2a4b-4d6c-b79e-0774edcea4c6-corrected"
+      },
+      "transform_version": "join-v1",
+      "record_count": 3,
+      "created_at": "2026-05-30 09:13:30.145926+00",
+      "edges": [
+        {
+          "lineage_edge_id": "89ac1e06-bf28-4a58-a81e-ea31399f614e",
+          "upstream_run_id": "09b640ef-3fb8-40a0-a28f-57e3157c0bc8",
+          "upstream_lineage_link_id": "71582796-8c36-469e-89a4-371df425242b",
+          "source_file_id": null,
+          "input_slot": 0,
+          "edge_type": "merge_to_canonical",
+          "source_ref": {
+            "role": "dimension",
+            "dataset": "customer"
+          },
+          "record_count": 2
+        },
+        {
+          "lineage_edge_id": "f7ad7863-d8c1-458f-a1f9-e270cef67c35",
+          "upstream_run_id": "b5294909-21cc-4424-824d-6cad8f4ba77e",
+          "upstream_lineage_link_id": "2cea7463-a1d9-497c-b890-042d69ae1cbe",
+          "source_file_id": null,
+          "input_slot": 1,
+          "edge_type": "merge_to_canonical",
+          "source_ref": {
+            "role": "fact",
+            "dataset": "transaction"
+          },
+          "record_count": 3
+        }
+      ]
+    },
+    {
+      "lineage_link_id": "619baa05-8dec-4549-8078-fb866630363f",
+      "consumer_run_id": "b841b62b-ece6-46c9-950e-7bf5d4ad5673",
+      "workflow_run_id": "c6b43c9f-2a4b-4d6c-b79e-0774edcea4c6",
+      "edge_type": "canonical_to_sink",
+      "sink_type": "postgres",
+      "target_ref": {
+        "path": "postgres://ods/customer_transaction",
+        "version": 1,
+        "content_hash": "postgres-customer_transaction-c6b43c9f-2a4b-4d6c-b79e-0774edcea4c6-corrected"
+      },
+      "transform_version": "postgres-upsert-v1",
+      "record_count": 3,
+      "created_at": "2026-05-30 09:13:30.161608+00",
+      "edges": [
+        {
+          "lineage_edge_id": "808366d9-0089-4e2e-99dc-870494b1b922",
+          "upstream_run_id": "b7a6422a-f4db-4520-ab5b-2d08bd384e13",
+          "upstream_lineage_link_id": "ac6ceabe-a1d3-4b5f-babc-55ea1f3d2c63",
+          "source_file_id": null,
+          "input_slot": 0,
+          "edge_type": "canonical_to_sink",
+          "source_ref": {
+            "upstream_edge_type": "merge_to_canonical"
+          },
+          "record_count": 3
+        }
+      ]
+    },
+    {
+      "lineage_link_id": "6432e511-ea12-49eb-b76a-2ed053275e11",
+      "consumer_run_id": "bdee9ae2-3912-4530-82dd-7281c4d25cd3",
+      "workflow_run_id": "c6b43c9f-2a4b-4d6c-b79e-0774edcea4c6",
+      "edge_type": "merge_to_canonical",
+      "sink_type": null,
+      "target_ref": {
+        "path": "s3://gold/customer_transaction_daily/2026-05-29.parquet",
+        "version": 1,
+        "content_hash": "gold-customer_transaction_daily-c6b43c9f-2a4b-4d6c-b79e-0774edcea4c6-corrected"
+      },
+      "transform_version": "agg-v1",
+      "record_count": 2,
+      "created_at": "2026-05-30 09:13:30.178175+00",
+      "edges": [
+        {
+          "lineage_edge_id": "c6396529-cec3-445b-91f8-1c6e9e0c198b",
+          "upstream_run_id": "b841b62b-ece6-46c9-950e-7bf5d4ad5673",
+          "upstream_lineage_link_id": "619baa05-8dec-4549-8078-fb866630363f",
+          "source_file_id": null,
+          "input_slot": 0,
+          "edge_type": "merge_to_canonical",
+          "source_ref": {
+            "table": "ods.customer_transaction"
+          },
+          "record_count": 3
+        }
+      ]
+    },
+    {
+      "lineage_link_id": "aa3650b6-3cc4-4f15-ad53-00d334535522",
+      "consumer_run_id": "c3c435e5-65d7-4c38-83e6-69385a3ad126",
+      "workflow_run_id": "c6b43c9f-2a4b-4d6c-b79e-0774edcea4c6",
+      "edge_type": "canonical_to_sink",
+      "sink_type": "postgres",
+      "target_ref": {
+        "path": "postgres://ods/customer_transaction_daily",
+        "version": 1,
+        "content_hash": "postgres-customer_transaction_daily-c6b43c9f-2a4b-4d6c-b79e-0774edcea4c6-corrected"
+      },
+      "transform_version": "postgres-upsert-v1",
+      "record_count": 2,
+      "created_at": "2026-05-30 09:13:30.193931+00",
+      "edges": [
+        {
+          "lineage_edge_id": "f1485767-99f0-468d-b9c7-17c462071b9b",
+          "upstream_run_id": "bdee9ae2-3912-4530-82dd-7281c4d25cd3",
+          "upstream_lineage_link_id": "6432e511-ea12-49eb-b76a-2ed053275e11",
+          "source_file_id": null,
+          "input_slot": 0,
+          "edge_type": "canonical_to_sink",
+          "source_ref": {
+            "upstream_edge_type": "merge_to_canonical"
+          },
+          "record_count": 2
+        }
+      ]
+    },
+    {
+      "lineage_link_id": "6c696893-7cb8-4406-adc5-ec7ad3821a6d",
+      "consumer_run_id": "a0e975d9-5695-44f5-b224-8bde402c00eb",
+      "workflow_run_id": "e190001c-f2fb-456c-8b2e-c66be6b119cf",
+      "edge_type": "raw_to_curated",
+      "sink_type": null,
+      "target_ref": {
+        "path": "s3://bronze/customer/2026-05-28.json",
+        "version": 1,
+        "content_hash": "bronze-f1f0df8d6f0237fa8a7705b9e134bb3d"
+      },
+      "transform_version": "raw-v1",
+      "record_count": 2,
+      "created_at": "2026-05-30 09:13:29.729076+00",
+      "edges": [
+        {
+          "lineage_edge_id": "f7603b05-4aa2-4f89-a1f9-ba8f13cce872",
+          "upstream_run_id": null,
+          "upstream_lineage_link_id": null,
+          "source_file_id": "100a5223-1375-4251-a6e8-5bd0e170c292",
+          "input_slot": 0,
+          "edge_type": "raw_to_curated",
+          "source_ref": {
+            "path": "s3://raw/sales/customer/2026-05-28.json"
+          },
+          "record_count": 2
+        }
+      ]
+    },
+    {
+      "lineage_link_id": "15ff505e-c9c2-49a5-8ccb-93a0e143bdee",
+      "consumer_run_id": "103d7788-e4d6-4e32-adea-9265bd93f670",
+      "workflow_run_id": "e190001c-f2fb-456c-8b2e-c66be6b119cf",
+      "edge_type": "raw_to_curated",
+      "sink_type": null,
+      "target_ref": {
+        "path": "s3://bronze/transaction/2026-05-28.json",
+        "version": 1,
+        "content_hash": "bronze-e0f2c2d71dad5ce33cba0064e0461a26"
+      },
+      "transform_version": "raw-v1",
+      "record_count": 3,
+      "created_at": "2026-05-30 09:13:29.747449+00",
+      "edges": [
+        {
+          "lineage_edge_id": "c3e53425-4af4-4b70-9764-2dd0b8e9e97c",
+          "upstream_run_id": null,
+          "upstream_lineage_link_id": null,
+          "source_file_id": "75b5040b-f16b-43e1-b98e-b5cb1e35cd87",
+          "input_slot": 0,
+          "edge_type": "raw_to_curated",
+          "source_ref": {
+            "path": "s3://raw/sales/transaction/2026-05-28.json"
+          },
+          "record_count": 3
+        }
+      ]
+    },
+    {
+      "lineage_link_id": "f96a875b-3b94-43f1-9f8f-5c8b78fb7c8a",
+      "consumer_run_id": "386cda9a-64f2-49c0-9654-3713cada28f2",
+      "workflow_run_id": "e190001c-f2fb-456c-8b2e-c66be6b119cf",
+      "edge_type": "curated_to_canonical",
+      "sink_type": null,
+      "target_ref": {
+        "path": "s3://silver/customer/2026-05-28.parquet",
+        "version": 1,
+        "content_hash": "silver-f1f0df8d6f0237fa8a7705b9e134bb3d"
+      },
+      "transform_version": "silver-v1",
+      "record_count": 2,
+      "created_at": "2026-05-30 09:13:29.761924+00",
+      "edges": [
+        {
+          "lineage_edge_id": "5c53e5cd-bb38-4293-a09c-3dda69ab7251",
+          "upstream_run_id": "a0e975d9-5695-44f5-b224-8bde402c00eb",
+          "upstream_lineage_link_id": "6c696893-7cb8-4406-adc5-ec7ad3821a6d",
+          "source_file_id": null,
+          "input_slot": 0,
+          "edge_type": "curated_to_canonical",
+          "source_ref": {
+            "layer": "bronze",
+            "dataset": "customer"
+          },
+          "record_count": 2
+        }
+      ]
+    },
+    {
+      "lineage_link_id": "513ba9f8-a85d-4a2d-ad41-16c95f6ee147",
+      "consumer_run_id": "7d1f4386-cef9-4e13-82aa-786d1e309fbd",
+      "workflow_run_id": "e190001c-f2fb-456c-8b2e-c66be6b119cf",
+      "edge_type": "curated_to_canonical",
+      "sink_type": null,
+      "target_ref": {
+        "path": "s3://silver/transaction/2026-05-28.parquet",
+        "version": 1,
+        "content_hash": "silver-e0f2c2d71dad5ce33cba0064e0461a26"
+      },
+      "transform_version": "silver-v1",
+      "record_count": 3,
+      "created_at": "2026-05-30 09:13:29.776437+00",
+      "edges": [
+        {
+          "lineage_edge_id": "ceb748e1-49c0-4a60-80c3-68315d555154",
+          "upstream_run_id": "103d7788-e4d6-4e32-adea-9265bd93f670",
+          "upstream_lineage_link_id": "15ff505e-c9c2-49a5-8ccb-93a0e143bdee",
+          "source_file_id": null,
+          "input_slot": 0,
+          "edge_type": "curated_to_canonical",
+          "source_ref": {
+            "layer": "bronze",
+            "dataset": "transaction"
+          },
+          "record_count": 3
+        }
+      ]
+    },
+    {
+      "lineage_link_id": "822b8d35-2034-4141-b305-e678d500b34e",
+      "consumer_run_id": "78e89b4b-1a88-4d2a-8679-59a6b6304341",
+      "workflow_run_id": "e190001c-f2fb-456c-8b2e-c66be6b119cf",
+      "edge_type": "merge_to_canonical",
+      "sink_type": null,
+      "target_ref": {
+        "path": "s3://silver/customer_transaction/2026-05-28.parquet",
+        "version": 1,
+        "content_hash": "silver-customer_transaction-e190001c-f2fb-456c-8b2e-c66be6b119cf-orig"
+      },
+      "transform_version": "join-v1",
+      "record_count": 3,
+      "created_at": "2026-05-30 09:13:29.790074+00",
+      "edges": [
+        {
+          "lineage_edge_id": "2f93b6ac-4791-4eb8-bd13-f604b18d6234",
+          "upstream_run_id": "386cda9a-64f2-49c0-9654-3713cada28f2",
+          "upstream_lineage_link_id": "f96a875b-3b94-43f1-9f8f-5c8b78fb7c8a",
+          "source_file_id": null,
+          "input_slot": 0,
+          "edge_type": "merge_to_canonical",
+          "source_ref": {
+            "role": "dimension",
+            "dataset": "customer"
+          },
+          "record_count": 2
+        },
+        {
+          "lineage_edge_id": "ebbd1e10-c2a3-4191-89c3-a0fb0e08f640",
+          "upstream_run_id": "7d1f4386-cef9-4e13-82aa-786d1e309fbd",
+          "upstream_lineage_link_id": "513ba9f8-a85d-4a2d-ad41-16c95f6ee147",
+          "source_file_id": null,
+          "input_slot": 1,
+          "edge_type": "merge_to_canonical",
+          "source_ref": {
+            "role": "fact",
+            "dataset": "transaction"
+          },
+          "record_count": 3
+        }
+      ]
+    },
+    {
+      "lineage_link_id": "744119b0-aee2-4d16-8d12-eb2ab843b25e",
+      "consumer_run_id": "c4d6cd64-bbf2-43ec-9c76-f438a02b8172",
+      "workflow_run_id": "e190001c-f2fb-456c-8b2e-c66be6b119cf",
+      "edge_type": "canonical_to_sink",
+      "sink_type": "postgres",
+      "target_ref": {
+        "path": "postgres://ods/customer_transaction",
+        "version": 1,
+        "content_hash": "postgres-customer_transaction-e190001c-f2fb-456c-8b2e-c66be6b119cf-orig"
+      },
+      "transform_version": "postgres-upsert-v1",
+      "record_count": 3,
+      "created_at": "2026-05-30 09:13:29.804531+00",
+      "edges": [
+        {
+          "lineage_edge_id": "2b62a695-4e81-4b0e-8c2f-ac7e95cb5ec8",
+          "upstream_run_id": "78e89b4b-1a88-4d2a-8679-59a6b6304341",
+          "upstream_lineage_link_id": "822b8d35-2034-4141-b305-e678d500b34e",
+          "source_file_id": null,
+          "input_slot": 0,
+          "edge_type": "canonical_to_sink",
+          "source_ref": {
+            "upstream_edge_type": "merge_to_canonical"
+          },
+          "record_count": 3
+        }
+      ]
+    },
+    {
+      "lineage_link_id": "d325d251-23af-480e-9deb-0a5604f9b6b1",
+      "consumer_run_id": "00e000c5-8e69-40c2-a929-59bda2731dbc",
+      "workflow_run_id": "e190001c-f2fb-456c-8b2e-c66be6b119cf",
+      "edge_type": "merge_to_canonical",
+      "sink_type": null,
+      "target_ref": {
+        "path": "s3://gold/customer_transaction_daily/2026-05-28.parquet",
+        "version": 1,
+        "content_hash": "gold-customer_transaction_daily-e190001c-f2fb-456c-8b2e-c66be6b119cf-orig"
+      },
+      "transform_version": "agg-v1",
+      "record_count": 2,
+      "created_at": "2026-05-30 09:13:29.824252+00",
+      "edges": [
+        {
+          "lineage_edge_id": "dc93febb-ec27-4526-b6bf-3b1160a0fa48",
+          "upstream_run_id": "c4d6cd64-bbf2-43ec-9c76-f438a02b8172",
+          "upstream_lineage_link_id": "744119b0-aee2-4d16-8d12-eb2ab843b25e",
+          "source_file_id": null,
+          "input_slot": 0,
+          "edge_type": "merge_to_canonical",
+          "source_ref": {
+            "table": "ods.customer_transaction"
+          },
+          "record_count": 3
+        }
+      ]
+    },
+    {
+      "lineage_link_id": "ae6acf4a-cce2-467d-9763-d33135f60f4e",
+      "consumer_run_id": "19da3324-fef9-4c00-8d4c-a749a3b00eb6",
+      "workflow_run_id": "e190001c-f2fb-456c-8b2e-c66be6b119cf",
+      "edge_type": "canonical_to_sink",
+      "sink_type": "postgres",
+      "target_ref": {
+        "path": "postgres://ods/customer_transaction_daily",
+        "version": 1,
+        "content_hash": "postgres-customer_transaction_daily-e190001c-f2fb-456c-8b2e-c66be6b119cf-orig"
+      },
+      "transform_version": "postgres-upsert-v1",
+      "record_count": 2,
+      "created_at": "2026-05-30 09:13:29.837729+00",
+      "edges": [
+        {
+          "lineage_edge_id": "f9e0702e-e40c-4494-b686-925f45dab553",
+          "upstream_run_id": "00e000c5-8e69-40c2-a929-59bda2731dbc",
+          "upstream_lineage_link_id": "d325d251-23af-480e-9deb-0a5604f9b6b1",
+          "source_file_id": null,
+          "input_slot": 0,
+          "edge_type": "canonical_to_sink",
+          "source_ref": {
+            "upstream_edge_type": "merge_to_canonical"
+          },
+          "record_count": 2
+        }
+      ]
+    },
+    {
+      "lineage_link_id": "232f42fa-641d-4ba5-a64c-dd5c72056194",
+      "consumer_run_id": "c5eb0d15-3234-420d-8d27-b318a33dbfde",
+      "workflow_run_id": "e688af9a-8df7-4480-9ed5-a295a247a8a5",
+      "edge_type": "raw_to_curated",
+      "sink_type": null,
+      "target_ref": {
+        "path": "s3://bronze/customer/2026-05-30.json",
+        "version": 1,
+        "content_hash": "bronze-f1f0df8d6f0237fa8a7705b9e134bb3d"
+      },
+      "transform_version": "raw-v1",
+      "record_count": 2,
+      "created_at": "2026-05-30 09:13:29.978448+00",
+      "edges": [
+        {
+          "lineage_edge_id": "b59d99f6-6a7b-41eb-ba65-c4dce1576206",
+          "upstream_run_id": null,
+          "upstream_lineage_link_id": null,
+          "source_file_id": "45c68f68-0923-4c4a-b23f-24e5f06d1688",
+          "input_slot": 0,
+          "edge_type": "raw_to_curated",
+          "source_ref": {
+            "path": "s3://raw/sales/customer/2026-05-30.json"
+          },
+          "record_count": 2
+        }
+      ]
+    },
+    {
+      "lineage_link_id": "53ec0c89-bee9-469d-b39a-cebfebc4a93f",
+      "consumer_run_id": "eadf79b4-aca3-4a0c-a9fe-ed9620b802cd",
+      "workflow_run_id": "e688af9a-8df7-4480-9ed5-a295a247a8a5",
+      "edge_type": "raw_to_curated",
+      "sink_type": null,
+      "target_ref": {
+        "path": "s3://bronze/transaction/2026-05-30.json",
+        "version": 1,
+        "content_hash": "bronze-e0f2c2d71dad5ce33cba0064e0461a26"
+      },
+      "transform_version": "raw-v1",
+      "record_count": 3,
+      "created_at": "2026-05-30 09:13:29.998796+00",
+      "edges": [
+        {
+          "lineage_edge_id": "d60d41b4-d01d-4083-b123-90019d813702",
+          "upstream_run_id": null,
+          "upstream_lineage_link_id": null,
+          "source_file_id": "6564ecb4-5d30-4cfd-b275-412bea26bfd8",
+          "input_slot": 0,
+          "edge_type": "raw_to_curated",
+          "source_ref": {
+            "path": "s3://raw/sales/transaction/2026-05-30.json"
+          },
+          "record_count": 3
+        }
+      ]
+    },
+    {
+      "lineage_link_id": "c25458d3-916b-45d0-a35f-4aaf3da5bf9f",
+      "consumer_run_id": "119121db-1562-46ab-af21-257fcbc3bcf6",
+      "workflow_run_id": "e688af9a-8df7-4480-9ed5-a295a247a8a5",
+      "edge_type": "curated_to_canonical",
+      "sink_type": null,
+      "target_ref": {
+        "path": "s3://silver/customer/2026-05-30.parquet",
+        "version": 1,
+        "content_hash": "silver-f1f0df8d6f0237fa8a7705b9e134bb3d"
+      },
+      "transform_version": "silver-v1",
+      "record_count": 2,
+      "created_at": "2026-05-30 09:13:30.014438+00",
+      "edges": [
+        {
+          "lineage_edge_id": "ef1f59a7-206d-40dd-bf06-9d040909680a",
+          "upstream_run_id": "c5eb0d15-3234-420d-8d27-b318a33dbfde",
+          "upstream_lineage_link_id": "232f42fa-641d-4ba5-a64c-dd5c72056194",
+          "source_file_id": null,
+          "input_slot": 0,
+          "edge_type": "curated_to_canonical",
+          "source_ref": {
+            "layer": "bronze",
+            "dataset": "customer"
+          },
+          "record_count": 2
+        }
+      ]
+    },
+    {
+      "lineage_link_id": "17551324-85f1-4ce8-b141-c2d42478ba0e",
+      "consumer_run_id": "2eb43952-6a9f-4b8c-b51e-7f3495ec0c0a",
+      "workflow_run_id": "e688af9a-8df7-4480-9ed5-a295a247a8a5",
+      "edge_type": "curated_to_canonical",
+      "sink_type": null,
+      "target_ref": {
+        "path": "s3://silver/transaction/2026-05-30.parquet",
+        "version": 1,
+        "content_hash": "silver-e0f2c2d71dad5ce33cba0064e0461a26"
+      },
+      "transform_version": "silver-v1",
+      "record_count": 3,
+      "created_at": "2026-05-30 09:13:30.028884+00",
+      "edges": [
+        {
+          "lineage_edge_id": "f23c26d6-c2e7-48f3-a78c-49cee7bb4ad0",
+          "upstream_run_id": "eadf79b4-aca3-4a0c-a9fe-ed9620b802cd",
+          "upstream_lineage_link_id": "53ec0c89-bee9-469d-b39a-cebfebc4a93f",
+          "source_file_id": null,
+          "input_slot": 0,
+          "edge_type": "curated_to_canonical",
+          "source_ref": {
+            "layer": "bronze",
+            "dataset": "transaction"
+          },
+          "record_count": 3
+        }
+      ]
+    },
+    {
+      "lineage_link_id": "e5cca7da-1d50-4f11-8cce-22b502ae52fd",
+      "consumer_run_id": "b78c963e-e902-4748-b5c6-6c7bddceb5b0",
+      "workflow_run_id": "e688af9a-8df7-4480-9ed5-a295a247a8a5",
+      "edge_type": "merge_to_canonical",
+      "sink_type": null,
+      "target_ref": {
+        "path": "s3://silver/customer_transaction/2026-05-30.parquet",
+        "version": 1,
+        "content_hash": "silver-customer_transaction-e688af9a-8df7-4480-9ed5-a295a247a8a5-orig"
+      },
+      "transform_version": "join-v1",
+      "record_count": 3,
+      "created_at": "2026-05-30 09:13:30.04629+00",
+      "edges": [
+        {
+          "lineage_edge_id": "a5ac3ce3-6a83-4e69-ad88-b6a20bc9d003",
+          "upstream_run_id": "119121db-1562-46ab-af21-257fcbc3bcf6",
+          "upstream_lineage_link_id": "c25458d3-916b-45d0-a35f-4aaf3da5bf9f",
+          "source_file_id": null,
+          "input_slot": 0,
+          "edge_type": "merge_to_canonical",
+          "source_ref": {
+            "role": "dimension",
+            "dataset": "customer"
+          },
+          "record_count": 2
+        },
+        {
+          "lineage_edge_id": "867d60e9-1a7c-4f22-b89a-fa495118835f",
+          "upstream_run_id": "2eb43952-6a9f-4b8c-b51e-7f3495ec0c0a",
+          "upstream_lineage_link_id": "17551324-85f1-4ce8-b141-c2d42478ba0e",
+          "source_file_id": null,
+          "input_slot": 1,
+          "edge_type": "merge_to_canonical",
+          "source_ref": {
+            "role": "fact",
+            "dataset": "transaction"
+          },
+          "record_count": 3
+        }
+      ]
+    },
+    {
+      "lineage_link_id": "d9e07aff-2057-4c32-bfc7-2bf746803494",
+      "consumer_run_id": "3e588df9-77ec-4585-90cf-bf5b18e1c590",
+      "workflow_run_id": "e688af9a-8df7-4480-9ed5-a295a247a8a5",
+      "edge_type": "canonical_to_sink",
+      "sink_type": "postgres",
+      "target_ref": {
+        "path": "postgres://ods/customer_transaction",
+        "version": 1,
+        "content_hash": "postgres-customer_transaction-e688af9a-8df7-4480-9ed5-a295a247a8a5-orig"
+      },
+      "transform_version": "postgres-upsert-v1",
+      "record_count": 3,
+      "created_at": "2026-05-30 09:13:30.060681+00",
+      "edges": [
+        {
+          "lineage_edge_id": "44507226-73eb-4086-b563-a393b4ccfe67",
+          "upstream_run_id": "b78c963e-e902-4748-b5c6-6c7bddceb5b0",
+          "upstream_lineage_link_id": "e5cca7da-1d50-4f11-8cce-22b502ae52fd",
+          "source_file_id": null,
+          "input_slot": 0,
+          "edge_type": "canonical_to_sink",
+          "source_ref": {
+            "upstream_edge_type": "merge_to_canonical"
+          },
+          "record_count": 3
+        }
+      ]
+    },
+    {
+      "lineage_link_id": "7f8ffcd9-9d9b-4a81-a498-dd7d91662edd",
+      "consumer_run_id": "9886965c-8531-4ea3-a8cb-70947e31e90f",
+      "workflow_run_id": "e688af9a-8df7-4480-9ed5-a295a247a8a5",
+      "edge_type": "merge_to_canonical",
+      "sink_type": null,
+      "target_ref": {
+        "path": "s3://gold/customer_transaction_daily/2026-05-30.parquet",
+        "version": 1,
+        "content_hash": "gold-customer_transaction_daily-e688af9a-8df7-4480-9ed5-a295a247a8a5-orig"
+      },
+      "transform_version": "agg-v1",
+      "record_count": 2,
+      "created_at": "2026-05-30 09:13:30.077871+00",
+      "edges": [
+        {
+          "lineage_edge_id": "d3ceb866-24e7-4953-bcfc-2c6052ba1bc4",
+          "upstream_run_id": "3e588df9-77ec-4585-90cf-bf5b18e1c590",
+          "upstream_lineage_link_id": "d9e07aff-2057-4c32-bfc7-2bf746803494",
+          "source_file_id": null,
+          "input_slot": 0,
+          "edge_type": "merge_to_canonical",
+          "source_ref": {
+            "table": "ods.customer_transaction"
+          },
+          "record_count": 3
+        }
+      ]
+    },
+    {
+      "lineage_link_id": "f5782998-06cd-43ed-9b6b-4330f9567646",
+      "consumer_run_id": "d56a3131-4973-49c7-8439-a9b99bef778b",
+      "workflow_run_id": "e688af9a-8df7-4480-9ed5-a295a247a8a5",
+      "edge_type": "canonical_to_sink",
+      "sink_type": "postgres",
+      "target_ref": {
+        "path": "postgres://ods/customer_transaction_daily",
+        "version": 1,
+        "content_hash": "postgres-customer_transaction_daily-e688af9a-8df7-4480-9ed5-a295a247a8a5-orig"
+      },
+      "transform_version": "postgres-upsert-v1",
+      "record_count": 2,
+      "created_at": "2026-05-30 09:13:30.092671+00",
+      "edges": [
+        {
+          "lineage_edge_id": "80c46e9e-6872-468e-956e-d25fa2c9b337",
+          "upstream_run_id": "9886965c-8531-4ea3-a8cb-70947e31e90f",
+          "upstream_lineage_link_id": "7f8ffcd9-9d9b-4a81-a498-dd7d91662edd",
+          "source_file_id": null,
+          "input_slot": 0,
+          "edge_type": "canonical_to_sink",
+          "source_ref": {
+            "upstream_edge_type": "merge_to_canonical"
+          },
+          "record_count": 2
+        }
+      ]
+    }
+  ],
+  "files": [
+    {
+      "file_id": "100a5223-1375-4251-a6e8-5bd0e170c292",
+      "s3_raw_path": "s3://raw/sales/customer/2026-05-28.json",
+      "file_md5": "f1f0df8d6f0237fa8a7705b9e134bb3d",
+      "business_date": "2026-05-28",
+      "state": "registered",
+      "domain": "sales",
+      "dataset": "customer"
+    },
+    {
+      "file_id": "60802d9f-9eb3-4515-921b-30877a0d073e",
+      "s3_raw_path": "s3://raw/sales/customer/2026-05-29.json",
+      "file_md5": "f1f0df8d6f0237fa8a7705b9e134bb3d",
+      "business_date": "2026-05-29",
+      "state": "registered",
+      "domain": "sales",
+      "dataset": "customer"
+    },
+    {
+      "file_id": "45c68f68-0923-4c4a-b23f-24e5f06d1688",
+      "s3_raw_path": "s3://raw/sales/customer/2026-05-30.json",
+      "file_md5": "f1f0df8d6f0237fa8a7705b9e134bb3d",
+      "business_date": "2026-05-30",
+      "state": "registered",
+      "domain": "sales",
+      "dataset": "customer"
+    },
+    {
+      "file_id": "75b5040b-f16b-43e1-b98e-b5cb1e35cd87",
+      "s3_raw_path": "s3://raw/sales/transaction/2026-05-28.json",
+      "file_md5": "e0f2c2d71dad5ce33cba0064e0461a26",
+      "business_date": "2026-05-28",
+      "state": "registered",
+      "domain": "sales",
+      "dataset": "transaction"
+    },
+    {
+      "file_id": "7e30b0b3-489d-4401-8dab-29de044ac3de",
+      "s3_raw_path": "s3://raw/sales/transaction/2026-05-29.json",
+      "file_md5": "e0f2c2d71dad5ce33cba0064e0461a26",
+      "business_date": "2026-05-29",
+      "state": "registered",
+      "domain": "sales",
+      "dataset": "transaction"
+    },
+    {
+      "file_id": "559a8f44-3a7b-4300-8a61-9bc459d05e7f",
+      "s3_raw_path": "s3://raw/sales/transaction/2026-05-29-refeed.json",
+      "file_md5": "25b64ba69c60c7c98e73bd70db61b657",
+      "business_date": "2026-05-29",
+      "state": "registered",
+      "domain": "sales",
+      "dataset": "transaction"
+    },
+    {
+      "file_id": "6564ecb4-5d30-4cfd-b275-412bea26bfd8",
+      "s3_raw_path": "s3://raw/sales/transaction/2026-05-30.json",
+      "file_md5": "e0f2c2d71dad5ce33cba0064e0461a26",
+      "business_date": "2026-05-30",
+      "state": "registered",
+      "domain": "sales",
+      "dataset": "transaction"
+    }
+  ],
+  "tables": {
+    "customer_transaction": [
+      {
+        "row_id": 1,
+        "payload": {
+          "amount": 125.5,
+          "segment": "premium",
+          "customer_id": "C001",
+          "business_date": "2026-05-28",
+          "customer_name": "Ada Lovelace",
+          "transaction_id": "T100"
+        },
+        "_ods_workflow_run_id": "e190001c-f2fb-456c-8b2e-c66be6b119cf",
+        "_ods_lineage_link_id": "744119b0-aee2-4d16-8d12-eb2ab843b25e"
+      },
+      {
+        "row_id": 2,
+        "payload": {
+          "amount": 74.5,
+          "segment": "premium",
+          "customer_id": "C001",
+          "business_date": "2026-05-28",
+          "customer_name": "Ada Lovelace",
+          "transaction_id": "T101"
+        },
+        "_ods_workflow_run_id": "e190001c-f2fb-456c-8b2e-c66be6b119cf",
+        "_ods_lineage_link_id": "744119b0-aee2-4d16-8d12-eb2ab843b25e"
+      },
+      {
+        "row_id": 3,
+        "payload": {
+          "amount": 33.0,
+          "segment": "standard",
+          "customer_id": "C002",
+          "business_date": "2026-05-28",
+          "customer_name": "Grace Hopper",
+          "transaction_id": "T102"
+        },
+        "_ods_workflow_run_id": "e190001c-f2fb-456c-8b2e-c66be6b119cf",
+        "_ods_lineage_link_id": "744119b0-aee2-4d16-8d12-eb2ab843b25e"
+      },
+      {
+        "row_id": 4,
+        "payload": {
+          "amount": 125.5,
+          "segment": "premium",
+          "customer_id": "C001",
+          "business_date": "2026-05-29",
+          "customer_name": "Ada Lovelace",
+          "transaction_id": "T100"
+        },
+        "_ods_workflow_run_id": "3423e0a3-9ab3-4777-9012-55c3d74a1ace",
+        "_ods_lineage_link_id": "2a5ce3d7-a78e-449a-8c06-bd1382fb7637"
+      },
+      {
+        "row_id": 5,
+        "payload": {
+          "amount": 74.5,
+          "segment": "premium",
+          "customer_id": "C001",
+          "business_date": "2026-05-29",
+          "customer_name": "Ada Lovelace",
+          "transaction_id": "T101"
+        },
+        "_ods_workflow_run_id": "3423e0a3-9ab3-4777-9012-55c3d74a1ace",
+        "_ods_lineage_link_id": "2a5ce3d7-a78e-449a-8c06-bd1382fb7637"
+      },
+      {
+        "row_id": 6,
+        "payload": {
+          "amount": 33.0,
+          "segment": "standard",
+          "customer_id": "C002",
+          "business_date": "2026-05-29",
+          "customer_name": "Grace Hopper",
+          "transaction_id": "T102"
+        },
+        "_ods_workflow_run_id": "3423e0a3-9ab3-4777-9012-55c3d74a1ace",
+        "_ods_lineage_link_id": "2a5ce3d7-a78e-449a-8c06-bd1382fb7637"
+      },
+      {
+        "row_id": 7,
+        "payload": {
+          "amount": 125.5,
+          "segment": "premium",
+          "customer_id": "C001",
+          "business_date": "2026-05-30",
+          "customer_name": "Ada Lovelace",
+          "transaction_id": "T100"
+        },
+        "_ods_workflow_run_id": "e688af9a-8df7-4480-9ed5-a295a247a8a5",
+        "_ods_lineage_link_id": "d9e07aff-2057-4c32-bfc7-2bf746803494"
+      },
+      {
+        "row_id": 8,
+        "payload": {
+          "amount": 74.5,
+          "segment": "premium",
+          "customer_id": "C001",
+          "business_date": "2026-05-30",
+          "customer_name": "Ada Lovelace",
+          "transaction_id": "T101"
+        },
+        "_ods_workflow_run_id": "e688af9a-8df7-4480-9ed5-a295a247a8a5",
+        "_ods_lineage_link_id": "d9e07aff-2057-4c32-bfc7-2bf746803494"
+      },
+      {
+        "row_id": 9,
+        "payload": {
+          "amount": 33.0,
+          "segment": "standard",
+          "customer_id": "C002",
+          "business_date": "2026-05-30",
+          "customer_name": "Grace Hopper",
+          "transaction_id": "T102"
+        },
+        "_ods_workflow_run_id": "e688af9a-8df7-4480-9ed5-a295a247a8a5",
+        "_ods_lineage_link_id": "d9e07aff-2057-4c32-bfc7-2bf746803494"
+      },
+      {
+        "row_id": 10,
+        "payload": {
+          "amount": 125.5,
+          "segment": "premium",
+          "customer_id": "C001",
+          "business_date": "2026-05-29",
+          "customer_name": "Ada Lovelace",
+          "transaction_id": "T100"
+        },
+        "_ods_workflow_run_id": "c6b43c9f-2a4b-4d6c-b79e-0774edcea4c6",
+        "_ods_lineage_link_id": "619baa05-8dec-4549-8078-fb866630363f"
+      },
+      {
+        "row_id": 11,
+        "payload": {
+          "amount": 79.5,
+          "segment": "premium",
+          "customer_id": "C001",
+          "business_date": "2026-05-29",
+          "customer_name": "Ada Lovelace",
+          "transaction_id": "T101"
+        },
+        "_ods_workflow_run_id": "c6b43c9f-2a4b-4d6c-b79e-0774edcea4c6",
+        "_ods_lineage_link_id": "619baa05-8dec-4549-8078-fb866630363f"
+      },
+      {
+        "row_id": 12,
+        "payload": {
+          "amount": 33.0,
+          "segment": "standard",
+          "customer_id": "C002",
+          "business_date": "2026-05-29",
+          "customer_name": "Grace Hopper",
+          "transaction_id": "T102"
+        },
+        "_ods_workflow_run_id": "c6b43c9f-2a4b-4d6c-b79e-0774edcea4c6",
+        "_ods_lineage_link_id": "619baa05-8dec-4549-8078-fb866630363f"
+      }
+    ],
+    "customer_transaction_daily": [
+      {
+        "row_id": 1,
+        "payload": {
+          "customer_id": "C001",
+          "total_amount": 200.0,
+          "business_date": "2026-05-28",
+          "customer_name": "Ada Lovelace",
+          "transaction_count": 2
+        },
+        "_ods_workflow_run_id": "e190001c-f2fb-456c-8b2e-c66be6b119cf",
+        "_ods_lineage_link_id": "ae6acf4a-cce2-467d-9763-d33135f60f4e"
+      },
+      {
+        "row_id": 2,
+        "payload": {
+          "customer_id": "C002",
+          "total_amount": 33.0,
+          "business_date": "2026-05-28",
+          "customer_name": "Grace Hopper",
+          "transaction_count": 1
+        },
+        "_ods_workflow_run_id": "e190001c-f2fb-456c-8b2e-c66be6b119cf",
+        "_ods_lineage_link_id": "ae6acf4a-cce2-467d-9763-d33135f60f4e"
+      },
+      {
+        "row_id": 3,
+        "payload": {
+          "customer_id": "C001",
+          "total_amount": 200.0,
+          "business_date": "2026-05-29",
+          "customer_name": "Ada Lovelace",
+          "transaction_count": 2
+        },
+        "_ods_workflow_run_id": "3423e0a3-9ab3-4777-9012-55c3d74a1ace",
+        "_ods_lineage_link_id": "48f714d4-abe9-4026-b552-9df9b6ee3f29"
+      },
+      {
+        "row_id": 4,
+        "payload": {
+          "customer_id": "C002",
+          "total_amount": 33.0,
+          "business_date": "2026-05-29",
+          "customer_name": "Grace Hopper",
+          "transaction_count": 1
+        },
+        "_ods_workflow_run_id": "3423e0a3-9ab3-4777-9012-55c3d74a1ace",
+        "_ods_lineage_link_id": "48f714d4-abe9-4026-b552-9df9b6ee3f29"
+      },
+      {
+        "row_id": 5,
+        "payload": {
+          "customer_id": "C001",
+          "total_amount": 200.0,
+          "business_date": "2026-05-30",
+          "customer_name": "Ada Lovelace",
+          "transaction_count": 2
+        },
+        "_ods_workflow_run_id": "e688af9a-8df7-4480-9ed5-a295a247a8a5",
+        "_ods_lineage_link_id": "f5782998-06cd-43ed-9b6b-4330f9567646"
+      },
+      {
+        "row_id": 6,
+        "payload": {
+          "customer_id": "C002",
+          "total_amount": 33.0,
+          "business_date": "2026-05-30",
+          "customer_name": "Grace Hopper",
+          "transaction_count": 1
+        },
+        "_ods_workflow_run_id": "e688af9a-8df7-4480-9ed5-a295a247a8a5",
+        "_ods_lineage_link_id": "f5782998-06cd-43ed-9b6b-4330f9567646"
+      },
+      {
+        "row_id": 7,
+        "payload": {
+          "customer_id": "C001",
+          "total_amount": 205.0,
+          "business_date": "2026-05-29",
+          "customer_name": "Ada Lovelace",
+          "transaction_count": 2
+        },
+        "_ods_workflow_run_id": "c6b43c9f-2a4b-4d6c-b79e-0774edcea4c6",
+        "_ods_lineage_link_id": "aa3650b6-3cc4-4f15-ad53-00d334535522"
+      },
+      {
+        "row_id": 8,
+        "payload": {
+          "customer_id": "C002",
+          "total_amount": 33.0,
+          "business_date": "2026-05-29",
+          "customer_name": "Grace Hopper",
+          "transaction_count": 1
+        },
+        "_ods_workflow_run_id": "c6b43c9f-2a4b-4d6c-b79e-0774edcea4c6",
+        "_ods_lineage_link_id": "aa3650b6-3cc4-4f15-ad53-00d334535522"
+      }
+    ]
+  },
+  "traces": {
+    "ceb25e2b-ed22-4f5e-b725-4b9a7b109db1": [
+      {
+        "hop": 1,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "6c2f1a02-55fa-486a-ae9d-38b79eeb5989",
+        "upstream_run_id": null,
+        "source_file_id": "60802d9f-9eb3-4515-921b-30877a0d073e",
+        "raw_s3_path": "s3://raw/sales/customer/2026-05-29.json"
+      }
+    ],
+    "676e31b6-c543-459c-a027-ced1a4b856ea": [
+      {
+        "hop": 1,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "b6e6da99-b0cb-4883-859a-e5cf9821faf6",
+        "upstream_run_id": null,
+        "source_file_id": "7e30b0b3-489d-4401-8dab-29de044ac3de",
+        "raw_s3_path": "s3://raw/sales/transaction/2026-05-29.json"
+      }
+    ],
+    "71582796-8c36-469e-89a4-371df425242b": [
+      {
+        "hop": 1,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "09b640ef-3fb8-40a0-a28f-57e3157c0bc8",
+        "upstream_run_id": "6c2f1a02-55fa-486a-ae9d-38b79eeb5989",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 2,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "6c2f1a02-55fa-486a-ae9d-38b79eeb5989",
+        "upstream_run_id": null,
+        "source_file_id": "60802d9f-9eb3-4515-921b-30877a0d073e",
+        "raw_s3_path": "s3://raw/sales/customer/2026-05-29.json"
+      }
+    ],
+    "6f21de07-cfe4-482f-870f-5f7073267230": [
+      {
+        "hop": 1,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "915b9bac-7c38-4de3-b885-cfc9fc393a95",
+        "upstream_run_id": "b6e6da99-b0cb-4883-859a-e5cf9821faf6",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 2,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "b6e6da99-b0cb-4883-859a-e5cf9821faf6",
+        "upstream_run_id": null,
+        "source_file_id": "7e30b0b3-489d-4401-8dab-29de044ac3de",
+        "raw_s3_path": "s3://raw/sales/transaction/2026-05-29.json"
+      }
+    ],
+    "bdfe9b35-66a6-4aa7-908b-d51ac7eb81f8": [
+      {
+        "hop": 1,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "e5cde73e-d905-4736-ba9a-a4e73e7db85e",
+        "upstream_run_id": "915b9bac-7c38-4de3-b885-cfc9fc393a95",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 1,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "e5cde73e-d905-4736-ba9a-a4e73e7db85e",
+        "upstream_run_id": "09b640ef-3fb8-40a0-a28f-57e3157c0bc8",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 2,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "09b640ef-3fb8-40a0-a28f-57e3157c0bc8",
+        "upstream_run_id": "6c2f1a02-55fa-486a-ae9d-38b79eeb5989",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 2,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "915b9bac-7c38-4de3-b885-cfc9fc393a95",
+        "upstream_run_id": "b6e6da99-b0cb-4883-859a-e5cf9821faf6",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 3,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "b6e6da99-b0cb-4883-859a-e5cf9821faf6",
+        "upstream_run_id": null,
+        "source_file_id": "7e30b0b3-489d-4401-8dab-29de044ac3de",
+        "raw_s3_path": "s3://raw/sales/transaction/2026-05-29.json"
+      },
+      {
+        "hop": 3,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "6c2f1a02-55fa-486a-ae9d-38b79eeb5989",
+        "upstream_run_id": null,
+        "source_file_id": "60802d9f-9eb3-4515-921b-30877a0d073e",
+        "raw_s3_path": "s3://raw/sales/customer/2026-05-29.json"
+      }
+    ],
+    "2a5ce3d7-a78e-449a-8c06-bd1382fb7637": [
+      {
+        "hop": 1,
+        "edge_type": "canonical_to_sink",
+        "consumer_run_id": "b3c9d298-b370-4ddd-b287-598c02342243",
+        "upstream_run_id": "e5cde73e-d905-4736-ba9a-a4e73e7db85e",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 2,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "e5cde73e-d905-4736-ba9a-a4e73e7db85e",
+        "upstream_run_id": "915b9bac-7c38-4de3-b885-cfc9fc393a95",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 2,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "e5cde73e-d905-4736-ba9a-a4e73e7db85e",
+        "upstream_run_id": "09b640ef-3fb8-40a0-a28f-57e3157c0bc8",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 3,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "09b640ef-3fb8-40a0-a28f-57e3157c0bc8",
+        "upstream_run_id": "6c2f1a02-55fa-486a-ae9d-38b79eeb5989",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 3,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "915b9bac-7c38-4de3-b885-cfc9fc393a95",
+        "upstream_run_id": "b6e6da99-b0cb-4883-859a-e5cf9821faf6",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 4,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "6c2f1a02-55fa-486a-ae9d-38b79eeb5989",
+        "upstream_run_id": null,
+        "source_file_id": "60802d9f-9eb3-4515-921b-30877a0d073e",
+        "raw_s3_path": "s3://raw/sales/customer/2026-05-29.json"
+      },
+      {
+        "hop": 4,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "b6e6da99-b0cb-4883-859a-e5cf9821faf6",
+        "upstream_run_id": null,
+        "source_file_id": "7e30b0b3-489d-4401-8dab-29de044ac3de",
+        "raw_s3_path": "s3://raw/sales/transaction/2026-05-29.json"
+      }
+    ],
+    "a21eb493-f50f-49e1-99d6-ae258e653a49": [
+      {
+        "hop": 1,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "fc74b73d-b6ba-42a2-b05c-6bfb865fedee",
+        "upstream_run_id": "b3c9d298-b370-4ddd-b287-598c02342243",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 2,
+        "edge_type": "canonical_to_sink",
+        "consumer_run_id": "b3c9d298-b370-4ddd-b287-598c02342243",
+        "upstream_run_id": "e5cde73e-d905-4736-ba9a-a4e73e7db85e",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 3,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "e5cde73e-d905-4736-ba9a-a4e73e7db85e",
+        "upstream_run_id": "09b640ef-3fb8-40a0-a28f-57e3157c0bc8",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 3,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "e5cde73e-d905-4736-ba9a-a4e73e7db85e",
+        "upstream_run_id": "915b9bac-7c38-4de3-b885-cfc9fc393a95",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 4,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "915b9bac-7c38-4de3-b885-cfc9fc393a95",
+        "upstream_run_id": "b6e6da99-b0cb-4883-859a-e5cf9821faf6",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 4,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "09b640ef-3fb8-40a0-a28f-57e3157c0bc8",
+        "upstream_run_id": "6c2f1a02-55fa-486a-ae9d-38b79eeb5989",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 5,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "6c2f1a02-55fa-486a-ae9d-38b79eeb5989",
+        "upstream_run_id": null,
+        "source_file_id": "60802d9f-9eb3-4515-921b-30877a0d073e",
+        "raw_s3_path": "s3://raw/sales/customer/2026-05-29.json"
+      },
+      {
+        "hop": 5,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "b6e6da99-b0cb-4883-859a-e5cf9821faf6",
+        "upstream_run_id": null,
+        "source_file_id": "7e30b0b3-489d-4401-8dab-29de044ac3de",
+        "raw_s3_path": "s3://raw/sales/transaction/2026-05-29.json"
+      }
+    ],
+    "48f714d4-abe9-4026-b552-9df9b6ee3f29": [
+      {
+        "hop": 1,
+        "edge_type": "canonical_to_sink",
+        "consumer_run_id": "3b7bbdfa-5f5d-4da2-80fe-865e5d22a933",
+        "upstream_run_id": "fc74b73d-b6ba-42a2-b05c-6bfb865fedee",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 2,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "fc74b73d-b6ba-42a2-b05c-6bfb865fedee",
+        "upstream_run_id": "b3c9d298-b370-4ddd-b287-598c02342243",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 3,
+        "edge_type": "canonical_to_sink",
+        "consumer_run_id": "b3c9d298-b370-4ddd-b287-598c02342243",
+        "upstream_run_id": "e5cde73e-d905-4736-ba9a-a4e73e7db85e",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 4,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "e5cde73e-d905-4736-ba9a-a4e73e7db85e",
+        "upstream_run_id": "915b9bac-7c38-4de3-b885-cfc9fc393a95",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 4,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "e5cde73e-d905-4736-ba9a-a4e73e7db85e",
+        "upstream_run_id": "09b640ef-3fb8-40a0-a28f-57e3157c0bc8",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 5,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "09b640ef-3fb8-40a0-a28f-57e3157c0bc8",
+        "upstream_run_id": "6c2f1a02-55fa-486a-ae9d-38b79eeb5989",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 5,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "915b9bac-7c38-4de3-b885-cfc9fc393a95",
+        "upstream_run_id": "b6e6da99-b0cb-4883-859a-e5cf9821faf6",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 6,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "b6e6da99-b0cb-4883-859a-e5cf9821faf6",
+        "upstream_run_id": null,
+        "source_file_id": "7e30b0b3-489d-4401-8dab-29de044ac3de",
+        "raw_s3_path": "s3://raw/sales/transaction/2026-05-29.json"
+      },
+      {
+        "hop": 6,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "6c2f1a02-55fa-486a-ae9d-38b79eeb5989",
+        "upstream_run_id": null,
+        "source_file_id": "60802d9f-9eb3-4515-921b-30877a0d073e",
+        "raw_s3_path": "s3://raw/sales/customer/2026-05-29.json"
+      }
+    ],
+    "fb796ddb-eef5-4364-b536-967d4ce8db42": [
+      {
+        "hop": 1,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "3d0eb137-5ce6-4b94-916b-537ab190d0e3",
+        "upstream_run_id": null,
+        "source_file_id": "559a8f44-3a7b-4300-8a61-9bc459d05e7f",
+        "raw_s3_path": "s3://raw/sales/transaction/2026-05-29-refeed.json"
+      }
+    ],
+    "2cea7463-a1d9-497c-b890-042d69ae1cbe": [
+      {
+        "hop": 1,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "b5294909-21cc-4424-824d-6cad8f4ba77e",
+        "upstream_run_id": "3d0eb137-5ce6-4b94-916b-537ab190d0e3",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 2,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "3d0eb137-5ce6-4b94-916b-537ab190d0e3",
+        "upstream_run_id": null,
+        "source_file_id": "559a8f44-3a7b-4300-8a61-9bc459d05e7f",
+        "raw_s3_path": "s3://raw/sales/transaction/2026-05-29-refeed.json"
+      }
+    ],
+    "ac6ceabe-a1d3-4b5f-babc-55ea1f3d2c63": [
+      {
+        "hop": 1,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "b7a6422a-f4db-4520-ab5b-2d08bd384e13",
+        "upstream_run_id": "b5294909-21cc-4424-824d-6cad8f4ba77e",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 1,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "b7a6422a-f4db-4520-ab5b-2d08bd384e13",
+        "upstream_run_id": "09b640ef-3fb8-40a0-a28f-57e3157c0bc8",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 2,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "b5294909-21cc-4424-824d-6cad8f4ba77e",
+        "upstream_run_id": "3d0eb137-5ce6-4b94-916b-537ab190d0e3",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 2,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "09b640ef-3fb8-40a0-a28f-57e3157c0bc8",
+        "upstream_run_id": "6c2f1a02-55fa-486a-ae9d-38b79eeb5989",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 3,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "3d0eb137-5ce6-4b94-916b-537ab190d0e3",
+        "upstream_run_id": null,
+        "source_file_id": "559a8f44-3a7b-4300-8a61-9bc459d05e7f",
+        "raw_s3_path": "s3://raw/sales/transaction/2026-05-29-refeed.json"
+      },
+      {
+        "hop": 3,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "6c2f1a02-55fa-486a-ae9d-38b79eeb5989",
+        "upstream_run_id": null,
+        "source_file_id": "60802d9f-9eb3-4515-921b-30877a0d073e",
+        "raw_s3_path": "s3://raw/sales/customer/2026-05-29.json"
+      }
+    ],
+    "619baa05-8dec-4549-8078-fb866630363f": [
+      {
+        "hop": 1,
+        "edge_type": "canonical_to_sink",
+        "consumer_run_id": "b841b62b-ece6-46c9-950e-7bf5d4ad5673",
+        "upstream_run_id": "b7a6422a-f4db-4520-ab5b-2d08bd384e13",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 2,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "b7a6422a-f4db-4520-ab5b-2d08bd384e13",
+        "upstream_run_id": "b5294909-21cc-4424-824d-6cad8f4ba77e",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 2,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "b7a6422a-f4db-4520-ab5b-2d08bd384e13",
+        "upstream_run_id": "09b640ef-3fb8-40a0-a28f-57e3157c0bc8",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 3,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "09b640ef-3fb8-40a0-a28f-57e3157c0bc8",
+        "upstream_run_id": "6c2f1a02-55fa-486a-ae9d-38b79eeb5989",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 3,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "b5294909-21cc-4424-824d-6cad8f4ba77e",
+        "upstream_run_id": "3d0eb137-5ce6-4b94-916b-537ab190d0e3",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 4,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "6c2f1a02-55fa-486a-ae9d-38b79eeb5989",
+        "upstream_run_id": null,
+        "source_file_id": "60802d9f-9eb3-4515-921b-30877a0d073e",
+        "raw_s3_path": "s3://raw/sales/customer/2026-05-29.json"
+      },
+      {
+        "hop": 4,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "3d0eb137-5ce6-4b94-916b-537ab190d0e3",
+        "upstream_run_id": null,
+        "source_file_id": "559a8f44-3a7b-4300-8a61-9bc459d05e7f",
+        "raw_s3_path": "s3://raw/sales/transaction/2026-05-29-refeed.json"
+      }
+    ],
+    "6432e511-ea12-49eb-b76a-2ed053275e11": [
+      {
+        "hop": 1,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "bdee9ae2-3912-4530-82dd-7281c4d25cd3",
+        "upstream_run_id": "b841b62b-ece6-46c9-950e-7bf5d4ad5673",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 2,
+        "edge_type": "canonical_to_sink",
+        "consumer_run_id": "b841b62b-ece6-46c9-950e-7bf5d4ad5673",
+        "upstream_run_id": "b7a6422a-f4db-4520-ab5b-2d08bd384e13",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 3,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "b7a6422a-f4db-4520-ab5b-2d08bd384e13",
+        "upstream_run_id": "09b640ef-3fb8-40a0-a28f-57e3157c0bc8",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 3,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "b7a6422a-f4db-4520-ab5b-2d08bd384e13",
+        "upstream_run_id": "b5294909-21cc-4424-824d-6cad8f4ba77e",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 4,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "09b640ef-3fb8-40a0-a28f-57e3157c0bc8",
+        "upstream_run_id": "6c2f1a02-55fa-486a-ae9d-38b79eeb5989",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 4,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "b5294909-21cc-4424-824d-6cad8f4ba77e",
+        "upstream_run_id": "3d0eb137-5ce6-4b94-916b-537ab190d0e3",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 5,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "3d0eb137-5ce6-4b94-916b-537ab190d0e3",
+        "upstream_run_id": null,
+        "source_file_id": "559a8f44-3a7b-4300-8a61-9bc459d05e7f",
+        "raw_s3_path": "s3://raw/sales/transaction/2026-05-29-refeed.json"
+      },
+      {
+        "hop": 5,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "6c2f1a02-55fa-486a-ae9d-38b79eeb5989",
+        "upstream_run_id": null,
+        "source_file_id": "60802d9f-9eb3-4515-921b-30877a0d073e",
+        "raw_s3_path": "s3://raw/sales/customer/2026-05-29.json"
+      }
+    ],
+    "aa3650b6-3cc4-4f15-ad53-00d334535522": [
+      {
+        "hop": 1,
+        "edge_type": "canonical_to_sink",
+        "consumer_run_id": "c3c435e5-65d7-4c38-83e6-69385a3ad126",
+        "upstream_run_id": "bdee9ae2-3912-4530-82dd-7281c4d25cd3",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 2,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "bdee9ae2-3912-4530-82dd-7281c4d25cd3",
+        "upstream_run_id": "b841b62b-ece6-46c9-950e-7bf5d4ad5673",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 3,
+        "edge_type": "canonical_to_sink",
+        "consumer_run_id": "b841b62b-ece6-46c9-950e-7bf5d4ad5673",
+        "upstream_run_id": "b7a6422a-f4db-4520-ab5b-2d08bd384e13",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 4,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "b7a6422a-f4db-4520-ab5b-2d08bd384e13",
+        "upstream_run_id": "b5294909-21cc-4424-824d-6cad8f4ba77e",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 4,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "b7a6422a-f4db-4520-ab5b-2d08bd384e13",
+        "upstream_run_id": "09b640ef-3fb8-40a0-a28f-57e3157c0bc8",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 5,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "09b640ef-3fb8-40a0-a28f-57e3157c0bc8",
+        "upstream_run_id": "6c2f1a02-55fa-486a-ae9d-38b79eeb5989",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 5,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "b5294909-21cc-4424-824d-6cad8f4ba77e",
+        "upstream_run_id": "3d0eb137-5ce6-4b94-916b-537ab190d0e3",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 6,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "6c2f1a02-55fa-486a-ae9d-38b79eeb5989",
+        "upstream_run_id": null,
+        "source_file_id": "60802d9f-9eb3-4515-921b-30877a0d073e",
+        "raw_s3_path": "s3://raw/sales/customer/2026-05-29.json"
+      },
+      {
+        "hop": 6,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "3d0eb137-5ce6-4b94-916b-537ab190d0e3",
+        "upstream_run_id": null,
+        "source_file_id": "559a8f44-3a7b-4300-8a61-9bc459d05e7f",
+        "raw_s3_path": "s3://raw/sales/transaction/2026-05-29-refeed.json"
+      }
+    ],
+    "6c696893-7cb8-4406-adc5-ec7ad3821a6d": [
+      {
+        "hop": 1,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "a0e975d9-5695-44f5-b224-8bde402c00eb",
+        "upstream_run_id": null,
+        "source_file_id": "100a5223-1375-4251-a6e8-5bd0e170c292",
+        "raw_s3_path": "s3://raw/sales/customer/2026-05-28.json"
+      }
+    ],
+    "15ff505e-c9c2-49a5-8ccb-93a0e143bdee": [
+      {
+        "hop": 1,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "103d7788-e4d6-4e32-adea-9265bd93f670",
+        "upstream_run_id": null,
+        "source_file_id": "75b5040b-f16b-43e1-b98e-b5cb1e35cd87",
+        "raw_s3_path": "s3://raw/sales/transaction/2026-05-28.json"
+      }
+    ],
+    "f96a875b-3b94-43f1-9f8f-5c8b78fb7c8a": [
+      {
+        "hop": 1,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "386cda9a-64f2-49c0-9654-3713cada28f2",
+        "upstream_run_id": "a0e975d9-5695-44f5-b224-8bde402c00eb",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 2,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "a0e975d9-5695-44f5-b224-8bde402c00eb",
+        "upstream_run_id": null,
+        "source_file_id": "100a5223-1375-4251-a6e8-5bd0e170c292",
+        "raw_s3_path": "s3://raw/sales/customer/2026-05-28.json"
+      }
+    ],
+    "513ba9f8-a85d-4a2d-ad41-16c95f6ee147": [
+      {
+        "hop": 1,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "7d1f4386-cef9-4e13-82aa-786d1e309fbd",
+        "upstream_run_id": "103d7788-e4d6-4e32-adea-9265bd93f670",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 2,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "103d7788-e4d6-4e32-adea-9265bd93f670",
+        "upstream_run_id": null,
+        "source_file_id": "75b5040b-f16b-43e1-b98e-b5cb1e35cd87",
+        "raw_s3_path": "s3://raw/sales/transaction/2026-05-28.json"
+      }
+    ],
+    "822b8d35-2034-4141-b305-e678d500b34e": [
+      {
+        "hop": 1,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "78e89b4b-1a88-4d2a-8679-59a6b6304341",
+        "upstream_run_id": "386cda9a-64f2-49c0-9654-3713cada28f2",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 1,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "78e89b4b-1a88-4d2a-8679-59a6b6304341",
+        "upstream_run_id": "7d1f4386-cef9-4e13-82aa-786d1e309fbd",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 2,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "7d1f4386-cef9-4e13-82aa-786d1e309fbd",
+        "upstream_run_id": "103d7788-e4d6-4e32-adea-9265bd93f670",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 2,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "386cda9a-64f2-49c0-9654-3713cada28f2",
+        "upstream_run_id": "a0e975d9-5695-44f5-b224-8bde402c00eb",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 3,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "103d7788-e4d6-4e32-adea-9265bd93f670",
+        "upstream_run_id": null,
+        "source_file_id": "75b5040b-f16b-43e1-b98e-b5cb1e35cd87",
+        "raw_s3_path": "s3://raw/sales/transaction/2026-05-28.json"
+      },
+      {
+        "hop": 3,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "a0e975d9-5695-44f5-b224-8bde402c00eb",
+        "upstream_run_id": null,
+        "source_file_id": "100a5223-1375-4251-a6e8-5bd0e170c292",
+        "raw_s3_path": "s3://raw/sales/customer/2026-05-28.json"
+      }
+    ],
+    "744119b0-aee2-4d16-8d12-eb2ab843b25e": [
+      {
+        "hop": 1,
+        "edge_type": "canonical_to_sink",
+        "consumer_run_id": "c4d6cd64-bbf2-43ec-9c76-f438a02b8172",
+        "upstream_run_id": "78e89b4b-1a88-4d2a-8679-59a6b6304341",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 2,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "78e89b4b-1a88-4d2a-8679-59a6b6304341",
+        "upstream_run_id": "7d1f4386-cef9-4e13-82aa-786d1e309fbd",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 2,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "78e89b4b-1a88-4d2a-8679-59a6b6304341",
+        "upstream_run_id": "386cda9a-64f2-49c0-9654-3713cada28f2",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 3,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "386cda9a-64f2-49c0-9654-3713cada28f2",
+        "upstream_run_id": "a0e975d9-5695-44f5-b224-8bde402c00eb",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 3,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "7d1f4386-cef9-4e13-82aa-786d1e309fbd",
+        "upstream_run_id": "103d7788-e4d6-4e32-adea-9265bd93f670",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 4,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "103d7788-e4d6-4e32-adea-9265bd93f670",
+        "upstream_run_id": null,
+        "source_file_id": "75b5040b-f16b-43e1-b98e-b5cb1e35cd87",
+        "raw_s3_path": "s3://raw/sales/transaction/2026-05-28.json"
+      },
+      {
+        "hop": 4,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "a0e975d9-5695-44f5-b224-8bde402c00eb",
+        "upstream_run_id": null,
+        "source_file_id": "100a5223-1375-4251-a6e8-5bd0e170c292",
+        "raw_s3_path": "s3://raw/sales/customer/2026-05-28.json"
+      }
+    ],
+    "d325d251-23af-480e-9deb-0a5604f9b6b1": [
+      {
+        "hop": 1,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "00e000c5-8e69-40c2-a929-59bda2731dbc",
+        "upstream_run_id": "c4d6cd64-bbf2-43ec-9c76-f438a02b8172",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 2,
+        "edge_type": "canonical_to_sink",
+        "consumer_run_id": "c4d6cd64-bbf2-43ec-9c76-f438a02b8172",
+        "upstream_run_id": "78e89b4b-1a88-4d2a-8679-59a6b6304341",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 3,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "78e89b4b-1a88-4d2a-8679-59a6b6304341",
+        "upstream_run_id": "386cda9a-64f2-49c0-9654-3713cada28f2",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 3,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "78e89b4b-1a88-4d2a-8679-59a6b6304341",
+        "upstream_run_id": "7d1f4386-cef9-4e13-82aa-786d1e309fbd",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 4,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "386cda9a-64f2-49c0-9654-3713cada28f2",
+        "upstream_run_id": "a0e975d9-5695-44f5-b224-8bde402c00eb",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 4,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "7d1f4386-cef9-4e13-82aa-786d1e309fbd",
+        "upstream_run_id": "103d7788-e4d6-4e32-adea-9265bd93f670",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 5,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "103d7788-e4d6-4e32-adea-9265bd93f670",
+        "upstream_run_id": null,
+        "source_file_id": "75b5040b-f16b-43e1-b98e-b5cb1e35cd87",
+        "raw_s3_path": "s3://raw/sales/transaction/2026-05-28.json"
+      },
+      {
+        "hop": 5,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "a0e975d9-5695-44f5-b224-8bde402c00eb",
+        "upstream_run_id": null,
+        "source_file_id": "100a5223-1375-4251-a6e8-5bd0e170c292",
+        "raw_s3_path": "s3://raw/sales/customer/2026-05-28.json"
+      }
+    ],
+    "ae6acf4a-cce2-467d-9763-d33135f60f4e": [
+      {
+        "hop": 1,
+        "edge_type": "canonical_to_sink",
+        "consumer_run_id": "19da3324-fef9-4c00-8d4c-a749a3b00eb6",
+        "upstream_run_id": "00e000c5-8e69-40c2-a929-59bda2731dbc",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 2,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "00e000c5-8e69-40c2-a929-59bda2731dbc",
+        "upstream_run_id": "c4d6cd64-bbf2-43ec-9c76-f438a02b8172",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 3,
+        "edge_type": "canonical_to_sink",
+        "consumer_run_id": "c4d6cd64-bbf2-43ec-9c76-f438a02b8172",
+        "upstream_run_id": "78e89b4b-1a88-4d2a-8679-59a6b6304341",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 4,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "78e89b4b-1a88-4d2a-8679-59a6b6304341",
+        "upstream_run_id": "7d1f4386-cef9-4e13-82aa-786d1e309fbd",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 4,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "78e89b4b-1a88-4d2a-8679-59a6b6304341",
+        "upstream_run_id": "386cda9a-64f2-49c0-9654-3713cada28f2",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 5,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "7d1f4386-cef9-4e13-82aa-786d1e309fbd",
+        "upstream_run_id": "103d7788-e4d6-4e32-adea-9265bd93f670",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 5,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "386cda9a-64f2-49c0-9654-3713cada28f2",
+        "upstream_run_id": "a0e975d9-5695-44f5-b224-8bde402c00eb",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 6,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "a0e975d9-5695-44f5-b224-8bde402c00eb",
+        "upstream_run_id": null,
+        "source_file_id": "100a5223-1375-4251-a6e8-5bd0e170c292",
+        "raw_s3_path": "s3://raw/sales/customer/2026-05-28.json"
+      },
+      {
+        "hop": 6,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "103d7788-e4d6-4e32-adea-9265bd93f670",
+        "upstream_run_id": null,
+        "source_file_id": "75b5040b-f16b-43e1-b98e-b5cb1e35cd87",
+        "raw_s3_path": "s3://raw/sales/transaction/2026-05-28.json"
+      }
+    ],
+    "232f42fa-641d-4ba5-a64c-dd5c72056194": [
+      {
+        "hop": 1,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "c5eb0d15-3234-420d-8d27-b318a33dbfde",
+        "upstream_run_id": null,
+        "source_file_id": "45c68f68-0923-4c4a-b23f-24e5f06d1688",
+        "raw_s3_path": "s3://raw/sales/customer/2026-05-30.json"
+      }
+    ],
+    "53ec0c89-bee9-469d-b39a-cebfebc4a93f": [
+      {
+        "hop": 1,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "eadf79b4-aca3-4a0c-a9fe-ed9620b802cd",
+        "upstream_run_id": null,
+        "source_file_id": "6564ecb4-5d30-4cfd-b275-412bea26bfd8",
+        "raw_s3_path": "s3://raw/sales/transaction/2026-05-30.json"
+      }
+    ],
+    "c25458d3-916b-45d0-a35f-4aaf3da5bf9f": [
+      {
+        "hop": 1,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "119121db-1562-46ab-af21-257fcbc3bcf6",
+        "upstream_run_id": "c5eb0d15-3234-420d-8d27-b318a33dbfde",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 2,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "c5eb0d15-3234-420d-8d27-b318a33dbfde",
+        "upstream_run_id": null,
+        "source_file_id": "45c68f68-0923-4c4a-b23f-24e5f06d1688",
+        "raw_s3_path": "s3://raw/sales/customer/2026-05-30.json"
+      }
+    ],
+    "17551324-85f1-4ce8-b141-c2d42478ba0e": [
+      {
+        "hop": 1,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "2eb43952-6a9f-4b8c-b51e-7f3495ec0c0a",
+        "upstream_run_id": "eadf79b4-aca3-4a0c-a9fe-ed9620b802cd",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 2,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "eadf79b4-aca3-4a0c-a9fe-ed9620b802cd",
+        "upstream_run_id": null,
+        "source_file_id": "6564ecb4-5d30-4cfd-b275-412bea26bfd8",
+        "raw_s3_path": "s3://raw/sales/transaction/2026-05-30.json"
+      }
+    ],
+    "e5cca7da-1d50-4f11-8cce-22b502ae52fd": [
+      {
+        "hop": 1,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "b78c963e-e902-4748-b5c6-6c7bddceb5b0",
+        "upstream_run_id": "2eb43952-6a9f-4b8c-b51e-7f3495ec0c0a",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 1,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "b78c963e-e902-4748-b5c6-6c7bddceb5b0",
+        "upstream_run_id": "119121db-1562-46ab-af21-257fcbc3bcf6",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 2,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "119121db-1562-46ab-af21-257fcbc3bcf6",
+        "upstream_run_id": "c5eb0d15-3234-420d-8d27-b318a33dbfde",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 2,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "2eb43952-6a9f-4b8c-b51e-7f3495ec0c0a",
+        "upstream_run_id": "eadf79b4-aca3-4a0c-a9fe-ed9620b802cd",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 3,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "c5eb0d15-3234-420d-8d27-b318a33dbfde",
+        "upstream_run_id": null,
+        "source_file_id": "45c68f68-0923-4c4a-b23f-24e5f06d1688",
+        "raw_s3_path": "s3://raw/sales/customer/2026-05-30.json"
+      },
+      {
+        "hop": 3,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "eadf79b4-aca3-4a0c-a9fe-ed9620b802cd",
+        "upstream_run_id": null,
+        "source_file_id": "6564ecb4-5d30-4cfd-b275-412bea26bfd8",
+        "raw_s3_path": "s3://raw/sales/transaction/2026-05-30.json"
+      }
+    ],
+    "d9e07aff-2057-4c32-bfc7-2bf746803494": [
+      {
+        "hop": 1,
+        "edge_type": "canonical_to_sink",
+        "consumer_run_id": "3e588df9-77ec-4585-90cf-bf5b18e1c590",
+        "upstream_run_id": "b78c963e-e902-4748-b5c6-6c7bddceb5b0",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 2,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "b78c963e-e902-4748-b5c6-6c7bddceb5b0",
+        "upstream_run_id": "2eb43952-6a9f-4b8c-b51e-7f3495ec0c0a",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 2,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "b78c963e-e902-4748-b5c6-6c7bddceb5b0",
+        "upstream_run_id": "119121db-1562-46ab-af21-257fcbc3bcf6",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 3,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "2eb43952-6a9f-4b8c-b51e-7f3495ec0c0a",
+        "upstream_run_id": "eadf79b4-aca3-4a0c-a9fe-ed9620b802cd",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 3,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "119121db-1562-46ab-af21-257fcbc3bcf6",
+        "upstream_run_id": "c5eb0d15-3234-420d-8d27-b318a33dbfde",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 4,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "c5eb0d15-3234-420d-8d27-b318a33dbfde",
+        "upstream_run_id": null,
+        "source_file_id": "45c68f68-0923-4c4a-b23f-24e5f06d1688",
+        "raw_s3_path": "s3://raw/sales/customer/2026-05-30.json"
+      },
+      {
+        "hop": 4,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "eadf79b4-aca3-4a0c-a9fe-ed9620b802cd",
+        "upstream_run_id": null,
+        "source_file_id": "6564ecb4-5d30-4cfd-b275-412bea26bfd8",
+        "raw_s3_path": "s3://raw/sales/transaction/2026-05-30.json"
+      }
+    ],
+    "7f8ffcd9-9d9b-4a81-a498-dd7d91662edd": [
+      {
+        "hop": 1,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "9886965c-8531-4ea3-a8cb-70947e31e90f",
+        "upstream_run_id": "3e588df9-77ec-4585-90cf-bf5b18e1c590",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 2,
+        "edge_type": "canonical_to_sink",
+        "consumer_run_id": "3e588df9-77ec-4585-90cf-bf5b18e1c590",
+        "upstream_run_id": "b78c963e-e902-4748-b5c6-6c7bddceb5b0",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 3,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "b78c963e-e902-4748-b5c6-6c7bddceb5b0",
+        "upstream_run_id": "2eb43952-6a9f-4b8c-b51e-7f3495ec0c0a",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 3,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "b78c963e-e902-4748-b5c6-6c7bddceb5b0",
+        "upstream_run_id": "119121db-1562-46ab-af21-257fcbc3bcf6",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 4,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "119121db-1562-46ab-af21-257fcbc3bcf6",
+        "upstream_run_id": "c5eb0d15-3234-420d-8d27-b318a33dbfde",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 4,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "2eb43952-6a9f-4b8c-b51e-7f3495ec0c0a",
+        "upstream_run_id": "eadf79b4-aca3-4a0c-a9fe-ed9620b802cd",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 5,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "c5eb0d15-3234-420d-8d27-b318a33dbfde",
+        "upstream_run_id": null,
+        "source_file_id": "45c68f68-0923-4c4a-b23f-24e5f06d1688",
+        "raw_s3_path": "s3://raw/sales/customer/2026-05-30.json"
+      },
+      {
+        "hop": 5,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "eadf79b4-aca3-4a0c-a9fe-ed9620b802cd",
+        "upstream_run_id": null,
+        "source_file_id": "6564ecb4-5d30-4cfd-b275-412bea26bfd8",
+        "raw_s3_path": "s3://raw/sales/transaction/2026-05-30.json"
+      }
+    ],
+    "f5782998-06cd-43ed-9b6b-4330f9567646": [
+      {
+        "hop": 1,
+        "edge_type": "canonical_to_sink",
+        "consumer_run_id": "d56a3131-4973-49c7-8439-a9b99bef778b",
+        "upstream_run_id": "9886965c-8531-4ea3-a8cb-70947e31e90f",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 2,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "9886965c-8531-4ea3-a8cb-70947e31e90f",
+        "upstream_run_id": "3e588df9-77ec-4585-90cf-bf5b18e1c590",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 3,
+        "edge_type": "canonical_to_sink",
+        "consumer_run_id": "3e588df9-77ec-4585-90cf-bf5b18e1c590",
+        "upstream_run_id": "b78c963e-e902-4748-b5c6-6c7bddceb5b0",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 4,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "b78c963e-e902-4748-b5c6-6c7bddceb5b0",
+        "upstream_run_id": "2eb43952-6a9f-4b8c-b51e-7f3495ec0c0a",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 4,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "b78c963e-e902-4748-b5c6-6c7bddceb5b0",
+        "upstream_run_id": "119121db-1562-46ab-af21-257fcbc3bcf6",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 5,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "2eb43952-6a9f-4b8c-b51e-7f3495ec0c0a",
+        "upstream_run_id": "eadf79b4-aca3-4a0c-a9fe-ed9620b802cd",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 5,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "119121db-1562-46ab-af21-257fcbc3bcf6",
+        "upstream_run_id": "c5eb0d15-3234-420d-8d27-b318a33dbfde",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 6,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "eadf79b4-aca3-4a0c-a9fe-ed9620b802cd",
+        "upstream_run_id": null,
+        "source_file_id": "6564ecb4-5d30-4cfd-b275-412bea26bfd8",
+        "raw_s3_path": "s3://raw/sales/transaction/2026-05-30.json"
+      },
+      {
+        "hop": 6,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "c5eb0d15-3234-420d-8d27-b318a33dbfde",
+        "upstream_run_id": null,
+        "source_file_id": "45c68f68-0923-4c4a-b23f-24e5f06d1688",
+        "raw_s3_path": "s3://raw/sales/customer/2026-05-30.json"
+      }
+    ]
+  }
+}
