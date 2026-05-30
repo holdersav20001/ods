@@ -32,6 +32,19 @@
 --   arg, so a two-arg call would be AMBIGUOUS against the old overload. There is
 --   no `CREATE OR REPLACE` across differing argument lists — the old function is
 --   a separate object that must be dropped explicitly.
+--
+--     ╔══════════════════════════════════════════════════════════════════╗
+--     ║ SUPERSEDED by 015_recon_selectors.sql (P10-C / THEME B, Codex P1).║
+--     ║ This 3-arg body's PATH branch is NOT exact: it matches on path    ║
+--     ║ ONLY (no content_hash), so two links at one path with different   ║
+--     ║ content_hash (changed-content restart / in-place refeed) collapse ║
+--     ║ to a SILENT single pick — a consumer can bind to STALE output.    ║
+--     ║ 015 DROPs this 3-arg signature and re-declares a 4-arg            ║
+--     ║ cp.run_output_link(run, edge_type, path?, content_hash?) whose    ║
+--     ║ path branch is EXACT-or-RAISE (>1 at path => RAISE 'ambiguous —   ║
+--     ║ pass p_content_hash'). 015 applies last, so the 015 body is live; ║
+--     ║ this copy is kept only for the migration history.                 ║
+--     ╚══════════════════════════════════════════════════════════════════╝
 -- =====================================================================
 DROP FUNCTION IF EXISTS cp.run_output_link(uuid, text);
 CREATE OR REPLACE FUNCTION cp.run_output_link(

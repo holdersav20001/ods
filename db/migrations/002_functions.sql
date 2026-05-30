@@ -2,6 +2,9 @@
 
 -- cp.start_run: insert one run_log row (status default 'running'), return run_id.
 -- NOTE: orchestration trigger-edge deferred to P3 (needs link); see plan
+-- SUPERSEDED by 013_restart_identity.sql: start_run is now idempotent on restart
+-- (ON CONFLICT on the partial uq_run_identity index reuses the run_id for a
+-- re-run under the same workflow_run_id). Edit the body in 013, NOT here.
 CREATE OR REPLACE FUNCTION cp.start_run(
     p_workflow_run_id text, p_pipeline_type text, p_domain text, p_dataset text,
     p_business_date date, p_trigger_type text, p_file_id uuid DEFAULT NULL,

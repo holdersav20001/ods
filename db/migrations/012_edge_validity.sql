@@ -64,6 +64,13 @@ ALTER TABLE cp.lineage_edge ADD CONSTRAINT edge_must_anchor CHECK (
 -- DEFECT 2 — target_ref CONTRACT. Drop the weak 010 identity CHECK (path OR
 --   content_hash) and require BOTH non-empty PLUS a present 'version' key. A
 --   link's output identity is a contract, not a convention. (Codex P2.)
+--
+--   *** SUPERSEDED by 014_integrity.sql (P10-B / R4 GAP 2). ***
+--   This 012 target_ref_contract only required the 'version' KEY to exist
+--   (`target_ref ? 'version'`), so {"version": null} and {"version": ""} both
+--   passed — a null/empty version is as useless as none. 014 DROPS this
+--   constraint and RE-ADDS it requiring a NON-EMPTY version too; 014 applies
+--   last, so its definition wins. The DDL below is kept as-applied.
 -- =====================================================================
 ALTER TABLE cp.lineage_link DROP CONSTRAINT target_ref_has_identity;
 ALTER TABLE cp.lineage_link ADD CONSTRAINT target_ref_contract CHECK (

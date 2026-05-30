@@ -65,3 +65,32 @@ The harness exercises the **client** with synthetic data. It deliberately does
   containerised) stack and asserts the same lineage / recon invariants this
   suite asserts against the fakes. That integration test is out of scope for the
   control-plane build; this README marks the boundary.
+
+## DB-as-authority — deployment hardening (NOT applied in the test DB)
+
+P10-B (migration `014_integrity.sql`) makes the DB the lineage **authority** at
+the table level: a `BEFORE INSERT` trigger (`edge_type_matches_link`) on
+`cp.lineage_edge` enforces that an edge's `edge_type` matches its parent link's
+(only the `replay` annotation may differ), so a **direct INSERT** can no longer
+forge a mismatched edge — the guard no longer lives only inside
+`cp.write_lineage_link`. The R3/R4 probes assert this (`test_team_r3.py`
+`test_FIXED_*`, `test_team_r4.py`).
+
+The trigger makes the DB authoritative for **edge_type** under direct insert. To
+make the DB authoritative for **all** direct mutation of the lineage tables, a
+deployment should additionally (this is **operational guidance**, deliberately
+**NOT** applied here because the test DB runs as the owner/superuser `ods` role,
+against which `REVOKE` is a no-op and would also break the suite):
+
+1. Run the application as a **non-owner, non-superuser** role (e.g. `ods_app`).
+2. `REVOKE INSERT, UPDATE, DELETE ON cp.lineage_link, cp.lineage_edge` (and the
+   other `cp.*` state tables) **FROM** that role.
+3. Route **all** writes through the `SECURITY DEFINER cp.*` functions
+   (`write_lineage_link`, `write_link_then_rows`, `quarantine`, …), each with a
+   **pinned `search_path`** (e.g. `SET search_path = cp, ods, pg_temp`) to defeat
+   search-path hijack.
+4. `GRANT EXECUTE` on those functions to the app role; grant only the `SELECT`
+   the app actually needs.
+
+With (1)–(4) the app can mutate lineage **only** through the guarded functions,
+making the DB the sole authority for every lineage write.

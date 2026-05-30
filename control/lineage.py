@@ -45,12 +45,22 @@ def write_link(conn, *, consumer_run_id, edge_type, target_ref, record_count,
 
 def write_link_then_rows(conn, *, consumer_run_id, edge_type, target_ref,
                          record_count, edges, rows, sink_type=None,
-                         transform_version=None, commit=True) -> str:
+                         transform_version=None, source_file_id=None,
+                         commit=True) -> str:
+    """Write the link+edges, THEN the target rows, in one transaction.
+
+    `source_file_id` (P10-D / §4) is stamped onto each row's _ods_source_file_id
+    for row-level file attribution. Pass it ONLY when the rows map cleanly to ONE
+    source file (single-file ingest->sink path); leave None for aggregate/
+    merge-derived rows (the column stays NULL — do not pretend an aggregate came
+    from one file).
+    """
     _validate_target_ref(target_ref)
     link_id = conn.execute(
-        "SELECT cp.write_link_then_rows(%s,%s,%s,%s,%s,%s,%s,%s)",
+        "SELECT cp.write_link_then_rows(%s,%s,%s,%s,%s,%s,%s,%s,%s)",
         [consumer_run_id, edge_type, Jsonb(target_ref), record_count,
-         Jsonb(edges), Jsonb(rows), sink_type, transform_version],
+         Jsonb(edges), Jsonb(rows), sink_type, transform_version,
+         source_file_id],
     ).fetchone()[0]
     if commit:
         conn.commit()

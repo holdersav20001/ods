@@ -107,7 +107,13 @@ def test_fk_lineage_edge_source_file_id(conn):
 
 def test_fk_lineage_edge_lineage_link_id(conn):
     file_id = _real_file(conn)  # real anchor so only lineage_link_id is bogus
-    with pytest.raises(psycopg.errors.ForeignKeyViolation):
+    # A dangling lineage_link_id is rejected. As of 014 the BEFORE INSERT trigger
+    # edge_type_matches_link runs FIRST and RAISES ('edge references missing link')
+    # for a missing parent — an EARLIER, stronger guard than the FK. The FK still
+    # exists and still backs the column; either rejection proves the edge cannot
+    # land. Accept both (RaiseException from the trigger OR ForeignKeyViolation).
+    with pytest.raises((psycopg.errors.RaiseException,
+                        psycopg.errors.ForeignKeyViolation)):
         with conn.transaction():
             conn.execute(
                 "INSERT INTO cp.lineage_edge "

@@ -12,7 +12,7 @@ LIFECYCLE CONTRACT (enforced by reviewers):
     hand-building cp.lineage_edge / cp.lineage_link rows.
   * No raw INSERT SQL; everything goes through the Phase-2 client wrappers.
 """
-from control import dlq, lineage, recon, runs, stages
+from control import dlq, lineage, recon, runs, stages, visibility
 
 
 def fake_ingest(conn, *, workflow_run_id, file, commit=True) -> dict:
@@ -404,6 +404,21 @@ def fake_sink(conn, *, workflow_run_id, domain, dataset, business_date,
         st.record_in = n
         st.record_out = n  # fake: every row written
 
+    # P10-D §4: row-level file attribution. The sink rows map cleanly to ONE
+    # source file ONLY on the single-file path (a canonicalization upstream walks
+    # back through exactly one raw_to_curated edge to one file). For a MERGE
+    # upstream the output is AGGREGATE (many files) -> leave NULL (do not pretend
+    # an aggregate came from one file). We resolve via the provenance walk and
+    # stamp ONLY when exactly one distinct source file is reachable.
+    source_file_id = None
+    if upstream_pipeline_type != "merge":
+        srcs = conn.execute(
+            "SELECT DISTINCT source_file_id FROM cp.v_provenance "
+            "WHERE consumer_run_id=%s AND source_file_id IS NOT NULL",
+            (upstream,)).fetchall()
+        if len(srcs) == 1:
+            source_file_id = srcs[0][0]
+
     rows = [{"k": i} for i in range(n)]
     edges = [{
         "upstream_run_id": upstream,  # the DISCOVERED canonical/merge run
@@ -430,6 +445,7 @@ def fake_sink(conn, *, workflow_run_id, domain, dataset, business_date,
         edges=edges,
         rows=rows,
         sink_type=sink_type,
+        source_file_id=source_file_id,  # §4: one file (single-file path) or NULL
         commit=commit,
     )
 
@@ -450,10 +466,39 @@ def fake_sink(conn, *, workflow_run_id, domain, dataset, business_date,
     # by construction) cannot.
     recon.reconcile_sink(conn, run_id=run_id, source_count=n, commit=commit)
 
+    # PER-OUTPUT sink recon (P10-C / THEME E, Codex P4): scope accounted to THIS
+    # link's rows. When a run fans the same canonical out to >1 sink (K
+    # canonical_to_sink links in ONE run), the run-scoped check above would
+    # false-double-count (K*n rows vs n source); the per-link check reconciles
+    # each output independently (n == n). The terminal/authoritative sink check.
+    recon.reconcile_sink_link(conn, lineage_link_id=link_id, source_count=n,
+                              commit=commit)
+
     runs.finalise(conn, run_id, status="succeeded", record_count_out=n,
                   commit=commit)
 
-    return {"run_id": run_id, "link_id": link_id}
+    # P10-D §6 lifecycle: AFTER the target write + reconciliation (status ok) +
+    # finalise succeeded, activate the business-visibility row for this sink
+    # output. On a refeed this deactivates the prior active slice row and
+    # activates the corrected one (supersession). activate RAISES if the run is
+    # not succeeded or recon is not ok — so we never activate on failure/breach.
+    # slice-scope only this pass (replacement_scope defaults to 'slice').
+    visibility_id = visibility.activate(
+        conn,
+        domain=domain,
+        dataset=dataset,
+        business_date=business_date,
+        sink_type=sink_type,
+        target_name=f"ods.{dataset}",
+        file_id=source_file_id,  # one file (single-file path) or NULL (aggregate)
+        lineage_link_id=link_id,
+        producer_run_id=run_id,
+        workflow_run_id=workflow_run_id,
+        commit=commit,
+    )
+
+    return {"run_id": run_id, "link_id": link_id,
+            "visibility_id": visibility_id, "source_file_id": source_file_id}
 
 
 def fake_fail(conn, *, workflow_run_id, domain, dataset, business_date,

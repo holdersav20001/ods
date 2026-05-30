@@ -358,6 +358,149 @@ def test_run_output_link_output_identity_contract(conn):
     conn.execute("ROLLBACK TO SAVEPOINT c_other")
 
 
+def test_run_output_link_content_hash_exact_selector(conn):
+    """cp.run_output_link content_hash disambiguator (migration 015 / THEME B):
+    two links at the SAME path with different content_hash. The path branch is
+    EXACT-or-RAISE: path alone over >1 link RAISES 'ambiguous — pass
+    p_content_hash'; content_hash (with or without path) resolves the EXACT one;
+    a content_hash that matches nothing RAISES."""
+    run_id, _ = _start_run(conn)
+    edges = [{"edge_type": "raw_to_curated", "source_file_id": str(_file(conn)),
+              "source_ref": {"k": 1}, "record_count": 1}]
+    path = "s3://c/same"
+    l_old = conn.execute(
+        "SELECT cp.write_lineage_link(%s,'raw_to_curated',%s,%s,%s)",
+        (run_id, json.dumps({"path": path, "content_hash": "ho", "version": 1}),
+         1, json.dumps(edges))).fetchone()[0]
+    l_new = conn.execute(
+        "SELECT cp.write_lineage_link(%s,'raw_to_curated',%s,%s,%s)",
+        (run_id, json.dumps({"path": path, "content_hash": "hn", "version": 2}),
+         1, json.dumps(edges))).fetchone()[0]
+    assert l_old != l_new
+
+    # path alone over two links -> RAISE (no silent pick).
+    conn.execute("SAVEPOINT c_pa")
+    with pytest.raises(psycopg.errors.RaiseException, match="ambiguous"):
+        conn.execute("SELECT cp.run_output_link(%s,'raw_to_curated',%s)",
+                     (run_id, path)).fetchone()
+    conn.execute("ROLLBACK TO SAVEPOINT c_pa")
+
+    # path + content_hash -> EXACT.
+    assert str(conn.execute(
+        "SELECT cp.run_output_link(%s,'raw_to_curated',%s,'ho')", (run_id, path)
+    ).fetchone()[0]) == str(l_old)
+    # content_hash alone (path NULL) -> EXACT.
+    assert str(conn.execute(
+        "SELECT cp.run_output_link(%s,'raw_to_curated',NULL,'hn')", (run_id,)
+    ).fetchone()[0]) == str(l_new)
+    # content_hash matching nothing -> RAISE.
+    conn.execute("SAVEPOINT c_none_ch")
+    with pytest.raises(psycopg.errors.RaiseException, match="no raw_to_curated"):
+        conn.execute("SELECT cp.run_output_link(%s,'raw_to_curated',NULL,'nope')",
+                     (run_id,)).fetchone()
+    conn.execute("ROLLBACK TO SAVEPOINT c_none_ch")
+
+
+# ---- reconcile_sink_link (per-output) ---------------------------------------
+
+def test_reconcile_sink_link_per_output_roundtrip(conn):
+    """cp.reconcile_sink_link (migration 015 / THEME E): accounted is the count
+    of ods.<dataset> rows stamped with THIS link only; status satisfies the 014
+    recon_internally_consistent CHECK."""
+    run_id, _ = _start_run(conn)
+    up_run, _ = _start_run(conn)
+    # a real upstream link to anchor the canonical_to_sink edge (edge_must_anchor
+    # requires source_file_id or upstream_lineage_link_id).
+    up_link = conn.execute(
+        "SELECT cp.write_lineage_link(%s,'raw_to_curated',%s,%s,%s)",
+        (up_run, json.dumps({"path": "s3://cur/sl", "content_hash": "slup",
+                             "version": 1}), 3,
+         json.dumps([{"edge_type": "raw_to_curated",
+                      "source_file_id": str(_file(conn)),
+                      "source_ref": {}, "record_count": 3}]))).fetchone()[0]
+    edges = [{"edge_type": "canonical_to_sink", "upstream_run_id": str(up_run),
+              "upstream_lineage_link_id": str(up_link),
+              "source_ref": {"k": 1}, "record_count": 3}]
+    rows = [{"order_id": i} for i in range(3)]
+    link = conn.execute(
+        "SELECT cp.write_link_then_rows(%s,'canonical_to_sink',%s,%s,%s,%s,'postgres')",
+        (run_id, json.dumps({"path": "pg://orders", "content_hash": "sl1",
+                             "version": 1}), 3,
+         json.dumps(edges), json.dumps(rows))).fetchone()[0]
+    # exact match -> ok
+    conn.execute("SELECT cp.reconcile_sink_link(%s,%s)", (link, 3))
+    row = conn.execute(
+        "SELECT source_count, accounted_count, discrepancy, status, check_type, "
+        "run_id, metrics FROM cp.reconciliation_log "
+        "WHERE check_type='sink_link' AND metrics->>'lineage_link_id'=%s",
+        (str(link),)).fetchone()
+    assert row[0] == 3 and row[1] == 3 and row[2] == 0 and row[3] == "ok"
+    assert row[4] == "sink_link"
+    assert str(row[5]) == str(run_id)  # run_id = the link's consumer_run_id
+    assert row[6]["graph_derived"] is True
+    # over-claimed source -> breach (3 source, only this link's 3 accounted... )
+    conn.execute("SELECT cp.reconcile_sink_link(%s,%s)", (link, 5))
+    breach = conn.execute(
+        "SELECT discrepancy, status FROM cp.reconciliation_log "
+        "WHERE check_type='sink_link' AND metrics->>'lineage_link_id'=%s "
+        "ORDER BY recon_id DESC LIMIT 1", (str(link),)).fetchone()
+    assert breach == (2, "breach")
+
+
+# ---- reconcile_workflow (cross-hop) -----------------------------------------
+
+def test_reconcile_workflow_cross_hop_roundtrip(conn):
+    """cp.reconcile_workflow (migration 015 / THEME F): raw_in (SUM raw_to_curated
+    edge counts over the workflow's runs) vs accounted (sink rows + dlq).
+    Balanced single-hop workflow reconciles ok and satisfies the 014 CHECK."""
+    wf = str(uuid4())
+    fid = _file(conn)
+    ir = conn.execute(
+        "INSERT INTO cp.run_log (workflow_run_id,pipeline_type,domain,dataset,"
+        "business_date,trigger_type,status,file_id) "
+        "VALUES (%s,'ingestion','sales','orders',%s,'manual','succeeded',%s) "
+        "RETURNING run_id", (wf, BD, fid)).fetchone()[0]
+    raw_edges = [{"edge_type": "raw_to_curated", "source_file_id": str(fid),
+                  "source_ref": {}, "record_count": 4}]
+    raw_link = conn.execute(
+        "SELECT cp.write_lineage_link(%s,'raw_to_curated',%s,%s,%s)",
+        (ir, json.dumps({"path": "s3://c/wf", "content_hash": "wfc", "version": 1}),
+         4, json.dumps(raw_edges))).fetchone()[0]
+    cr = conn.execute(
+        "INSERT INTO cp.run_log (workflow_run_id,pipeline_type,domain,dataset,"
+        "business_date,trigger_type,status) "
+        "VALUES (%s,'canonicalize','sales','orders',%s,'manual','succeeded') "
+        "RETURNING run_id", (wf, BD)).fetchone()[0]
+    canon = conn.execute(
+        "SELECT cp.write_lineage_link(%s,'curated_to_canonical',%s,%s,%s)",
+        (cr, json.dumps({"path": "s3://can/wf", "content_hash": "wfcan",
+                         "version": 1}), 4,
+         json.dumps([{"edge_type": "curated_to_canonical",
+                      "upstream_run_id": str(ir),
+                      "upstream_lineage_link_id": str(raw_link),
+                      "source_ref": {}, "record_count": 4}]))).fetchone()[0]
+    sr = conn.execute(
+        "INSERT INTO cp.run_log (workflow_run_id,pipeline_type,domain,dataset,"
+        "business_date,trigger_type,status) "
+        "VALUES (%s,'sink','sales','orders',%s,'manual','succeeded') RETURNING run_id",
+        (wf, BD)).fetchone()[0]
+    conn.execute(
+        "SELECT cp.write_link_then_rows(%s,'canonical_to_sink',%s,%s,%s,%s,'postgres')",
+        (sr, json.dumps({"path": "pg://wf", "content_hash": "wfs", "version": 1}), 4,
+         json.dumps([{"edge_type": "canonical_to_sink", "upstream_run_id": str(cr),
+                      "upstream_lineage_link_id": str(canon),
+                      "source_ref": {}, "record_count": 4}]),
+         json.dumps([{"order_id": i} for i in range(4)])))
+
+    conn.execute("SELECT cp.reconcile_workflow(%s)", (wf,))
+    row = conn.execute(
+        "SELECT source_count, accounted_count, discrepancy, status, metrics "
+        "FROM cp.reconciliation_log WHERE check_type='workflow' "
+        "AND metrics->>'workflow_run_id'=%s", (wf,)).fetchone()
+    assert row[0] == 4 and row[1] == 4 and row[2] == 0 and row[3] == "ok"
+    assert row[4]["raw_in"] == 4 and row[4]["sink_out"] == 4 and row[4]["dlq_out"] == 0
+
+
 # ---- start_stage / finish_stage / patch_run --------------------------------
 
 def test_start_finish_stage_roundtrip(conn):
@@ -427,6 +570,16 @@ def test_every_cp_function_is_asserted(conn):
         "quarantine", "latest_succeeded_run", "succeeded_runs", "run_output_link",
         # F7: graph-derived sink recon — asserted in tests/test_graph_recon.py.
         "reconcile_sink",
+        # P10-C (015): per-OUTPUT sink recon (THEME E) + cross-hop workflow recon
+        # (THEME F). Round-trips below; flipped probes in test_team_r1/r3.
+        "reconcile_sink_link", "reconcile_workflow",
+        # P10-B (014): BEFORE INSERT trigger fn enforcing edge_type == link type
+        # at the table — asserted in tests/test_team_r3.py (test_FIXED_* probes)
+        # and tests/test_team_r4.py.
+        "trg_edge_type_matches_link",
+        # P10-D (016): target-visibility active-slice activation primitive —
+        # round-trip + invariants in tests/test_target_visibility.py.
+        "activate_target_visibility",
     }
     missing = fns - ASSERTED
     assert not missing, f"cp functions with no contract assertion: {missing}"
