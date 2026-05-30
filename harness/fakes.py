@@ -442,6 +442,14 @@ def fake_sink(conn, *, workflow_run_id, domain, dataset, business_date,
         commit=commit,
     )
 
+    # GRAPH-DERIVED sink recon (audit F7): the REAL falsifiable check — accounted
+    # is counted from the actual ods.<dataset> rows just written (scoped to THIS
+    # run's canonical_to_sink links; fan-out gives each sink_type its own run so
+    # the scope is exact), NOT from a caller-supplied number. If real rows were
+    # lost, this BREACHES where the arithmetic 'sink' check above (self-consistent
+    # by construction) cannot.
+    recon.reconcile_sink(conn, run_id=run_id, source_count=n, commit=commit)
+
     runs.finalise(conn, run_id, status="succeeded", record_count_out=n,
                   commit=commit)
 

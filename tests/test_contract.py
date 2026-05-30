@@ -407,6 +407,8 @@ def test_every_cp_function_is_asserted(conn):
         "start_run", "patch_run", "register_file", "start_stage", "finish_stage",
         "write_lineage_link", "write_link_then_rows", "write_reconciliation_check",
         "quarantine", "latest_succeeded_run", "succeeded_runs", "run_output_link",
+        # F7: graph-derived sink recon — asserted in tests/test_graph_recon.py.
+        "reconcile_sink",
     }
     missing = fns - ASSERTED
     assert not missing, f"cp functions with no contract assertion: {missing}"
