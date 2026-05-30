@@ -422,12 +422,15 @@ def test_provenance_cycle_terminates(conn):
     # A's link: needs an upstream link to satisfy the CHECK before B exists.
     # Mint a throwaway raw_to_curated seed link and point A's edge at it; the
     # edge is redirected to B below to close the cycle.
+    seed_file = runs.register_file(
+        conn, s3_raw_path=f"s3://raw/{uuid.uuid4()}.csv", file_md5=uuid.uuid4().hex,
+        business_date=BD, domain="sales", dataset="orders", commit=False)
     seed = lineage.write_link(
         conn, consumer_run_id=run_a, edge_type="raw_to_curated",
         target_ref={"path": "s3://cyc/seed", "content_hash": "cyc-seed", "version": 1},
         record_count=1,
-        edges=[{"edge_type": "raw_to_curated", "source_ref": {"cyc": "seed"},
-                "record_count": 1}],
+        edges=[{"edge_type": "raw_to_curated", "source_file_id": str(seed_file),
+                "source_ref": {"cyc": "seed"}, "record_count": 1}],
         commit=False)
     link_a = lineage.write_link(
         conn, consumer_run_id=run_a, edge_type="curated_to_canonical",

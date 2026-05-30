@@ -46,6 +46,10 @@ def test_audit_a3_run_output_link_fanout_raises_then_disambiguates(conn):
         # An upstream curated link so the run-to-run CHECK on canonical_to_sink
         # (upstream_lineage_link_id NOT NULL) is satisfiable.
         up_run = _new_run(conn, "canonicalization")
+        up_file = conn.execute(
+            "SELECT cp.register_file(%s,%s,%s,'audit_a3_dom','audit_a3_ds')",
+            (f"s3://raw/{uuid.uuid4()}.csv", uuid.uuid4().hex,
+             "2026-05-30")).fetchone()[0]
         up_link = lineage.write_link(
             conn,
             consumer_run_id=up_run,
@@ -53,7 +57,7 @@ def test_audit_a3_run_output_link_fanout_raises_then_disambiguates(conn):
             target_ref={"path": "s3://audit_a3/curated", "content_hash": "h0",
                         "version": "1"},
             record_count=10,
-            edges=[{"source_file_id": None, "input_slot": 0,
+            edges=[{"source_file_id": str(up_file), "input_slot": 0,
                     "edge_type": "raw_to_curated", "record_count": 10}],
             commit=False,
         )

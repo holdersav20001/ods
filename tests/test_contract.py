@@ -38,6 +38,15 @@ def _start_run(conn, workflow_run_id=None, status=None):
     return run_id, wfid
 
 
+def _file(conn):
+    """A real registered raw file to anchor a well-formed raw_to_curated edge
+    (012 raw_edge_requires_source_file)."""
+    return conn.execute(
+        "SELECT cp.register_file(%s,%s,%s,'sales','orders')",
+        (f"s3://raw/{uuid4()}.csv", uuid4().hex, BD),
+    ).fetchone()[0]
+
+
 # ---- start_run --------------------------------------------------------------
 
 def test_start_run_creates_running_row(conn):
@@ -92,13 +101,16 @@ def test_write_lineage_link_creates_link_and_edges(conn):
     up_run, _ = _start_run(conn)
     edges = [
         {"upstream_run_id": str(up_run), "edge_type": "raw_to_curated",
+         "source_file_id": str(_file(conn)),
          "source_ref": {"k": 1}, "record_count": 5},
         {"upstream_run_id": str(up_run), "edge_type": "raw_to_curated",
+         "source_file_id": str(_file(conn)),
          "source_ref": {"k": 2}, "record_count": 5, "input_slot": 1},
     ]
     link = conn.execute(
         "SELECT cp.write_lineage_link(%s,'raw_to_curated',%s,%s,%s)",
-        (run_id, json.dumps({"content_hash": "hh"}), 10, json.dumps(edges)),
+        (run_id, json.dumps({"path": "s3://c/hh", "content_hash": "hh",
+                             "version": 1}), 10, json.dumps(edges)),
     ).fetchone()[0]
     assert link is not None
     n = conn.execute(
@@ -109,8 +121,9 @@ def test_write_lineage_link_creates_link_and_edges(conn):
 
 def test_write_lineage_link_idempotent(conn):
     run_id, _ = _start_run(conn)
-    edges = [{"edge_type": "raw_to_curated", "source_ref": {"k": 1}, "record_count": 5}]
-    tref = json.dumps({"content_hash": "dup"})
+    edges = [{"edge_type": "raw_to_curated", "source_file_id": str(_file(conn)),
+              "source_ref": {"k": 1}, "record_count": 5}]
+    tref = json.dumps({"path": "s3://c/dup", "content_hash": "dup", "version": 1})
     link1 = conn.execute(
         "SELECT cp.write_lineage_link(%s,'raw_to_curated',%s,%s,%s)",
         (run_id, tref, 10, json.dumps(edges)),
@@ -130,11 +143,13 @@ def test_write_lineage_link_idempotent(conn):
 
 def test_write_link_then_rows_stamps_rows(conn):
     run_id, wfid = _start_run(conn)
-    edges = [{"edge_type": "raw_to_curated", "source_ref": {"k": 1}, "record_count": 2}]
+    edges = [{"edge_type": "raw_to_curated", "source_file_id": str(_file(conn)),
+              "source_ref": {"k": 1}, "record_count": 2}]
     rows = [{"order_id": 1, "amt": 10}, {"order_id": 2, "amt": 20}]
     link = conn.execute(
         "SELECT cp.write_link_then_rows(%s,'raw_to_curated',%s,%s,%s,%s)",
-        (run_id, json.dumps({"content_hash": "rows1"}), 2,
+        (run_id, json.dumps({"path": "s3://c/rows1", "content_hash": "rows1",
+                             "version": 1}), 2,
          json.dumps(edges), json.dumps(rows)),
     ).fetchone()[0]
     got = conn.execute(
@@ -304,10 +319,12 @@ def test_run_output_link_output_identity_contract(conn):
         conn.execute("SELECT cp.run_output_link(%s,'raw_to_curated')", (run_id,)).fetchone()
     conn.execute("ROLLBACK TO SAVEPOINT c_none")
 
-    edges = [{"edge_type": "raw_to_curated", "source_ref": {"k": 1}, "record_count": 1}]
+    edges = [{"edge_type": "raw_to_curated", "source_file_id": str(_file(conn)),
+              "source_ref": {"k": 1}, "record_count": 1}]
     l1 = conn.execute(
         "SELECT cp.write_lineage_link(%s,'raw_to_curated',%s,%s,%s)",
-        (run_id, json.dumps({"path": "p1", "content_hash": "h1"}), 1, json.dumps(edges)),
+        (run_id, json.dumps({"path": "p1", "content_hash": "h1", "version": 1}),
+         1, json.dumps(edges)),
     ).fetchone()[0]
     # Exactly one output -> returns that link (no target_path needed).
     got = conn.execute(
@@ -318,7 +335,8 @@ def test_run_output_link_output_identity_contract(conn):
     # Same run, a DIFFERENT output (distinct path) -> two links.
     l2 = conn.execute(
         "SELECT cp.write_lineage_link(%s,'raw_to_curated',%s,%s,%s)",
-        (run_id, json.dumps({"path": "p2", "content_hash": "h2"}), 1, json.dumps(edges)),
+        (run_id, json.dumps({"path": "p2", "content_hash": "h2", "version": 1}),
+         1, json.dumps(edges)),
     ).fetchone()[0]
     # Ambiguous (no target_path) -> RAISES instead of arbitrarily picking.
     conn.execute("SAVEPOINT c_ambig")

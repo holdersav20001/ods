@@ -53,7 +53,26 @@ def _file(record_count=12, dataset="orders"):
 #      (The test that FAILED before 009.)
 # --------------------------------------------------------------------------- #
 def test_same_hash_different_target_yields_two_links(conn):
-    # One canonical run that two sinks consume.
+    # One canonical run that two sinks consume. Build a well-formed raw->curated
+    # ingest link first so the canonical link's edge can anchor to it (012:
+    # raw_to_curated edges must name a file; a curated_to_canonical edge must
+    # name its upstream output link and match the link's edge_type).
+    ingest_run = runs.start(
+        conn, workflow_run_id=str(uuid.uuid4()), pipeline_type="ingestion",
+        domain="sales", dataset="orders", business_date=BD,
+        trigger_type="manual", commit=False)
+    raw_file = runs.register_file(
+        conn, s3_raw_path=f"s3://raw/{uuid.uuid4()}.csv", file_md5=uuid.uuid4().hex,
+        business_date=BD, domain="sales", dataset="orders", commit=False)
+    ingest_link = lineage.write_link(
+        conn, consumer_run_id=ingest_run, edge_type="raw_to_curated",
+        target_ref={"path": "s3://curated/orders", "content_hash": "CUR",
+                    "version": 1},
+        record_count=5,
+        edges=[{"source_file_id": str(raw_file),
+                "edge_type": "raw_to_curated", "record_count": 5}],
+        commit=False)
+
     up_run = runs.start(
         conn, workflow_run_id=str(uuid.uuid4()), pipeline_type="canonicalization",
         domain="sales", dataset="orders", business_date=BD,
@@ -63,8 +82,9 @@ def test_same_hash_different_target_yields_two_links(conn):
         target_ref={"path": "s3://canonical/orders", "content_hash": "CANON",
                     "version": 1},
         record_count=5,
-        edges=[{"upstream_run_id": up_run, "upstream_lineage_link_id": None,
-                "source_file_id": None, "edge_type": "raw_to_curated",
+        edges=[{"upstream_run_id": ingest_run,
+                "upstream_lineage_link_id": ingest_link,
+                "edge_type": "curated_to_canonical",
                 "record_count": 5}],
         commit=False)
 

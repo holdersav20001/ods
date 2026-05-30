@@ -165,28 +165,37 @@ def test_probe_FIXED_empty_identity_link_rejected(conn):
     f = _register_file(conn, "audit_a1_md5_p2")
     edges = _file_edge(f)
     # An output with NO content_hash AND NO path -> identity-less -> rejected.
+    # (012 target_ref_contract strengthens the old F4 OR-check: BOTH path and
+    # content_hash must be non-empty AND a version key present.)
     conn.execute("SAVEPOINT empty_id")
     with pytest.raises(psycopg.errors.CheckViolation):
         _write_link(conn, run, "raw_to_curated", {"version": 1}, edges=edges)
     conn.execute("ROLLBACK TO SAVEPOINT empty_id")
-    # Sanity: a link WITH identity (content_hash only) is still accepted.
+    # Sanity: a link WITH full identity (path + content_hash + version) is
+    # accepted. Under the 012 contract content_hash alone no longer suffices —
+    # path is mandatory too.
     ok = _write_link(conn, run, "raw_to_curated",
-                     {"content_hash": "audit_a1-has-id", "version": 1},
+                     {"path": "s3://canon/has-id",
+                      "content_hash": "audit_a1-has-id", "version": 1},
                      edges=edges)
     assert ok is not None
 
 
-def test_probe_SOUND_distinct_path_disambiguates_hashless(conn):
-    """Control: two hashless outputs with DISTINCT paths should NOT collapse
-    (path is part of the key). If this passes, path-only disambiguation works;
-    the collapse in the prior probe is specifically the hashless+pathless hole."""
+def test_probe_SOUND_distinct_path_disambiguates(conn):
+    """Control: two outputs that share a content_hash but have DISTINCT paths must
+    NOT collapse (path is part of the dedup key). Proves path disambiguation
+    works. (012 target_ref_contract now mandates BOTH path AND content_hash, so
+    the prior 'hashless' variant of this control is no longer expressible — the
+    disambiguation property is unchanged: distinct paths mint distinct links.)"""
     run = _mk_run(conn, pipeline_type="ingestion")
     f = _register_file(conn, "audit_a1_md5_p2b")
     edges = _file_edge(f)
     l1 = _write_link(conn, run, "raw_to_curated",
-                     {"path": "s3://canon/p1", "version": 1}, edges=edges)
+                     {"path": "s3://canon/p1", "content_hash": "shared",
+                      "version": 1}, edges=edges)
     l2 = _write_link(conn, run, "raw_to_curated",
-                     {"path": "s3://canon/p2", "version": 1}, edges=edges)
+                     {"path": "s3://canon/p2", "content_hash": "shared",
+                      "version": 1}, edges=edges)
     assert l1 != l2, "distinct paths must mint distinct links (sound)"
 
 
@@ -249,7 +258,8 @@ def test_probe_SOUND_quarantine_does_not_collide_with_canonical(conn):
     run = _mk_run(conn, pipeline_type="ingestion")
     f = _register_file(conn, "audit_a1_md5_p5")
     _write_link(conn, run, "raw_to_curated",
-                {"path": "s3://dlq/x.json", "content_hash": "audit_a1-c"},
+                {"path": "s3://dlq/x.json", "content_hash": "audit_a1-c",
+                 "version": 1},
                 edges=_file_edge(f))
     d = conn.execute(
         "SELECT cp.quarantine(%s,%s,%s,%s::jsonb,%s,%s)",
@@ -285,7 +295,7 @@ def test_probe_FIXED_replay_with_changed_edges_raises(conn):
     run = _mk_run(conn, pipeline_type="ingestion")
     f = _register_file(conn, "audit_a1_md5_p6")
     f2 = _register_file(conn, "audit_a1_md5_p6b")
-    tgt = {"path": "s3://canon/x", "content_hash": "audit_a1-fixed"}
+    tgt = {"path": "s3://canon/x", "content_hash": "audit_a1-fixed", "version": 1}
     l1 = _write_link(conn, run, "raw_to_curated", tgt, edges=_file_edge(f))
 
     # (a) second call, SAME target identity, but TWO edges now (changed
@@ -321,10 +331,12 @@ def test_probe_SOUND_changed_content_mints_new_link_but_leaves_stale(conn):
     f = _register_file(conn, "audit_a1_md5_p7")
     edges = _file_edge(f)
     old = _write_link(conn, run, "raw_to_curated",
-                      {"path": "s3://canon/v", "content_hash": "audit_a1-old"},
+                      {"path": "s3://canon/v", "content_hash": "audit_a1-old",
+                       "version": 1},
                       edges=edges)
     new = _write_link(conn, run, "raw_to_curated",
-                      {"path": "s3://canon/v", "content_hash": "audit_a1-new"},
+                      {"path": "s3://canon/v", "content_hash": "audit_a1-new",
+                       "version": 1},
                       edges=edges)
     assert old != new, "changed content_hash mints a new link"
     # BOTH exist; run_output_link will now return 'new' (newer) but 'old' lingers

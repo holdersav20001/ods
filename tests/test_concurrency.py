@@ -58,19 +58,29 @@ def test_two_concurrent_writers_one_workflow():
         run2 = _start(c_setup, wfid)
 
         # Interleave: both transactions open + write before either commits.
+        file1 = runs.register_file(
+            c1, s3_raw_path=f"s3://raw/{uuid.uuid4()}.csv",
+            file_md5=uuid.uuid4().hex, business_date=BD,
+            domain="sales", dataset="orders", commit=False)
+        file2 = runs.register_file(
+            c2, s3_raw_path=f"s3://raw/{uuid.uuid4()}.csv",
+            file_md5=uuid.uuid4().hex, business_date=BD,
+            domain="sales", dataset="orders", commit=False)
         link1 = lineage.write_link(
             c1, consumer_run_id=run1, edge_type="raw_to_curated",
-            target_ref={"path": "s3://c/1", "content_hash": "concurrent-1"},
+            target_ref={"path": "s3://c/1", "content_hash": "concurrent-1",
+                        "version": 1},
             record_count=1,
-            edges=[{"edge_type": "raw_to_curated", "source_ref": {"w": 1},
-                    "record_count": 1}],
+            edges=[{"edge_type": "raw_to_curated", "source_file_id": str(file1),
+                    "source_ref": {"w": 1}, "record_count": 1}],
             commit=False)
         link2 = lineage.write_link(
             c2, consumer_run_id=run2, edge_type="raw_to_curated",
-            target_ref={"path": "s3://c/2", "content_hash": "concurrent-2"},
+            target_ref={"path": "s3://c/2", "content_hash": "concurrent-2",
+                        "version": 1},
             record_count=1,
-            edges=[{"edge_type": "raw_to_curated", "source_ref": {"w": 2},
-                    "record_count": 1}],
+            edges=[{"edge_type": "raw_to_curated", "source_file_id": str(file2),
+                    "source_ref": {"w": 2}, "record_count": 1}],
             commit=False)
 
         # Commit both (no deadlock — disjoint rows).

@@ -34,13 +34,17 @@ def _sink_run_with_rows(conn, *, dataset="orders", n, dom="graph_recon_dom",
     up_run = runs.start(conn, workflow_run_id=wf, pipeline_type="ingestion",
                         domain=dom, dataset=dataset, business_date=bd,
                         trigger_type="manual", commit=False)
+    up_file = runs.register_file(
+        conn, s3_raw_path=f"s3://raw/{uuid.uuid4()}.csv",
+        file_md5=uuid.uuid4().hex, business_date=bd,
+        domain=dom, dataset=dataset, commit=False)
     up_link = lineage.write_link(
         conn, consumer_run_id=up_run, edge_type="raw_to_curated",
         target_ref={"path": f"s3://cur/{uuid.uuid4().hex}",
-                    "content_hash": uuid.uuid4().hex},
+                    "content_hash": uuid.uuid4().hex, "version": 1},
         record_count=n,
-        edges=[{"edge_type": "raw_to_curated", "source_ref": {},
-                "record_count": n}], commit=False)
+        edges=[{"edge_type": "raw_to_curated", "source_file_id": str(up_file),
+                "source_ref": {}, "record_count": n}], commit=False)
     sink_run = runs.start(conn, workflow_run_id=wf, pipeline_type="sink",
                           domain=dom, dataset=dataset, business_date=bd,
                           trigger_type="manual", commit=False)
@@ -48,7 +52,7 @@ def _sink_run_with_rows(conn, *, dataset="orders", n, dom="graph_recon_dom",
     link_id = lineage.write_link_then_rows(
         conn, consumer_run_id=sink_run, edge_type="canonical_to_sink",
         target_ref={"path": f"{sink_type}://{uuid.uuid4().hex}",
-                    "content_hash": uuid.uuid4().hex},
+                    "content_hash": uuid.uuid4().hex, "version": 1},
         record_count=n,
         edges=[{"upstream_run_id": up_run, "upstream_lineage_link_id": up_link,
                 "edge_type": "canonical_to_sink", "source_ref": {},
@@ -173,12 +177,17 @@ def test_graph_recon_fanout_counts_all_run_sink_rows(conn):
     up_run = runs.start(conn, workflow_run_id=wf, pipeline_type="ingestion",
                         domain=dom, dataset=ds, business_date=bd,
                         trigger_type="manual", commit=False)
+    fan_file = runs.register_file(
+        conn, s3_raw_path=f"s3://raw/{uuid.uuid4()}.csv",
+        file_md5=uuid.uuid4().hex, business_date=bd,
+        domain=dom, dataset=ds, commit=False)
     cur = lineage.write_link(
         conn, consumer_run_id=up_run, edge_type="raw_to_curated",
-        target_ref={"path": "s3://cur/fan", "content_hash": "fan"},
+        target_ref={"path": "s3://cur/fan", "content_hash": "fan",
+                    "version": 1},
         record_count=10,
-        edges=[{"edge_type": "raw_to_curated", "source_ref": {},
-                "record_count": 10}], commit=False)
+        edges=[{"edge_type": "raw_to_curated", "source_file_id": str(fan_file),
+                "source_ref": {}, "record_count": 10}], commit=False)
     sink_run = runs.start(conn, workflow_run_id=wf, pipeline_type="sink",
                           domain=dom, dataset=ds, business_date=bd,
                           trigger_type="manual", commit=False)
@@ -186,7 +195,8 @@ def test_graph_recon_fanout_counts_all_run_sink_rows(conn):
     for st in ("postgres", "kafka"):
         lineage.write_link_then_rows(
             conn, consumer_run_id=sink_run, edge_type="canonical_to_sink",
-            target_ref={"path": f"{st}://fan", "content_hash": "fanhash"},
+            target_ref={"path": f"{st}://fan", "content_hash": "fanhash",
+                        "version": 1},
             record_count=5,
             edges=[{"upstream_run_id": up_run, "upstream_lineage_link_id": cur,
                     "edge_type": "canonical_to_sink", "source_ref": {},

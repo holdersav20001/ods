@@ -32,6 +32,15 @@ def _start(conn, *, status=None, record_count_out=None):
     return run_id, wfid
 
 
+def _file(conn):
+    """A real registered raw file, to anchor a well-formed raw_to_curated edge
+    (012 raw_edge_requires_source_file)."""
+    return runs.register_file(
+        conn, s3_raw_path=f"s3://raw/{uuid.uuid4()}.csv",
+        file_md5=uuid.uuid4().hex, business_date=BD,
+        domain="sales", dataset="orders", commit=False)
+
+
 # ---- runs.start -------------------------------------------------------------
 
 def test_start_creates_running_run(conn):
@@ -139,12 +148,15 @@ def test_succeeded_runs_returns_all_for_key_newest_first(conn):
 def test_write_link_creates_link_and_edges(conn):
     run_id, _ = _start(conn)
     edges = [
-        {"edge_type": "raw_to_curated", "record_count": 5},
-        {"edge_type": "raw_to_curated", "record_count": 3},
+        {"edge_type": "raw_to_curated", "source_file_id": str(_file(conn)),
+         "record_count": 5},
+        {"edge_type": "raw_to_curated", "source_file_id": str(_file(conn)),
+         "record_count": 3},
     ]
     link_id = lineage.write_link(
         conn, consumer_run_id=run_id, edge_type="raw_to_curated",
-        target_ref={"content_hash": "abc"}, record_count=8, edges=edges,
+        target_ref={"path": "s3://curated/abc", "content_hash": "abc",
+                    "version": 1}, record_count=8, edges=edges,
         commit=False)
     assert isinstance(link_id, str)
     n_edges = conn.execute(
@@ -158,20 +170,23 @@ def test_write_link_empty_edges_raises(conn):
     with pytest.raises(Exception):
         lineage.write_link(
             conn, consumer_run_id=run_id, edge_type="raw_to_curated",
-            target_ref={"content_hash": "x"}, record_count=0, edges=[],
+            target_ref={"path": "s3://c/x", "content_hash": "x", "version": 1},
+            record_count=0, edges=[],
             commit=False)
 
 
 def test_write_link_idempotent_on_content_hash(conn):
     run_id, _ = _start(conn)
-    edges = [{"edge_type": "raw_to_curated", "record_count": 1}]
+    edges = [{"edge_type": "raw_to_curated",
+              "source_file_id": str(_file(conn)), "record_count": 1}]
+    tref = {"path": "s3://curated/dup", "content_hash": "dup", "version": 1}
     first = lineage.write_link(
         conn, consumer_run_id=run_id, edge_type="raw_to_curated",
-        target_ref={"content_hash": "dup"}, record_count=1, edges=edges,
+        target_ref=tref, record_count=1, edges=edges,
         commit=False)
     second = lineage.write_link(
         conn, consumer_run_id=run_id, edge_type="raw_to_curated",
-        target_ref={"content_hash": "dup"}, record_count=1, edges=edges,
+        target_ref=tref, record_count=1, edges=edges,
         commit=False)
     assert first == second
     n_edges = conn.execute(
@@ -188,16 +203,19 @@ def test_write_link_then_rows_stamps_target_rows(conn):
     # output link (009 CHECK). Mint a minimal upstream raw_to_curated link.
     up_link = lineage.write_link(
         conn, consumer_run_id=run_id, edge_type="raw_to_curated",
-        target_ref={"path": "s3://curated/up", "content_hash": "up1"},
+        target_ref={"path": "s3://curated/up", "content_hash": "up1",
+                    "version": 1},
         record_count=3,
-        edges=[{"edge_type": "raw_to_curated", "record_count": 3}],
+        edges=[{"edge_type": "raw_to_curated",
+                "source_file_id": str(_file(conn)), "record_count": 3}],
         commit=False)
     rows = [{"id": 1}, {"id": 2}, {"id": 3}]
     edges = [{"upstream_lineage_link_id": up_link,
               "edge_type": "curated_to_canonical", "record_count": 3}]
     link_id = lineage.write_link_then_rows(
         conn, consumer_run_id=run_id, edge_type="curated_to_canonical",
-        target_ref={"content_hash": "rows1"}, record_count=3,
+        target_ref={"path": "s3://canon/rows1", "content_hash": "rows1",
+                    "version": 1}, record_count=3,
         edges=edges, rows=rows, commit=False)
     cnt, wf = conn.execute(
         "SELECT count(*), max(_ods_workflow_run_id) FROM ods.orders "
