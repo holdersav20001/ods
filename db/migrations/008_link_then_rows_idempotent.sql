@@ -1,6 +1,15 @@
 -- 008_link_then_rows_idempotent.sql — make cp.write_link_then_rows
 -- row-idempotent on retry (spec decision #5 / QA H1).
 --
+--     ╔══════════════════════════════════════════════════════════════════╗
+--     ║ SUPERSEDED by 016_target_visibility.sql (P10-D). 016 DROPs this    ║
+--     ║ exact 8-arg signature and re-declares cp.write_link_then_rows with ║
+--     ║ a trailing p_source_file_id uuid DEFAULT NULL (additive). ALL of   ║
+--     ║ this body's behaviour (row-idempotency retry guard, the no-run /   ║
+--     ║ missing-table RAISEs, the write_lineage_link delegation) is        ║
+--     ║ preserved verbatim there. 016 applies last so its definition wins. ║
+--     ╚══════════════════════════════════════════════════════════════════╝
+--
 -- BUG: cp.write_link_then_rows obtains v_link idempotently (cp.write_lineage_link
 -- dedups on (consumer_run_id, edge_type, target_ref->>'content_hash')), but then
 -- UNCONDITIONALLY re-inserts the target rows. A retried/identical sink write

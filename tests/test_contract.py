@@ -577,6 +577,9 @@ def test_every_cp_function_is_asserted(conn):
         # at the table — asserted in tests/test_team_r3.py (test_FIXED_* probes)
         # and tests/test_team_r4.py.
         "trg_edge_type_matches_link",
+        # P10-D (016): target-visibility active-slice activation primitive —
+        # round-trip + invariants in tests/test_target_visibility.py.
+        "activate_target_visibility",
     }
     missing = fns - ASSERTED
     assert not missing, f"cp functions with no contract assertion: {missing}"
