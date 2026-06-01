@@ -1,0 +1,121 @@
+<mxfile host="app.diagrams.net">
+  <diagram id="control-plane-er" name="Control Plane ER">
+    <mxGraphModel dx="1422" dy="794" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2200" pageHeight="1250" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <mxCell id="title" value="ODS control plane - entity relationship model" style="text;html=1;strokeColor=none;fillColor=none;fontSize=26;fontStyle=1;align=left" vertex="1" parent="1">
+          <mxGeometry x="40" y="30" width="820" height="45" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="note" value="Important: cp.input_edge is the relationship table. The actual input is either source_file_id (raw file) or upstream_output_link_id (previous output). cp.v_run_io exposes this as input_reference_type + input_reference_id for developers." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#b3b3b3;align=left;spacing=12;fontSize=13" vertex="1" parent="1">
+          <mxGeometry x="920" y="25" width="900" height="70" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="run_log" value="cp.run_log&#xa;-----------------------------&#xa;PK run_id&#xa;workflow_run_id&#xa;pipeline_type&#xa;domain&#xa;dataset&#xa;business_date&#xa;file_id nullable&#xa;status&#xa;record_count_in / out" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;align=left;spacing=10;fontSize=13" vertex="1" parent="1">
+          <mxGeometry x="60" y="180" width="330" height="235" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="stage_log" value="cp.run_stage_log&#xa;-----------------------------&#xa;PK stage_log_id&#xa;FK run_id -> cp.run_log&#xa;stage&#xa;attempt&#xa;status&#xa;record_count_in / out&#xa;metrics" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;align=left;spacing=10;fontSize=13" vertex="1" parent="1">
+          <mxGeometry x="60" y="520" width="330" height="210" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="output_link" value="cp.output_link view&#xa;(physical: cp.lineage_link)&#xa;-----------------------------&#xa;PK output_link_id&#xa;FK consumer_run_id -> cp.run_log&#xa;edge_type&#xa;sink_type nullable&#xa;target_ref jsonb&#xa;transform_version&#xa;record_count&#xa;created_at" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;spacing=10;fontSize=13" vertex="1" parent="1">
+          <mxGeometry x="520" y="170" width="390" height="260" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="input_edge" value="cp.input_edge view&#xa;(physical: cp.lineage_edge)&#xa;-----------------------------&#xa;PK input_edge_id&#xa;FK output_link_id -> cp.output_link&#xa;FK upstream_output_link_id -> cp.output_link nullable&#xa;FK source_file_id -> cp.file_catalogue nullable&#xa;input_slot&#xa;edge_type&#xa;source_ref jsonb&#xa;record_count" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;align=left;spacing=10;fontSize=13" vertex="1" parent="1">
+          <mxGeometry x="1070" y="170" width="450" height="300" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="file_catalogue" value="cp.file_catalogue&#xa;-----------------------------&#xa;PK file_id&#xa;s3_raw_path&#xa;file_md5&#xa;business_date&#xa;state&#xa;domain&#xa;dataset" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff7e6;strokeColor=#d79b00;align=left;spacing=10;fontSize=13" vertex="1" parent="1">
+          <mxGeometry x="1660" y="170" width="330" height="210" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="recon" value="cp.reconciliation_log&#xa;-----------------------------&#xa;PK recon_id&#xa;FK run_id -> cp.run_log&#xa;check_type&#xa;source_count&#xa;accounted_count&#xa;discrepancy&#xa;status&#xa;metrics jsonb" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;align=left;spacing=10;fontSize=13" vertex="1" parent="1">
+          <mxGeometry x="520" y="530" width="390" height="220" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="target_visibility" value="ods.target_visibility&#xa;-----------------------------&#xa;PK visibility_id&#xa;domain / dataset / business_date&#xa;sink_type / target_name&#xa;file_id nullable&#xa;FK lineage_link_id -> cp.lineage_link&#xa;FK producer_run_id -> cp.run_log&#xa;status Y/N&#xa;superseded_by nullable" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e2f0d9;strokeColor=#82b366;align=left;spacing=10;fontSize=13" vertex="1" parent="1">
+          <mxGeometry x="1070" y="560" width="450" height="270" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="target_rows" value="ods.&lt;target_table&gt;&#xa;-----------------------------&#xa;business columns...&#xa;_ods_workflow_run_id&#xa;_ods_lineage_link_id physical FK&#xa;_ods_output_link_id mirror&#xa;_ods_source_file_id nullable" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fce4d6;strokeColor=#d79b00;align=left;spacing=10;fontSize=13" vertex="1" parent="1">
+          <mxGeometry x="1660" y="560" width="330" height="220" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="v_run_io" value="cp.v_run_io view&#xa;developer-friendly read model&#xa;-----------------------------&#xa;run_id&#xa;output_link_id / output_path&#xa;input_edge_id&#xa;input_reference_type&#xa;input_reference_id&#xa;input_path&#xa;input_role" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;dashed=1;align=left;spacing=10;fontSize=13" vertex="1" parent="1">
+          <mxGeometry x="520" y="890" width="390" height="225" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="example" value="Example meaning&#xa;-----------------------------&#xa;input_edge_id = E1 is just the row key.&#xa;&#xa;If input_reference_type = raw_file:&#xa;  input_reference_id = source_file_id&#xa;&#xa;If input_reference_type = output_link:&#xa;  input_reference_id = upstream_output_link_id" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#b3b3b3;align=left;spacing=10;fontSize=13" vertex="1" parent="1">
+          <mxGeometry x="1070" y="900" width="450" height="220" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="r_run_output" value="1 run produces many outputs" edge="1" parent="1" source="run_log" target="output_link" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;strokeColor=#666666;fontSize=12">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="r_run_stage" value="1 run has many stages" edge="1" parent="1" source="run_log" target="stage_log" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;strokeColor=#9673a6;fontSize=12">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="r_output_input" value="1 output has many input edges" edge="1" parent="1" source="output_link" target="input_edge" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;strokeColor=#b85450;fontSize=12">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="r_upstream" value="previous output used as input" edge="1" parent="1" source="output_link" target="input_edge" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;strokeColor=#82b366;fontSize=12">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="740" y="120"/>
+              <mxPoint x="1295" y="120"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="r_file_input" value="raw file used as input" edge="1" parent="1" source="file_catalogue" target="input_edge" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;strokeColor=#d79b00;fontSize=12">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="r_run_recon" value="1 run has many checks" edge="1" parent="1" source="run_log" target="recon" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;strokeColor=#d6b656;fontSize=12">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="r_output_visibility" value="active business slice points to output" edge="1" parent="1" source="output_link" target="target_visibility" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;strokeColor=#82b366;fontSize=12">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="r_run_visibility" value="producer run" edge="1" parent="1" source="run_log" target="target_visibility" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;strokeColor=#6c8ebf;fontSize=12">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="840"/>
+              <mxPoint x="1295" y="840"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="r_output_rows" value="target rows stamped with output id" edge="1" parent="1" source="output_link" target="target_rows" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;strokeColor=#82b366;fontSize=12">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="715" y="500"/>
+              <mxPoint x="1825" y="500"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="r_file_rows" value="optional row-level raw attribution" edge="1" parent="1" source="file_catalogue" target="target_rows" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;strokeColor=#d79b00;fontSize=12">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="r_view_output" value="joins run + output + input" edge="1" parent="1" source="output_link" target="v_run_io" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;dashed=1;strokeColor=#666666;fontSize=12">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="r_view_input" value="derives input_reference_id" edge="1" parent="1" source="input_edge" target="v_run_io" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;dashed=1;strokeColor=#666666;fontSize=12">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

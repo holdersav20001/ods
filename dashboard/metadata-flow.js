@@ -94,7 +94,7 @@
     );
     const stage = run.stages?.[0];
     const inputCount = inputEdges.length;
-    const targetRows = links.flatMap((link) => data.targetRowsByLink[link.lineage_link_id] || []);
+    const targetRows = links.flatMap((link) => data.targetRowsByLink[outputLinkId(link)] || []);
 
     return e(React.Fragment, null,
       e("article", { className: "vertical-step" },
@@ -115,7 +115,7 @@
               badge: `${inputCount} edge${inputCount === 1 ? "" : "s"}`,
               children: inputEdges.length
                 ? inputEdges.map(({ link, edge }) => e(InputBlock, {
-                    key: edge.lineage_edge_id,
+                    key: inputEdgeId(edge),
                     data,
                     edge,
                     outputLink: link,
@@ -134,7 +134,7 @@
               badge: `${links.length} link${links.length === 1 ? "" : "s"}`,
               children: links.length
                 ? links.map((link) => e(OutputBlock, {
-                    key: link.lineage_link_id,
+                    key: outputLinkId(link),
                     data,
                     link,
                     expanded,
@@ -145,7 +145,7 @@
           targetRows.length > 0 && e("div", { className: "target-row-summary" },
             e("strong", null, "Target rows stamped"),
             e("span", null, `${targetRows.length} row${targetRows.length === 1 ? "" : "s"} across ${unique(targetRows.map((row) => `ods.${row.tableName}`)).join(", ")}`),
-            e("code", null, unique(targetRows.map((row) => shortId(row._ods_lineage_link_id))).join(", "))
+            e("code", null, unique(targetRows.map((row) => shortId(rowOutputLinkId(row)))).join(", "))
           )
         )
       ),
@@ -184,7 +184,8 @@
       );
     }
 
-    const upstreamLink = data.linkById[edge.upstream_lineage_link_id];
+    const upstreamId = upstreamOutputLinkId(edge);
+    const upstreamLink = data.linkById[upstreamId];
     const upstreamRun = upstreamLink ? data.runById[upstreamLink.consumer_run_id] : data.runById[edge.upstream_run_id];
     return e("div", { className: "flow-mini-card input" },
       e("strong", null, "Input edge — consumes upstream output"),
@@ -193,7 +194,7 @@
         label: "upstream run",
         value: upstreamRun ? `${upstreamRun.pipeline_type} / ${upstreamRun.dataset}` : edge.upstream_run_id || "-"
       }),
-      e(Fact, { label: "upstream_output_link_id", value: edge.upstream_lineage_link_id || "-" }),
+      e(Fact, { label: "upstream_output_link_id", value: upstreamId || "-" }),
       e(Fact, { label: "upstream target", value: upstreamLink?.target_ref?.path || "-" }),
       e(Fact, { label: "record_count", value: edge.record_count })
     );
@@ -222,12 +223,13 @@
   }
 
   function OutputBlock({ data, link, expanded }) {
-    const consumers = data.consumersByLink[link.lineage_link_id] || [];
-    const targetRows = data.targetRowsByLink[link.lineage_link_id] || [];
+    const linkId = outputLinkId(link);
+    const consumers = data.consumersByLink[linkId] || [];
+    const targetRows = data.targetRowsByLink[linkId] || [];
     return e("div", { className: "flow-mini-card output" },
       e("strong", null, "Output link — what this run produced"),
       e("span", { className: "card-table-ref" }, "cp.output_link"),
-      e(Fact, { label: "output_link_id", value: link.lineage_link_id }),
+      e(Fact, { label: "output_link_id", value: linkId }),
       e(Fact, { label: "edge_type", value: link.edge_type }),
       e(Fact, { label: "target_ref.path", value: link.target_ref?.path || "-" }),
       e(Fact, { label: "content_hash", value: link.target_ref?.content_hash || "-" }),
@@ -263,7 +265,7 @@
       (snapshot.executions || []).map((execution) => [execution.workflow_run_id, execution])
     );
     const runById = Object.fromEntries((snapshot.runs || []).map((run) => [run.run_id, run]));
-    const linkById = Object.fromEntries((snapshot.links || []).map((link) => [link.lineage_link_id, link]));
+    const linkById = Object.fromEntries((snapshot.links || []).map((link) => [outputLinkId(link), link]));
     const fileById = Object.fromEntries((snapshot.files || []).map((file) => [file.file_id, file]));
     const linksByRun = {};
     const targetRowsByLink = {};
@@ -273,11 +275,12 @@
       if (!linksByRun[link.consumer_run_id]) linksByRun[link.consumer_run_id] = [];
       linksByRun[link.consumer_run_id].push(link);
       (link.edges || []).forEach((edge) => {
-        if (!edge.upstream_lineage_link_id) return;
-        if (!consumersByLink[edge.upstream_lineage_link_id]) consumersByLink[edge.upstream_lineage_link_id] = [];
-        consumersByLink[edge.upstream_lineage_link_id].push({
+        const upstreamId = upstreamOutputLinkId(edge);
+        if (!upstreamId) return;
+        if (!consumersByLink[upstreamId]) consumersByLink[upstreamId] = [];
+        consumersByLink[upstreamId].push({
           consumer_run_id: link.consumer_run_id,
-          consumer_link_id: link.lineage_link_id,
+          consumer_link_id: outputLinkId(link),
           edge_type: link.edge_type,
           record_count: edge.record_count,
         });
@@ -286,7 +289,8 @@
 
     Object.entries(snapshot.tables || {}).forEach(([tableName, rows]) => {
       rows.forEach((row) => {
-        const linkId = row._ods_lineage_link_id;
+        const linkId = rowOutputLinkId(row);
+        if (!linkId) return;
         if (!targetRowsByLink[linkId]) targetRowsByLink[linkId] = [];
         targetRowsByLink[linkId].push({ tableName, ...row });
       });
@@ -302,6 +306,22 @@
       targetRowsByLink,
       consumersByLink,
     };
+  }
+
+  function outputLinkId(link) {
+    return link?.output_link_id || link?.lineage_link_id || "";
+  }
+
+  function inputEdgeId(edge) {
+    return edge?.input_edge_id || edge?.lineage_edge_id || "";
+  }
+
+  function upstreamOutputLinkId(edge) {
+    return edge?.upstream_output_link_id || edge?.upstream_lineage_link_id || "";
+  }
+
+  function rowOutputLinkId(row) {
+    return row?._ods_output_link_id || row?._ods_lineage_link_id || "";
   }
 
   function compareRuns(a, b) {

@@ -1,0 +1,67 @@
+<mxfile host="app.diagrams.net">
+  <diagram id="simple-transaction-er" name="Single Transaction File ER">
+    <mxGraphModel dx="1422" dy="794" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="900" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="title" value="Single transaction file - entity relationship model" style="text;html=1;strokeColor=none;fillColor=none;fontSize=24;fontStyle=1;align=left" vertex="1" parent="1">
+          <mxGeometry x="40" y="30" width="760" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="legend" value="Key idea: input_edge is the relationship row. The actual input is source_file_id for raw files, or upstream_output_link_id for a previous output." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#b3b3b3;align=left;spacing=10;fontSize=13" vertex="1" parent="1">
+          <mxGeometry x="900" y="25" width="650" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="file" value="cp.file_catalogue&#xa;-----------------------------&#xa;PK file_id = F_TX_20260530&#xa;domain = sales&#xa;dataset = transaction&#xa;business_date = 2026-05-30&#xa;s3_raw_path = s3://raw/.../transaction.parquet&#xa;file_md5 = md5_tx_raw" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff7e6;strokeColor=#d79b00;align=left;spacing=10;fontSize=13" vertex="1" parent="1">
+          <mxGeometry x="40" y="140" width="365" height="190" as="geometry"/>
+        </mxCell>
+        <mxCell id="run_silver" value="cp.run_log&#xa;-----------------------------&#xa;PK run_id = R_TX_SILVER&#xa;workflow_run_id = WF_TX_20260530&#xa;pipeline_type = canonicalization&#xa;dataset = transaction&#xa;business_date = 2026-05-30&#xa;status = succeeded" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;align=left;spacing=10;fontSize=13" vertex="1" parent="1">
+          <mxGeometry x="500" y="130" width="360" height="200" as="geometry"/>
+        </mxCell>
+        <mxCell id="stage" value="cp.run_stage_log&#xa;-----------------------------&#xa;PK stage_log_id&#xa;FK run_id = R_TX_SILVER&#xa;stage = validate / transform / write_silver&#xa;status = succeeded" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;align=left;spacing=10;fontSize=13" vertex="1" parent="1">
+          <mxGeometry x="500" y="410" width="360" height="160" as="geometry"/>
+        </mxCell>
+        <mxCell id="out_silver" value="cp.output_link&#xa;-----------------------------&#xa;PK output_link_id = O_TX_SILVER&#xa;FK consumer_run_id = R_TX_SILVER&#xa;edge_type = raw_to_curated&#xa;target_ref.path = s3://silver/.../transaction.parquet&#xa;record_count = 3" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;spacing=10;fontSize=13" vertex="1" parent="1">
+          <mxGeometry x="980" y="130" width="410" height="200" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge_raw" value="cp.input_edge&#xa;-----------------------------&#xa;PK input_edge_id = E_TX_RAW&#xa;FK output_link_id = O_TX_SILVER&#xa;FK source_file_id = F_TX_20260530&#xa;upstream_output_link_id = NULL&#xa;input_reference_type = raw_file&#xa;input_reference_id = F_TX_20260530" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;align=left;spacing=10;fontSize=13" vertex="1" parent="1">
+          <mxGeometry x="980" y="410" width="410" height="200" as="geometry"/>
+        </mxCell>
+        <mxCell id="run_sink" value="cp.run_log&#xa;-----------------------------&#xa;PK run_id = R_TX_SINK&#xa;workflow_run_id = WF_TX_20260530&#xa;pipeline_type = sink&#xa;dataset = transaction&#xa;status = succeeded" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;align=left;spacing=10;fontSize=13" vertex="1" parent="1">
+          <mxGeometry x="40" y="650" width="360" height="170" as="geometry"/>
+        </mxCell>
+        <mxCell id="out_sink" value="cp.output_link&#xa;-----------------------------&#xa;PK output_link_id = O_TX_TARGET&#xa;FK consumer_run_id = R_TX_SINK&#xa;edge_type = canonical_to_sink&#xa;sink_type = postgres&#xa;target_ref.path = postgres://ods/transaction" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;spacing=10;fontSize=13" vertex="1" parent="1">
+          <mxGeometry x="500" y="650" width="410" height="170" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge_sink" value="cp.input_edge&#xa;-----------------------------&#xa;PK input_edge_id = E_TX_SILVER&#xa;FK output_link_id = O_TX_TARGET&#xa;source_file_id = NULL&#xa;FK upstream_output_link_id = O_TX_SILVER&#xa;input_reference_type = output_link&#xa;input_reference_id = O_TX_SILVER" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;align=left;spacing=10;fontSize=13" vertex="1" parent="1">
+          <mxGeometry x="980" y="650" width="410" height="190" as="geometry"/>
+        </mxCell>
+        <mxCell id="target" value="ods.transaction&#xa;-----------------------------&#xa;PK transaction_id = T100&#xa;business_date = 2026-05-30&#xa;amount = 125.50&#xa;_ods_workflow_run_id = WF_TX_20260530&#xa;_ods_output_link_id = O_TX_TARGET" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;align=left;spacing=10;fontSize=13" vertex="1" parent="1">
+          <mxGeometry x="1435" y="650" width="250" height="190" as="geometry"/>
+        </mxCell>
+        <mxCell id="r1" value="1 produces many" edge="1" parent="1" source="run_silver" target="out_silver" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;strokeColor=#666666;fontSize=12">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="r2" value="1 has many stages" edge="1" parent="1" source="run_silver" target="stage" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;strokeColor=#666666;fontSize=12">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="r3" value="1 output has many input edges" edge="1" parent="1" source="out_silver" target="edge_raw" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;strokeColor=#b85450;fontSize=12">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="r4" value="raw-file input" edge="1" parent="1" source="file" target="edge_raw" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;strokeColor=#d79b00;fontSize=12">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="r5" value="1 produces many" edge="1" parent="1" source="run_sink" target="out_sink" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;strokeColor=#666666;fontSize=12">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="r6" value="previous output input" edge="1" parent="1" source="out_silver" target="edge_sink" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;strokeColor=#82b366;fontSize=12">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="r7" value="1 output has many input edges" edge="1" parent="1" source="out_sink" target="edge_sink" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;strokeColor=#b85450;fontSize=12">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="r8" value="target rows stamped with output" edge="1" parent="1" source="out_sink" target="target" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;strokeColor=#82b366;fontSize=12">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

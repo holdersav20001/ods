@@ -582,6 +582,88 @@ except Exception as exc:
         "ods.transaction rows stamped with _ods_output_link_id and _ods_workflow_run_id",
         "cp.target_visibility: active_flag Y only after the write succeeds",
       ],
+      dataModel: {
+        drawioPath: "docs/reference/control-plane-cookbook/simple-transaction-file-entity-relationship.drawio",
+        summary: "Entity relationship model for one transaction file. It shows run_log producing output_link rows, output_link owning input_edge rows, and input_edge pointing to either file_catalogue or a previous output_link.",
+        rows: [
+          {
+            table: "cp.file_catalogue",
+            role: "raw input object",
+            fields: [
+              ["file_id", "F_TX_20260530"],
+              ["dataset", "transaction"],
+              ["s3_raw_path", "s3://raw/sales/transaction/2026-05-30.parquet"],
+            ],
+          },
+          {
+            table: "cp.run_log",
+            role: "silver process",
+            fields: [
+              ["run_id", "R_TX_SILVER"],
+              ["pipeline_type", "canonicalization"],
+              ["dataset", "transaction"],
+            ],
+          },
+          {
+            table: "cp.output_link",
+            role: "silver output",
+            fields: [
+              ["output_link_id", "O_TX_SILVER"],
+              ["consumer_run_id", "R_TX_SILVER"],
+              ["target_ref.path", "s3://silver/transaction/2026-05-30.parquet"],
+            ],
+          },
+          {
+            table: "cp.input_edge",
+            role: "raw file used by silver output",
+            fields: [
+              ["input_edge_id", "E_TX_RAW"],
+              ["output_link_id", "O_TX_SILVER"],
+              ["input_reference_type", "raw_file"],
+              ["input_reference_id", "F_TX_20260530"],
+            ],
+          },
+          {
+            table: "cp.output_link",
+            role: "Postgres target output",
+            fields: [
+              ["output_link_id", "O_TX_TARGET"],
+              ["consumer_run_id", "R_TX_SINK"],
+              ["target_ref.path", "postgres://ods/transaction"],
+            ],
+          },
+          {
+            table: "cp.input_edge",
+            role: "silver output used by target output",
+            fields: [
+              ["input_edge_id", "E_TX_SILVER"],
+              ["output_link_id", "O_TX_TARGET"],
+              ["input_reference_type", "output_link"],
+              ["input_reference_id", "O_TX_SILVER"],
+            ],
+          },
+          {
+            table: "ods.transaction",
+            role: "business row",
+            fields: [
+              ["transaction_id", "T100"],
+              ["business_date", "2026-05-30"],
+              ["_ods_output_link_id", "O_TX_TARGET"],
+            ],
+          },
+        ],
+        lookupSql: `select
+    run_id,
+    output_link_id,
+    output_path,
+    input_edge_id,
+    input_reference_type,
+    input_reference_id,
+    input_path
+from cp.v_run_io
+where run_id = 'R_TX_SILVER'
+order by output_created_at, input_slot nulls last;`,
+      },
       code: `# Simple transaction file template
 # Purpose: one raw transaction parquet file becomes a silver S3 output, and
 # optionally a business-visible Postgres target.
@@ -627,9 +709,9 @@ control.start_stage(silver_run.run_id, "write_silver")
 silver_df.write.mode("overwrite").parquet(args["silver_path"])
 
 # For a file target, compute content_hash after the file exists.
-# Then create the lineage link that names the completed output.
+# Then create the output link that names the completed output.
 silver_content_hash = compute_s3_content_hash(args["silver_path"])
-silver_link_id = control.create_lineage_link(
+silver_output_link_id = control.write_output_link(
     consumer_run_id=silver_run.run_id,
     edge_type="raw_to_curated",
     target_ref={
@@ -641,7 +723,7 @@ silver_link_id = control.create_lineage_link(
     },
     record_count=silver_df.count(),
     transform_version="transaction_raw_to_silver:v1",
-    edges=[{
+    inputs=[{
         "source_file_id": file_id,
         "edge_type": "raw_to_curated",
         "record_count": raw_df.count(),
@@ -651,7 +733,7 @@ control.finish_stage(silver_run.run_id, "write_silver", record_count_in=silver_d
 control.finish_run(silver_run.run_id, record_count_out=silver_df.count())
 
 # If you do NOT sync this dataset to a business target, stop here.
-# You have file + run + silver lineage, but no active target slice.
+# You have file + run + silver output lineage, but no active target slice.
 if args["sync_to_postgres"]:
     sink_run = control.start_or_resume_run(
         workflow_run_id=args["workflow_run_id"],
@@ -664,13 +746,13 @@ if args["sync_to_postgres"]:
     )
 
     # For a database target, compute a deterministic hash of the business rows
-    # before stamping lineage metadata. This hash identifies the output content;
-    # the lineage id itself is metadata about the write event.
+    # before stamping output-link metadata. This hash identifies the output
+    # content; the output_link_id itself is metadata about the write event.
     postgres_content_hash = compute_rowset_hash(
         silver_df,
         keys=["business_date", "transaction_id"],
     )
-    sink_link_id = control.create_lineage_link(
+    sink_output_link_id = control.write_output_link(
         consumer_run_id=sink_run.run_id,
         edge_type="canonical_to_sink",
         sink_type="postgres",
@@ -685,8 +767,8 @@ if args["sync_to_postgres"]:
         },
         record_count=silver_df.count(),
         transform_version="transaction_postgres_upsert:v1",
-        edges=[{
-            "upstream_lineage_link_id": silver_link_id,
+        inputs=[{
+            "upstream_output_link_id": silver_output_link_id,
             "edge_type": "canonical_to_sink",
             "record_count": silver_df.count(),
         }],
@@ -694,18 +776,18 @@ if args["sync_to_postgres"]:
 
     # postgres.upsert is a placeholder adapter. In Glue this might be a
     # dataframe JDBC write, COPY into staging + SQL MERGE, or a Python DB call.
-    # Whichever implementation you choose must write sink_link_id onto the rows.
-    rows = silver_df.withColumn("_ods_lineage_link_id", lit(sink_link_id)) \\
+    # Whichever implementation you choose must write sink_output_link_id onto the rows.
+    rows = silver_df.withColumn("_ods_output_link_id", lit(sink_output_link_id)) \\
         .withColumn("_ods_workflow_run_id", lit(args["workflow_run_id"]))
     postgres.upsert(table="ods.transaction", dataframe=rows, keys=["business_date", "transaction_id"])
 
-    control.reconcile_sink_link(lineage_link_id=sink_link_id, source_count=silver_df.count())
+    control.reconcile_sink_link(lineage_link_id=sink_output_link_id, source_count=silver_df.count())
     control.finish_run(sink_run.run_id, record_count_out=silver_df.count())
 
     # activate_target_slice writes the active-control row: for ods.transaction
-    # and this business_date, sink_link_id is now the business-visible version.
+    # and this business_date, sink_output_link_id is now the business-visible version.
     control.activate_target_slice(
-        lineage_link_id=sink_link_id,
+        output_link_id=sink_output_link_id,
         target_schema="ods",
         target_table="transaction",
         business_date=args["business_date"],
@@ -715,27 +797,128 @@ if args["sync_to_postgres"]:
       id: "customer-transaction-merge",
       title: "Customer + transaction merge",
       stage: "merge",
-      summary: "Use the current pattern: read customer and transaction silver outputs, merge them, sink customer_transaction, and stamp each target row with lineage.",
+      summary: "Use the current pattern: read customer and transaction silver outputs, merge them, sink customer_transaction, and stamp each target row with the output link.",
       purpose: "Use this when the target is created from two upstream datasets. The product value here is proving which customer silver slice and which transaction silver slice produced the merged target rows.",
       commentary: [
-        "This template assumes customer and transaction already have silver lineage links from earlier processing.",
-        "The merge output first creates a merge_to_canonical lineage link. The Postgres write then creates a canonical_to_sink link that points to the merge output.",
+        "This template assumes customer and transaction already have silver output links from earlier processing.",
+        "The merge output first creates a merge_to_canonical output link. The Postgres write then creates a canonical_to_sink output link that points to the merge output.",
         "The active slice should flip only after the target upsert, reconciliation, and succeeded run status. That protects business users during retries and refeeds.",
         "The control API records metadata. It does not automatically read data or merge rows; read_target_slice and build_customer_transaction are application code.",
       ],
       inputs: [
-        "customer silver lineage_link_id",
-        "transaction silver lineage_link_id",
+        "customer silver output_link_id",
+        "transaction silver output_link_id",
         "workflow_run_id, business_date, and Airflow attempt",
       ],
       writes: [
         "cp.run_log: one logical merge/sink run",
         "cp.run_stage_log: read_inputs, merge, write_target",
-        "cp.lineage_edge: one merge edge for customer and one merge edge for transaction",
-        "cp.lineage_link: one merge_to_canonical link and one canonical_to_sink link",
-        "ods.customer_transaction rows stamped with _ods_lineage_link_id",
+        "cp.input_edge: one merge edge for customer and one merge edge for transaction",
+        "cp.output_link: one merge_to_canonical link and one canonical_to_sink link",
+        "ods.customer_transaction rows stamped with _ods_output_link_id",
         "cp.target_visibility: active customer_transaction slice after successful write",
       ],
+      dataModel: {
+        drawioPath: "docs/reference/control-plane-cookbook/customer-transaction-merge-entity-relationship.drawio",
+        summary: "Entity relationship model for the merge. Two upstream output_link rows are referenced by two input_edge rows that belong to the merged output_link; the sink output then consumes that merged output.",
+        rows: [
+          {
+            table: "cp.output_link",
+            role: "customer input output",
+            fields: [
+              ["output_link_id", "O_CUSTOMER_SILVER"],
+              ["dataset", "customer"],
+              ["target_ref.path", "s3://silver/customer/2026-05-30.parquet"],
+            ],
+          },
+          {
+            table: "cp.output_link",
+            role: "transaction input output",
+            fields: [
+              ["output_link_id", "O_TRANSACTION_SILVER"],
+              ["dataset", "transaction"],
+              ["target_ref.path", "s3://silver/transaction/2026-05-30.parquet"],
+            ],
+          },
+          {
+            table: "cp.run_log",
+            role: "merge process",
+            fields: [
+              ["run_id", "R_MERGE"],
+              ["pipeline_type", "merge"],
+              ["dataset", "customer_transaction"],
+            ],
+          },
+          {
+            table: "cp.output_link",
+            role: "merged silver output",
+            fields: [
+              ["output_link_id", "O_MERGED_SILVER"],
+              ["consumer_run_id", "R_MERGE"],
+              ["target_ref.path", "s3://silver/customer_transaction/2026-05-30.parquet"],
+            ],
+          },
+          {
+            table: "cp.input_edge",
+            role: "customer input relationship",
+            fields: [
+              ["input_edge_id", "E_MERGE_CUSTOMER"],
+              ["output_link_id", "O_MERGED_SILVER"],
+              ["input_role", "customer"],
+              ["input_reference_id", "O_CUSTOMER_SILVER"],
+            ],
+          },
+          {
+            table: "cp.input_edge",
+            role: "transaction input relationship",
+            fields: [
+              ["input_edge_id", "E_MERGE_TRANSACTION"],
+              ["output_link_id", "O_MERGED_SILVER"],
+              ["input_role", "transaction"],
+              ["input_reference_id", "O_TRANSACTION_SILVER"],
+            ],
+          },
+          {
+            table: "cp.output_link",
+            role: "Postgres target output",
+            fields: [
+              ["output_link_id", "O_CT_TARGET"],
+              ["consumer_run_id", "R_CT_SINK"],
+              ["target_ref.path", "postgres://ods/customer_transaction"],
+            ],
+          },
+          {
+            table: "cp.input_edge",
+            role: "merged output used by sink",
+            fields: [
+              ["input_edge_id", "E_SINK_MERGED"],
+              ["output_link_id", "O_CT_TARGET"],
+              ["input_reference_type", "output_link"],
+              ["input_reference_id", "O_MERGED_SILVER"],
+            ],
+          },
+          {
+            table: "ods.customer_transaction",
+            role: "business row",
+            fields: [
+              ["transaction_id", "T100"],
+              ["customer_id", "C001"],
+              ["_ods_output_link_id", "O_CT_TARGET"],
+            ],
+          },
+        ],
+        lookupSql: `select
+    run_id,
+    output_link_id,
+    output_path,
+    input_role,
+    input_reference_type,
+    input_reference_id,
+    input_path
+from cp.v_run_io
+where run_id = 'R_MERGE'
+order by input_slot nulls last;`,
+      },
       code: `# Customer + transaction merge template
 # Purpose: two silver upstream datasets become one merged target table.
 
@@ -792,7 +975,7 @@ control.finish_stage(merge_run.run_id, "merge", record_count_in=customer_df.coun
 # 4. The merge creates a canonical output. It is not the Postgres sink yet.
 merged_df.write.mode("overwrite").parquet(args["merged_silver_path"])
 merged_content_hash = compute_s3_content_hash(args["merged_silver_path"])
-merge_link_id = control.create_lineage_link(
+merge_output_link_id = control.write_output_link(
     consumer_run_id=merge_run.run_id,
     edge_type="merge_to_canonical",
     target_ref={
@@ -804,9 +987,9 @@ merge_link_id = control.create_lineage_link(
     },
     record_count=merged_df.count(),
     transform_version="customer_transaction_merge:v1",
-    edges=[
-        {"upstream_lineage_link_id": customer_link.lineage_link_id, "edge_type": "merge_to_canonical", "record_count": customer_df.count()},
-        {"upstream_lineage_link_id": transaction_link.lineage_link_id, "edge_type": "merge_to_canonical", "record_count": transaction_df.count()},
+    inputs=[
+        {"upstream_output_link_id": customer_link.output_link_id, "edge_type": "merge_to_canonical", "record_count": customer_df.count()},
+        {"upstream_output_link_id": transaction_link.output_link_id, "edge_type": "merge_to_canonical", "record_count": transaction_df.count()},
     ],
 )
 control.finish_run(merge_run.run_id, record_count_out=merged_df.count())
@@ -828,7 +1011,7 @@ postgres_content_hash = compute_rowset_hash(
     merged_df,
     keys=["business_date", "transaction_id"],
 )
-sink_link_id = control.create_lineage_link(
+sink_output_link_id = control.write_output_link(
     consumer_run_id=sink_run.run_id,
     edge_type="canonical_to_sink",
     sink_type="postgres",
@@ -843,8 +1026,8 @@ sink_link_id = control.create_lineage_link(
     },
     record_count=merged_df.count(),
     transform_version="customer_transaction_postgres_upsert:v1",
-    edges=[{
-        "upstream_lineage_link_id": merge_link_id,
+    inputs=[{
+        "upstream_output_link_id": merge_output_link_id,
         "edge_type": "canonical_to_sink",
         "record_count": merged_df.count(),
     }],
@@ -852,19 +1035,19 @@ sink_link_id = control.create_lineage_link(
 
 # postgres.upsert is an adapter placeholder. In real Glue it might be dataframe
 # JDBC, COPY-to-staging plus SQL MERGE, or a stored procedure call. The product
-# requires every implementation to carry sink_link_id into the target rows.
-rows = merged_df.withColumn("_ods_lineage_link_id", lit(sink_link_id)) \\
+# requires every implementation to carry sink_output_link_id into the target rows.
+rows = merged_df.withColumn("_ods_output_link_id", lit(sink_output_link_id)) \\
     .withColumn("_ods_workflow_run_id", lit(args["workflow_run_id"]))
 postgres.upsert(table="ods.customer_transaction", dataframe=rows, keys=["business_date", "transaction_id"])
 
-control.reconcile_sink_link(lineage_link_id=sink_link_id, source_count=merged_df.count())
+control.reconcile_sink_link(lineage_link_id=sink_output_link_id, source_count=merged_df.count())
 control.finish_run(sink_run.run_id, record_count_out=merged_df.count())
 
 # 6. activate_target_slice updates the business-active control table.
-# It means: for ods.customer_transaction and this business_date, sink_link_id is
+# It means: for ods.customer_transaction and this business_date, sink_output_link_id is
 # now the Y/current version. The previous active slice, if any, becomes N.
 control.activate_target_slice(
-    lineage_link_id=sink_link_id,
+    output_link_id=sink_output_link_id,
     target_schema="ods",
     target_table="customer_transaction",
     business_date=args["business_date"],
@@ -902,7 +1085,7 @@ control.activate_target_slice(
         step: "5",
         title: "Optional sink",
         meta: "canonical_to_sink",
-        note: "If synced, target rows are stamped with _ods_lineage_link_id.",
+        note: "If synced, target rows are stamped with _ods_output_link_id.",
       },
       {
         step: "6",
@@ -940,7 +1123,7 @@ control.activate_target_slice(
         step: "5",
         title: "Upsert target rows",
         meta: "ods.customer_transaction",
-        note: "Rows are stamped with the merged lineage link.",
+        note: "Rows are stamped with the merged output link.",
       },
       {
         step: "6",
@@ -957,15 +1140,15 @@ control.activate_target_slice(
       question: "What is the minimum I need to use the product properly?",
       answer: [
         "For run tracking only, start_or_resume_run and finish_run are enough.",
-        "For lineage, also create lineage links and lineage edges for every input and output.",
-        "For row trace-back, stamp target rows with _ods_lineage_link_id and _ods_workflow_run_id.",
+        "For lineage, also create output links and input edges for every produced output.",
+        "For row trace-back, stamp target rows with _ods_output_link_id and _ods_workflow_run_id.",
         "For business current-state, activate the target slice only after the write, reconciliation, and succeeded run status.",
       ],
       code: `run = control.start_or_resume_run(...)
-link_id = control.create_lineage_link(..., edges=[...])
-rows = rows.withColumn("_ods_lineage_link_id", lit(link_id))
+output_link_id = control.write_output_link(..., inputs=[...])
+rows = rows.withColumn("_ods_output_link_id", lit(output_link_id))
 postgres.upsert(...)
-control.reconcile_sink_link(lineage_link_id=link_id, source_count=row_count)
+control.reconcile_sink_link(lineage_link_id=output_link_id, source_count=row_count)
 control.finish_run(run.run_id, record_count_out=row_count)
 control.activate_target_slice(...)`,
     },
@@ -975,7 +1158,7 @@ control.activate_target_slice(...)`,
       answer: [
         "pipeline_type classifies the run in cp.run_log. It helps humans, discovery logic, dashboards, and restart decisions understand the role of the task.",
         "pipeline_type='sink' means the run publishes to a sink or serving target. It does not choose the storage destination by itself.",
-        "The destination is described by the lineage link: edge_type='canonical_to_sink', sink_type='postgres' or 's3' or another sink, and target_ref.path.",
+        "The destination is described by the output link: edge_type='canonical_to_sink', sink_type='postgres' or 's3' or another sink, and target_ref.path.",
       ],
       code: `sink_run = control.start_or_resume_run(
     pipeline_type="sink",
@@ -983,7 +1166,7 @@ control.activate_target_slice(...)`,
     ...
 )
 
-sink_link_id = control.create_lineage_link(
+sink_output_link_id = control.write_output_link(
     edge_type="canonical_to_sink",
     sink_type="postgres",
     target_ref={"path": "postgres://ods/transaction", "content_hash": "...", "version": 1},
@@ -996,7 +1179,7 @@ sink_link_id = control.create_lineage_link(
       answer: [
         "Today target_ref must include path, content_hash, and version. The client and database both expect that contract.",
         "path is the stable output location or target identity. content_hash distinguishes changed content, including refeeds at the same path. version is the output identity version.",
-        "For a file output, content_hash usually comes after writing the file. For a database output, compute a deterministic hash of the business rowset before stamping lineage metadata, or compute it from a staging table before the final merge.",
+        "For a file output, content_hash usually comes after writing the file. For a database output, compute a deterministic hash of the business rowset before stamping output-link metadata, or compute it from a staging table before the final merge.",
         "Extra fields such as kind, layer, schema, table, and format are useful descriptive metadata, but they do not replace the required three fields.",
       ],
       code: `# S3 silver output: write first, hash second, then create the link.
@@ -1050,36 +1233,36 @@ control.finish_stage(
       answer: [
         "No. postgres.upsert is only a placeholder adapter in the template.",
         "In Glue it could be a Spark JDBC dataframe write, COPY into staging plus SQL MERGE, a stored procedure, or a Python DB call.",
-        "The product requirement is that every write path carries sink_link_id into the target rows. If an example does not pass or stamp the lineage id, it is incomplete.",
+        "The product requirement is that every write path carries sink_output_link_id into the target rows. If an example does not pass or stamp the output id, it is incomplete.",
       ],
       code: `# Any of these can be valid implementation choices:
-rows = rows.withColumn("_ods_lineage_link_id", lit(sink_link_id))
+rows = rows.withColumn("_ods_output_link_id", lit(sink_output_link_id))
 postgres.upsert(table="ods.transaction", dataframe=rows, keys=[...])
 
 copy_to_staging_then_merge(
     rows,
     target_table="ods.transaction",
-    lineage_link_id=sink_link_id,
+    output_link_id=sink_output_link_id,
 )
 
 call_stored_procedure(
     "ods.load_transaction",
-    lineage_link_id=sink_link_id,
+    output_link_id=sink_output_link_id,
 )
 
 # Product invariant:
-# written target rows must carry _ods_lineage_link_id = sink_link_id`,
+# written target rows must carry _ods_output_link_id = sink_output_link_id`,
     },
     {
       topic: "Activation",
       question: "What does activate_target_slice(...) do?",
       answer: [
-        "It writes the business-active control row. In plain English: for this target and business date, this lineage_link_id is now the current version.",
+        "It writes the business-active control row. In plain English: for this target and business date, this output_link_id is now the current version.",
         "On a refeed, the old slice becomes inactive and the new slice becomes active. Lineage history remains immutable.",
         "It should run last, after the target write, reconciliation, and run success. If processing fails before activation, business users keep seeing the previous active slice.",
       ],
       code: `control.activate_target_slice(
-    lineage_link_id=sink_link_id,
+    output_link_id=sink_output_link_id,
     target_schema="ods",
     target_table="transaction",
     business_date=args["business_date"],
@@ -1104,17 +1287,17 @@ control.start_stage(integration_run.run_id, "transform")`,
       topic: "Sync optionality",
       question: "Do I have to create a sink and active slice if I do not sync to Postgres?",
       answer: [
-        "No. If the job only creates an internal S3 silver output, create the file/run/stage/lineage metadata for that output and stop there.",
+        "No. If the job only creates an internal S3 silver output, create the file/run/stage/output-link metadata for that output and stop there.",
         "Only create canonical_to_sink and activate_target_slice when you publish something business-visible or serving-facing.",
       ],
-      code: `silver_link_id = control.create_lineage_link(
+      code: `silver_output_link_id = control.write_output_link(
     edge_type="raw_to_curated",
     target_ref={"path": silver_path, "content_hash": silver_hash, "version": 1},
     ...
 )
 
 if sync_to_postgres:
-    sink_link_id = control.create_lineage_link(edge_type="canonical_to_sink", ...)
+    sink_output_link_id = control.write_output_link(edge_type="canonical_to_sink", ...)
     control.activate_target_slice(...)`,
     },
   ];
@@ -1243,7 +1426,7 @@ if sync_to_postgres:
       (snapshot.executions || []).map((execution) => [execution.workflow_run_id, execution])
     );
     const runById = Object.fromEntries((snapshot.runs || []).map((run) => [run.run_id, run]));
-    const linkById = Object.fromEntries((snapshot.links || []).map((link) => [link.lineage_link_id, link]));
+    const linkById = Object.fromEntries((snapshot.links || []).map((link) => [outputLinkId(link), link]));
     const fileById = Object.fromEntries((snapshot.files || []).map((file) => [file.file_id, file]));
     const linksByRun = {};
     const targetRowsByLink = {};
@@ -1252,19 +1435,21 @@ if sync_to_postgres:
       if (!linksByRun[link.consumer_run_id]) linksByRun[link.consumer_run_id] = [];
       linksByRun[link.consumer_run_id].push(link);
       (link.edges || []).forEach((edge) => {
-        if (!edge.upstream_lineage_link_id) return;
-        if (!consumersByLink[edge.upstream_lineage_link_id]) consumersByLink[edge.upstream_lineage_link_id] = [];
-        consumersByLink[edge.upstream_lineage_link_id].push({
+        const upstreamId = upstreamOutputLinkId(edge);
+        if (!upstreamId) return;
+        if (!consumersByLink[upstreamId]) consumersByLink[upstreamId] = [];
+        consumersByLink[upstreamId].push({
           edge_type: link.edge_type,
           consumer_run_id: link.consumer_run_id,
-          consumer_link_id: link.lineage_link_id,
+          consumer_link_id: outputLinkId(link),
           record_count: edge.record_count,
         });
       });
     });
     Object.entries(snapshot.tables || {}).forEach(([tableName, rows]) => {
       rows.forEach((row) => {
-        const linkId = row._ods_lineage_link_id;
+        const linkId = rowOutputLinkId(row);
+        if (!linkId) return;
         if (!targetRowsByLink[linkId]) targetRowsByLink[linkId] = [];
         targetRowsByLink[linkId].push({ tableName, ...row });
       });
@@ -1281,6 +1466,22 @@ if sync_to_postgres:
     };
   }
 
+  function outputLinkId(link) {
+    return link?.output_link_id || link?.lineage_link_id || "";
+  }
+
+  function inputEdgeId(edge) {
+    return edge?.input_edge_id || edge?.lineage_edge_id || "";
+  }
+
+  function upstreamOutputLinkId(edge) {
+    return edge?.upstream_output_link_id || edge?.upstream_lineage_link_id || "";
+  }
+
+  function rowOutputLinkId(row) {
+    return row?._ods_output_link_id || row?._ods_lineage_link_id || "";
+  }
+
   function Header({ data, tab, setTab }) {
     const counts = {
       executions: data.executions?.length || 0,
@@ -1291,7 +1492,7 @@ if sync_to_postgres:
       e("div", { className: "brand" },
         e("h1", null, "ODS Lineage Dashboard"),
         e("span", null,
-          `${counts.executions} executions · ${counts.runs} runs · ${counts.links} lineage links`
+          `${counts.executions} executions · ${counts.runs} runs · ${counts.links} output links`
         )
       ),
       e("nav", { className: "tabs" },
@@ -1389,17 +1590,17 @@ if sync_to_postgres:
         ),
         e("div", { className: "panel" },
           e("div", { className: "panel-head" },
-            e("h2", null, "Lineage Links"),
+            e("h2", null, "Output Links"),
             e("span", { className: "pill" }, `${runLinks.length}`)
           ),
           e("div", { className: "panel-body diagram" },
             runLinks.length
               ? runLinks.map((link) => e(LinkCard, {
-                  key: link.lineage_link_id,
+                  key: outputLinkId(link),
                   data,
                   link,
-                  focused: focusedLinkId === link.lineage_link_id,
-                  onFocus: () => setFocusedLinkId(link.lineage_link_id),
+                  focused: focusedLinkId === outputLinkId(link),
+                  onFocus: () => setFocusedLinkId(outputLinkId(link)),
                 }))
               : e("div", { className: "empty" }, "No links for this run")
           )
@@ -1466,7 +1667,7 @@ if sync_to_postgres:
         ),
         e("div", { className: "panel-body" },
           e("p", null,
-            "Each row below is one control-plane run. It shows the run_log entry, the stage_log entries, the lineage_link outputs it created, the lineage_edge inputs it read, and any target rows stamped with the output link."
+            "Each row below is one control-plane run. It shows the run_log entry, stage_log entries, output_link rows it created, input_edge rows it read, and any target rows stamped with the output link."
           ),
           e("div", { className: "facts compact" },
             e("div", { className: "fact" }, e("span", null, "business_date"), e("code", null, execution?.business_date || "-")),
@@ -1519,13 +1720,13 @@ if sync_to_postgres:
               label: "cp.run_stage_log",
               value: `${stage.stage}; ${stage.record_count_in ?? "-"} -> ${stage.record_count_out ?? "-"}`
             }),
-            e(MetadataFact, { label: "lineage links", value: String(links.length) })
+            e(MetadataFact, { label: "output links", value: String(links.length) })
           ),
           e("div", { className: "step-section" },
             e("h3", null, "Inputs Read"),
             inputEdges.length
               ? inputEdges.map(({ link, edge }) => e(InputMetadataCard, {
-                  key: `${link.lineage_link_id}-${edge.lineage_edge_id}`,
+                  key: `${outputLinkId(link)}-${inputEdgeId(edge)}`,
                   data,
                   edge,
                 }))
@@ -1535,12 +1736,12 @@ if sync_to_postgres:
             e("h3", null, "Outputs Produced"),
             links.length
               ? links.map((link) => e(OutputMetadataCard, {
-                  key: link.lineage_link_id,
+                  key: outputLinkId(link),
                   data,
                   link,
                   focusLink,
                 }))
-              : e("div", { className: "empty small" }, "No lineage outputs")
+              : e("div", { className: "empty small" }, "No output links")
           )
         )
       )
@@ -1560,7 +1761,8 @@ if sync_to_postgres:
       );
     }
 
-    const upstreamLink = data.linkById[edge.upstream_lineage_link_id];
+    const upstreamId = upstreamOutputLinkId(edge);
+    const upstreamLink = data.linkById[upstreamId];
     const upstreamRun = upstreamLink ? data.runById[upstreamLink.consumer_run_id] : data.runById[edge.upstream_run_id];
     return e("div", { className: "metadata-card input" },
       e("strong", null, "Upstream output input"),
@@ -1569,23 +1771,24 @@ if sync_to_postgres:
         label: "upstream run",
         value: upstreamRun ? `${upstreamRun.pipeline_type} / ${upstreamRun.dataset}` : edge.upstream_run_id || "-"
       }),
-      e(MetadataFact, { label: "upstream link", value: edge.upstream_lineage_link_id || "-" }),
+      e(MetadataFact, { label: "upstream_output_link_id", value: upstreamId || "-" }),
       e(MetadataFact, { label: "upstream target", value: upstreamLink?.target_ref?.path || "-" }),
       e(MetadataFact, { label: "records consumed", value: String(edge.record_count) })
     );
   }
 
   function OutputMetadataCard({ data, link, focusLink }) {
-    const targetRows = data.targetRowsByLink[link.lineage_link_id] || [];
-    const consumers = data.consumersByLink[link.lineage_link_id] || [];
+    const linkId = outputLinkId(link);
+    const targetRows = data.targetRowsByLink[linkId] || [];
+    const consumers = data.consumersByLink[linkId] || [];
     return e("button", {
       type: "button",
       className: "metadata-card output",
-      onClick: () => focusLink(link.lineage_link_id),
+      onClick: () => focusLink(linkId),
     },
       e("strong", null, link.edge_type),
       e("span", { className: "pill mini green" }, `${link.record_count} rows`),
-      e(MetadataFact, { label: "cp.lineage_link", value: link.lineage_link_id }),
+      e(MetadataFact, { label: "cp.output_link.output_link_id", value: linkId }),
       e(MetadataFact, { label: "target_ref.path", value: link.target_ref?.path || "-" }),
       e(MetadataFact, { label: "content_hash", value: link.target_ref?.content_hash || "-" }),
       e(MetadataFact, {
@@ -1639,9 +1842,10 @@ if sync_to_postgres:
   }
 
   function LinkCard({ data, link, focused, onFocus }) {
+    const linkId = outputLinkId(link);
     const run = data.runById[link.consumer_run_id];
     const execution = data.executionByWorkflow[link.workflow_run_id || run?.workflow_run_id];
-    const trace = data.traces[link.lineage_link_id] || [];
+    const trace = data.traces[linkId] || [];
     const rawPaths = unique(trace.map((hop) => hop.raw_s3_path).filter(Boolean));
     return e("button", {
       type: "button",
@@ -1654,14 +1858,14 @@ if sync_to_postgres:
           execution?.execution_type || "link"
         )
       ),
-      e("div", { className: "edge" }, e("span", null, "link"), e("code", null, link.lineage_link_id)),
+      e("div", { className: "edge" }, e("span", null, "output_link_id"), e("code", null, linkId)),
       e("div", { className: "edge" }, e("span", null, "target"), e("code", null, link.target_ref?.path || "-")),
       e("div", { className: "edge" }, e("span", null, "hash"), e("code", null, link.target_ref?.content_hash || "-")),
       e("div", { className: "edge" }, e("span", null, "records"), e("code", null, link.record_count)),
       e("div", { className: "edge-list" },
-        link.edges.map((edge) => e("div", { className: "edge", key: edge.lineage_edge_id },
+        link.edges.map((edge) => e("div", { className: "edge", key: inputEdgeId(edge) },
           e("span", null, edge.edge_type),
-          e("code", null, edge.upstream_lineage_link_id || edge.source_file_id || "-")
+          e("code", null, upstreamOutputLinkId(edge) || edge.source_file_id || "-")
         ))
       ),
       rawPaths.length > 0 && e("div", { className: "raw-list" },
@@ -1828,7 +2032,7 @@ if sync_to_postgres:
         if (!edge.upstream_run_id || !runSet.has(edge.upstream_run_id)) return;
         const sourceRun = data.runById[edge.upstream_run_id];
         edges.push({
-          id: edge.lineage_edge_id,
+          id: inputEdgeId(edge),
           source: edge.upstream_run_id,
           target: link.consumer_run_id,
           label: "",
@@ -1840,7 +2044,7 @@ if sync_to_postgres:
           type: "smoothstep",
         });
         edgeDetails.push({
-          id: edge.lineage_edge_id,
+          id: inputEdgeId(edge),
           targetId: link.consumer_run_id,
           businessDate: targetRun?.business_date || execution?.business_date || "-",
           executionType: execution?.execution_type || "normal",
@@ -1875,7 +2079,7 @@ if sync_to_postgres:
         }),
         e("div", { className: "diagram-note" },
           e("strong", null, "Diagram rule"),
-          e("span", null, "Runs do work. Lineage links describe outputs. Later runs consume upstream_lineage_link_id; only raw-file starts show file_id.")
+          e("span", null, "Runs do work. Output links describe produced outputs. Later runs consume upstream_output_link_id; only raw-file starts show file_id.")
         )
       ),
       e("section", { className: "lineage-board panel" },
@@ -1900,7 +2104,7 @@ if sync_to_postgres:
                 )
               ),
               index < groups.length - 1 && e("div", { className: "diagram-connector connected" },
-                e("span", null, "next layer consumes lineage_link_id where applicable")
+                e("span", null, "next layer consumes output_link_id where applicable")
               )
             ))
           )
@@ -1940,13 +2144,13 @@ if sync_to_postgres:
 
   function DiagramConnector({ data, fromRun, toRun }) {
     const fromLinks = data.linksByRun[fromRun.run_id] || [];
-    const fromLinkIds = new Set(fromLinks.map((link) => link.lineage_link_id));
+    const fromLinkIds = new Set(fromLinks.map((link) => outputLinkId(link)));
     const toLinks = data.linksByRun[toRun.run_id] || [];
     const consumesPrevious = toLinks.some((link) =>
-      (link.edges || []).some((edge) => fromLinkIds.has(edge.upstream_lineage_link_id))
+      (link.edges || []).some((edge) => fromLinkIds.has(upstreamOutputLinkId(edge)))
     );
     return e("div", { className: `diagram-connector ${consumesPrevious ? "connected" : "parallel"}` },
-      e("span", null, consumesPrevious ? "consumed as upstream_lineage_link_id" : "parallel or later branch")
+      e("span", null, consumesPrevious ? "consumed as upstream_output_link_id" : "parallel or later branch")
     );
   }
 
@@ -1972,50 +2176,55 @@ if sync_to_postgres:
         e("div", { className: "diagram-inputs" },
           e("strong", null, "Inputs"),
           inputEdges.length
-            ? inputEdges.map((edge) => e(DiagramInput, { key: edge.lineage_edge_id, data, edge }))
-            : e("span", { className: "muted-text" }, "No lineage input recorded")
+            ? inputEdges.map((edge) => e(DiagramInput, { key: inputEdgeId(edge), data, edge }))
+            : e("span", { className: "muted-text" }, "No input edge recorded")
         )
       ),
       e("div", { className: "diagram-down-arrow" }, "writes"),
       e("div", { className: "diagram-link-stack" },
         links.length
           ? links.map((link) => e(DiagramLinkCard, {
-              key: link.lineage_link_id,
+              key: outputLinkId(link),
               link,
-              onClick: () => focusLink(link.lineage_link_id),
+              onClick: () => focusLink(outputLinkId(link)),
             }))
           : e("div", { className: "diagram-card link-card-diagram muted" },
-              "No output lineage link"
+              "No output link"
             )
       )
     );
   }
 
   function DiagramInput({ data, edge }) {
+    const edgeId = inputEdgeId(edge);
     if (edge.source_file_id) {
       const file = data.fileById[edge.source_file_id];
       return e("div", { className: "diagram-input raw" },
-        e("span", null, "raw file"),
+        e("span", null, "input_edge -> raw file"),
+        e("code", null, `input_edge_id ${shortId(edgeId)}`),
         e("code", null, `file_id ${shortId(edge.source_file_id)}`),
         e("small", null, file?.s3_raw_path || edge.source_ref?.path || "")
       );
     }
-    const upstream = data.linkById[edge.upstream_lineage_link_id];
+    const upstreamId = upstreamOutputLinkId(edge);
+    const upstream = data.linkById[upstreamId];
     return e("div", { className: "diagram-input upstream" },
-      e("span", null, "upstream link"),
-      e("code", null, `upstream_lineage_link_id ${shortId(edge.upstream_lineage_link_id)}`),
+      e("span", null, "input_edge -> upstream output"),
+      e("code", null, `input_edge_id ${shortId(edgeId)}`),
+      e("code", null, `upstream_output_link_id ${shortId(upstreamId)}`),
       e("small", null, upstream?.edge_type || edge.edge_type || "")
     );
   }
 
   function DiagramLinkCard({ link, onClick }) {
+    const linkId = outputLinkId(link);
     return e("button", { className: "diagram-card link-card-diagram", type: "button", onClick },
       e("div", { className: "diagram-card-title" },
         e("span", { className: "pill mini" }, link.edge_type),
-        e("strong", null, "lineage_link")
+        e("strong", null, "output_link")
       ),
       e("div", { className: "diagram-facts" },
-        e(DiagramFact, { label: "lineage_link_id", value: shortId(link.lineage_link_id) }),
+        e(DiagramFact, { label: "output_link_id", value: shortId(linkId) }),
         e(DiagramFact, { label: "sink_type", value: link.sink_type || "-" }),
         e(DiagramFact, { label: "target", value: link.target_ref?.path || "-" }),
         e(DiagramFact, { label: "content_hash", value: shortId(link.target_ref?.content_hash) })
@@ -2059,12 +2268,12 @@ if sync_to_postgres:
             e("th", null, "business_date"),
             e("th", null, "execution"),
             e("th", null, "payload"),
-            e("th", null, "lineage")
+            e("th", null, "output_link_id")
           )),
           e("tbody", null,
             rows.map((row) => {
               const execution = data.executionByWorkflow[row._ods_workflow_run_id];
-              const linkId = row._ods_lineage_link_id;
+              const linkId = rowOutputLinkId(row);
               return e("tr", {
                 key: `${selectedTable}-${row.row_id}-${linkId}`,
                 onClick: () => focusLink(linkId),
@@ -2171,19 +2380,49 @@ if sync_to_postgres:
               e("ul", null,
                 e("li", null, "Create or reuse a logical run so Airflow retries can resume or attach attempts to the same business task."),
                 e("li", null, "Record stage progress so restart logic can tell whether the task failed while validating, transforming, writing, or publishing."),
-                e("li", null, "Create lineage edges for every input so each output can be traced to raw files or upstream lineage links."),
-                e("li", null, "Create one output lineage link per written target so downstream tasks consume an exact output, not a guessed table or path."),
+                e("li", null, "Create input edges for every input so each output can be traced to raw files or upstream output links."),
+                e("li", null, "Create one output link per written target so downstream tasks consume an exact output, not a guessed table or path."),
                 e("li", null, "Activate the business slice only after the target write succeeds, so failed or partial outputs never become business-visible.")
               ),
               selected.commentary.map((item) =>
                 e("p", { key: item }, item)
               )
             ),
+            selected.dataModel && e(TemplateDataModel, { model: selected.dataModel }),
             e("pre", { className: "template-code" },
               e("code", null, selected.code)
             )
           )
         )
+      )
+    );
+  }
+
+  function TemplateDataModel({ model }) {
+    return e("section", { className: "template-data-model" },
+      e("div", { className: "data-model-head" },
+        e("div", null,
+          e("strong", null, "Draw.io entity relationship model"),
+          e("p", null, model.summary)
+        ),
+        e("code", null, model.drawioPath)
+      ),
+      e("div", { className: "data-model-grid" },
+        model.rows.map((row) => e("article", { className: "data-model-card", key: `${row.table}-${row.role}` },
+          e("div", { className: "data-model-card-head" },
+            e("span", { className: "pill mini" }, row.table),
+            e("strong", null, row.role)
+          ),
+          e("div", { className: "data-model-fields" },
+            row.fields.map(([label, value]) => e("div", { className: "data-model-field", key: label },
+              e("span", null, label),
+              e("code", null, value)
+            ))
+          )
+        ))
+      ),
+      e("pre", { className: "template-code data-model-sql" },
+        e("code", null, model.lookupSql)
       )
     );
   }
@@ -2277,9 +2516,9 @@ if sync_to_postgres:
       return "Reads the detail output and creates the customer-level daily aggregate output.";
     }
     if (run.pipeline_type === "sink") {
-      return "Writes the output rows to Postgres and stamps each row with _ods_lineage_link_id.";
+      return "Writes the output rows to Postgres and stamps each row with _ods_output_link_id.";
     }
-    return "Control-plane run with lineage inputs and outputs.";
+    return "Control-plane run with input edges and output links.";
   }
 
   function scenarioSummary(data) {

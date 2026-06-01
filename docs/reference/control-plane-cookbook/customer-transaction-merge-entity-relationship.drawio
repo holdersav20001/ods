@@ -1,0 +1,73 @@
+<mxfile host="app.diagrams.net">
+  <diagram id="customer-transaction-merge-er" name="Customer Transaction Merge ER">
+    <mxGraphModel dx="1422" dy="794" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1900" pageHeight="1050" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="title" value="Customer + transaction merge - entity relationship model" style="text;html=1;strokeColor=none;fillColor=none;fontSize=24;fontStyle=1;align=left" vertex="1" parent="1">
+          <mxGeometry x="40" y="30" width="850" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="legend" value="Merge pattern: two upstream output_link rows are consumed by two input_edge rows to produce one merged output_link. The Postgres sink then consumes that merged output_link." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#b3b3b3;align=left;spacing=10;fontSize=13" vertex="1" parent="1">
+          <mxGeometry x="930" y="25" width="760" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="cust_out" value="cp.output_link&#xa;-----------------------------&#xa;PK output_link_id = O_CUSTOMER_SILVER&#xa;dataset = customer&#xa;edge_type = curated_to_canonical&#xa;target_ref.path = s3://silver/customer/2026-05-30.parquet" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;spacing=10;fontSize=13" vertex="1" parent="1">
+          <mxGeometry x="40" y="140" width="390" height="170" as="geometry"/>
+        </mxCell>
+        <mxCell id="tx_out" value="cp.output_link&#xa;-----------------------------&#xa;PK output_link_id = O_TRANSACTION_SILVER&#xa;dataset = transaction&#xa;edge_type = curated_to_canonical&#xa;target_ref.path = s3://silver/transaction/2026-05-30.parquet" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;spacing=10;fontSize=13" vertex="1" parent="1">
+          <mxGeometry x="40" y="390" width="390" height="170" as="geometry"/>
+        </mxCell>
+        <mxCell id="merge_run" value="cp.run_log&#xa;-----------------------------&#xa;PK run_id = R_MERGE&#xa;workflow_run_id = WF_CT_20260530&#xa;pipeline_type = merge&#xa;dataset = customer_transaction&#xa;status = succeeded" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;align=left;spacing=10;fontSize=13" vertex="1" parent="1">
+          <mxGeometry x="520" y="260" width="340" height="170" as="geometry"/>
+        </mxCell>
+        <mxCell id="merge_out" value="cp.output_link&#xa;-----------------------------&#xa;PK output_link_id = O_MERGED_SILVER&#xa;FK consumer_run_id = R_MERGE&#xa;edge_type = merge_to_canonical&#xa;target_ref.path = s3://silver/customer_transaction/2026-05-30.parquet" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;spacing=10;fontSize=13" vertex="1" parent="1">
+          <mxGeometry x="970" y="260" width="430" height="180" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge_cust" value="cp.input_edge&#xa;-----------------------------&#xa;PK input_edge_id = E_MERGE_CUSTOMER&#xa;FK output_link_id = O_MERGED_SILVER&#xa;FK upstream_output_link_id = O_CUSTOMER_SILVER&#xa;input_reference_type = output_link&#xa;input_role = customer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;align=left;spacing=10;fontSize=13" vertex="1" parent="1">
+          <mxGeometry x="970" y="70" width="430" height="170" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge_tx" value="cp.input_edge&#xa;-----------------------------&#xa;PK input_edge_id = E_MERGE_TRANSACTION&#xa;FK output_link_id = O_MERGED_SILVER&#xa;FK upstream_output_link_id = O_TRANSACTION_SILVER&#xa;input_reference_type = output_link&#xa;input_role = transaction" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;align=left;spacing=10;fontSize=13" vertex="1" parent="1">
+          <mxGeometry x="970" y="470" width="430" height="170" as="geometry"/>
+        </mxCell>
+        <mxCell id="sink_run" value="cp.run_log&#xa;-----------------------------&#xa;PK run_id = R_CT_SINK&#xa;workflow_run_id = WF_CT_20260530&#xa;pipeline_type = sink&#xa;dataset = customer_transaction" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;align=left;spacing=10;fontSize=13" vertex="1" parent="1">
+          <mxGeometry x="40" y="760" width="340" height="150" as="geometry"/>
+        </mxCell>
+        <mxCell id="sink_out" value="cp.output_link&#xa;-----------------------------&#xa;PK output_link_id = O_CT_TARGET&#xa;FK consumer_run_id = R_CT_SINK&#xa;edge_type = canonical_to_sink&#xa;sink_type = postgres&#xa;target_ref.path = postgres://ods/customer_transaction" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;spacing=10;fontSize=13" vertex="1" parent="1">
+          <mxGeometry x="520" y="730" width="410" height="180" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge_sink" value="cp.input_edge&#xa;-----------------------------&#xa;PK input_edge_id = E_SINK_MERGED&#xa;FK output_link_id = O_CT_TARGET&#xa;FK upstream_output_link_id = O_MERGED_SILVER&#xa;input_reference_type = output_link" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;align=left;spacing=10;fontSize=13" vertex="1" parent="1">
+          <mxGeometry x="1010" y="730" width="390" height="170" as="geometry"/>
+        </mxCell>
+        <mxCell id="target" value="ods.customer_transaction&#xa;-----------------------------&#xa;PK transaction_id = T100&#xa;business_date = 2026-05-30&#xa;customer_id = C001&#xa;amount = 125.50&#xa;_ods_output_link_id = O_CT_TARGET" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;align=left;spacing=10;fontSize=13" vertex="1" parent="1">
+          <mxGeometry x="1480" y="730" width="340" height="180" as="geometry"/>
+        </mxCell>
+        <mxCell id="r1" value="1 produces many" edge="1" parent="1" source="merge_run" target="merge_out" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;strokeColor=#666666;fontSize=12">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="r2" value="1 output has many input edges" edge="1" parent="1" source="merge_out" target="edge_cust" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;strokeColor=#b85450;fontSize=12">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="r3" value="1 output has many input edges" edge="1" parent="1" source="merge_out" target="edge_tx" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;strokeColor=#b85450;fontSize=12">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="r4" value="customer previous output" edge="1" parent="1" source="cust_out" target="edge_cust" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;strokeColor=#82b366;fontSize=12">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="r5" value="transaction previous output" edge="1" parent="1" source="tx_out" target="edge_tx" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;strokeColor=#82b366;fontSize=12">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="r6" value="1 produces many" edge="1" parent="1" source="sink_run" target="sink_out" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;strokeColor=#666666;fontSize=12">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="r7" value="previous merged output input" edge="1" parent="1" source="merge_out" target="edge_sink" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;strokeColor=#82b366;fontSize=12">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="r8" value="1 output has many input edges" edge="1" parent="1" source="sink_out" target="edge_sink" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;strokeColor=#b85450;fontSize=12">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="r9" value="target rows stamped with output" edge="1" parent="1" source="sink_out" target="target" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;strokeColor=#82b366;fontSize=12">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
