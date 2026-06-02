@@ -172,6 +172,48 @@ def test_06_aggregate_sink_rows_for_all_three_days(demo, conn):
 
 
 # --------------------------------------------------------------------------- #
+# Test 6b: the aggregate output link uses edge_type 'detail_to_aggregate'
+#          (migration 021), NOT the overloaded 'merge_to_canonical'. The merge
+#          step still uses 'merge_to_canonical'; only the AGGREGATE link changed.
+# --------------------------------------------------------------------------- #
+def test_06b_aggregate_link_uses_detail_to_aggregate_edge_type(demo, conn):
+    for date in (DAY1, DAY2, DAY3):
+        result = demo["normals_by_date"][date]
+        agg_link = result["aggregate"]["link_id"]
+        merge_link = result["merge"]["link_id"]
+
+        # Aggregate OUTPUT link and its single consuming edge are now
+        # detail_to_aggregate.
+        link_edge_type, edge_edge_types = conn.execute(
+            """
+            SELECT l.edge_type,
+                   array_agg(e.edge_type ORDER BY e.lineage_edge_id)
+            FROM cp.lineage_link l
+            JOIN cp.lineage_edge e ON e.lineage_link_id = l.lineage_link_id
+            WHERE l.lineage_link_id = %s
+            GROUP BY l.edge_type
+            """,
+            (agg_link,),
+        ).fetchone()
+        assert link_edge_type == "detail_to_aggregate"
+        assert edge_edge_types == ["detail_to_aggregate"]
+
+        # The merge step is unchanged: still merge_to_canonical.
+        merge_edge_type = conn.execute(
+            "SELECT edge_type FROM cp.lineage_link WHERE lineage_link_id = %s",
+            (merge_link,),
+        ).fetchone()[0]
+        assert merge_edge_type == "merge_to_canonical"
+
+    # Refeed aggregate link is detail_to_aggregate too.
+    refeed_agg_link = demo["refeed"]["aggregate"]["link_id"]
+    assert conn.execute(
+        "SELECT edge_type FROM cp.lineage_link WHERE lineage_link_id = %s",
+        (refeed_agg_link,),
+    ).fetchone()[0] == "detail_to_aggregate"
+
+
+# --------------------------------------------------------------------------- #
 # Test 7: a Day-1 detail row traces ONLY to Day-1 raw files.
 # --------------------------------------------------------------------------- #
 def test_07_day1_detail_traces_only_to_day1_raw(demo, conn):
@@ -356,6 +398,20 @@ def test_14_snapshot_has_all_sections(demo, conn):
     assert all("stages" in r for r in snap["runs"])
     assert all("edges" in l for l in snap["links"])
     assert all(l["lineage_link_id"] in snap["traces"] for l in snap["links"])
+
+    # Orchestrator identity fields (migration 020) are PRESENT on every run row,
+    # even though this manual demo leaves them NULL / {} (no external orchestrator).
+    orchestrator_keys = {
+        "orchestrator_type", "orchestrator_dag_id", "orchestrator_run_id",
+        "orchestrator_task_id", "orchestrator_try_number",
+        "orchestrator_map_index", "orchestrator_url", "orchestrator_payload",
+    }
+    for run in snap["runs"]:
+        assert orchestrator_keys <= set(run.keys()), (
+            f"run missing orchestrator keys: {orchestrator_keys - set(run.keys())}"
+        )
+        assert run["orchestrator_type"] is None
+        assert run["orchestrator_payload"] == {}
 
 
 # --------------------------------------------------------------------------- #
