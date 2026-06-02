@@ -607,6 +607,40 @@ def test_start_run_returns_run_log_row_with_loadbearing_columns(conn):
     assert required <= cols, f"run_log missing load-bearing columns: {required - cols}"
 
 
+def test_start_run_populates_orchestrator_columns(conn):
+    """cp.start_run p_orchestrator round-trip (migration 020): the 8 orchestrator
+    columns exist on cp.run_log and are populated from the JSONB argument."""
+    cols = _columns(conn, "run_log")
+    orch_cols = {
+        "orchestrator_type", "orchestrator_dag_id", "orchestrator_run_id",
+        "orchestrator_task_id", "orchestrator_try_number",
+        "orchestrator_map_index", "orchestrator_url", "orchestrator_payload",
+    }
+    assert orch_cols <= cols, f"run_log missing orchestrator columns: {orch_cols - cols}"
+    orch = {"type": "airflow", "dag_id": "d", "run_id": "r", "task_id": "t",
+            "try_number": 2, "map_index": -1, "url": "u",
+            "payload": {"k": "v"}}
+    run_id = conn.execute(
+        "SELECT cp.start_run(%s,'ingestion','sales','orders',%s,'airflow',NULL,NULL,%s)",
+        (str(uuid4()), BD, json.dumps(orch)),
+    ).fetchone()[0]
+    row = conn.execute(
+        "SELECT orchestrator_type, orchestrator_dag_id, orchestrator_run_id, "
+        "orchestrator_task_id, orchestrator_try_number, orchestrator_map_index, "
+        "orchestrator_url, orchestrator_payload FROM cp.run_log WHERE run_id=%s",
+        (run_id,)).fetchone()
+    assert row[:7] == ("airflow", "d", "r", "t", 2, -1, "u")
+    assert row[7] == orch  # whole object preserved
+
+
+def test_detail_to_aggregate_edge_type_registered(conn):
+    """Migration 021: detail_to_aggregate is a registered is_provenance edge_type."""
+    row = conn.execute(
+        "SELECT is_provenance FROM cp.edge_type WHERE edge_type='detail_to_aggregate'"
+    ).fetchone()
+    assert row is not None and row[0] is True
+
+
 def test_write_lineage_link_tables_have_loadbearing_columns(conn):
     link_required = {
         "lineage_link_id", "consumer_run_id", "edge_type", "sink_type",
