@@ -15,6 +15,7 @@ from harness.customer_transaction_workflow import (
     BUSINESS_DATES,
     CORRECTED_TRANSACTION_ROWS,
     CUSTOMER_DATASET,
+    CUSTOMER_ROWS,
     DETAIL_DATASET,
     REFEED_BUSINESS_DATE,
     TRANSACTION_DATASET,
@@ -153,7 +154,7 @@ def test_05_detail_sink_rows_for_all_three_days(demo, conn):
             "WHERE _ods_workflow_run_id = %s",
             (wfid,),
         ).fetchone()[0]
-        assert n == len(TRANSACTION_ROWS) == 3
+        assert n == len(TRANSACTION_ROWS)
 
 
 # --------------------------------------------------------------------------- #
@@ -167,8 +168,7 @@ def test_06_aggregate_sink_rows_for_all_three_days(demo, conn):
             "WHERE _ods_workflow_run_id = %s",
             (wfid,),
         ).fetchone()[0]
-        # Two customers (C001, C002) => 2 aggregate rows.
-        assert n == 2
+        assert n == len(CUSTOMER_ROWS)
 
 
 # --------------------------------------------------------------------------- #
@@ -298,6 +298,35 @@ def test_13_day2_corrected_aggregate_traces_to_corrected_transaction_raw(demo, c
 
 
 # --------------------------------------------------------------------------- #
+# Test 13b: refeed sink writes only rows whose payload changed.
+# --------------------------------------------------------------------------- #
+def test_13b_refeed_target_upsert_only_writes_changed_rows(demo, conn):
+    wfid = demo["refeed"]["workflow_run_id"]
+
+    detail_rows = conn.execute(
+        f"""
+        SELECT payload->>'transaction_id'
+        FROM ods.{DETAIL_DATASET}
+        WHERE _ods_workflow_run_id = %s
+        ORDER BY payload->>'transaction_id'
+        """,
+        (wfid,),
+    ).fetchall()
+    assert [row[0] for row in detail_rows] == ["T101", "T104"]
+
+    aggregate_rows = conn.execute(
+        f"""
+        SELECT payload->>'customer_id'
+        FROM ods.{AGG_DATASET}
+        WHERE _ods_workflow_run_id = %s
+        ORDER BY payload->>'customer_id'
+        """,
+        (wfid,),
+    ).fetchall()
+    assert [row[0] for row in aggregate_rows] == ["C001", "C003"]
+
+
+# --------------------------------------------------------------------------- #
 # Test 14: snapshot includes executions, runs, links, tables, files, traces.
 # --------------------------------------------------------------------------- #
 def test_14_snapshot_has_all_sections(demo, conn):
@@ -311,9 +340,13 @@ def test_14_snapshot_has_all_sections(demo, conn):
     # 3 normal executions * 8 runs + 1 refeed * 6 runs = 30 runs.
     assert len(snap["runs"]) == 3 * 8 + 6
     assert {DETAIL_DATASET, AGG_DATASET} <= set(snap["tables"].keys())
-    # 4 detail-sink executions => 4*3 detail rows; 4*2 aggregate rows.
-    assert len(snap["tables"][DETAIL_DATASET]) == 4 * 3
-    assert len(snap["tables"][AGG_DATASET]) == 4 * 2
+    # 3 normal detail-sink executions plus changed-only refeed upserts.
+    assert len(snap["tables"][DETAIL_DATASET]) == (
+        3 * len(TRANSACTION_ROWS) + len(demo["refeed"]["changed_detail_rows"])
+    )
+    assert len(snap["tables"][AGG_DATASET]) == (
+        3 * len(CUSTOMER_ROWS) + len(demo["refeed"]["changed_aggregate_rows"])
+    )
     # customer files: 3 (one per normal day; refeed reuses) + transaction 3
     # original + 1 corrected = 7 distinct file rows.
     assert len(snap["files"]) == 7

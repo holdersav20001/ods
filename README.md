@@ -1,105 +1,200 @@
-# ODS Control Plane (Spark-free)
+# ODS Control Plane
 
-A clean, **Spark-free** implementation of the ODS control plane — the Postgres tables, plpgsql functions,
-and Python client that record *what ran*, *what it produced*, *where data came from*, and *what failed*,
-so any row is traceable to raw and any incident is reconstructable.
+Spark-free control-plane prototype for ODS-style data lineage, restartability,
+refeed handling, and row-level traceability.
 
-> **New session / new contributor: read this file, then `docs/specs/2026-05-29-control-plane-design-v2.md`
-> (the authoritative design). Everything you need is in this repo — no prior chat context required.**
+The repository models the metadata layer that a real Airflow/Glue/Spark estate
+would call into. The demo data plane is synthetic, but the control writes are
+real Postgres tables, functions, and Python wrappers.
 
-## What this is (and isn't)
+## What It Tracks
 
-- **Is:** the control plane — `run_log`, `run_stage_log`, `lineage_link` + `lineage_edge`,
-  `reconciliation_log`, `file_catalogue`, `dlq`, `dataset_config`, the `cp.*` functions, the Python
-  client, and a **harness** that simulates pipeline stages by calling the real client with synthetic
-  counts and string refs.
-- **Isn't:** the data plane. **No Spark, no S3, no Kafka.** Stages are faked. The lineage logic is pure
-  Postgres + Python, so it's tested with Postgres alone — fast, deterministic, CI-friendly.
+- `cp.run_log`: one logical task/run, grouped by `workflow_run_id`.
+- `cp.run_stage_log`: restartable checkpoints inside a task.
+- `cp.output_link`: what a run produced.
+- `cp.input_edge`: what that produced output consumed.
+- `cp.file_catalogue`: immutable raw file identity.
+- `cp.reconciliation_log`: count and graph checks.
+- target rows in `ods.*`: rows stamped with `_ods_output_link_id` and
+  `_ods_workflow_run_id` so any row can be traced back to metadata.
 
-## Core idea (read this before the schema)
+The main design idea is simple:
 
-Two complementary keys:
-- **`workflow_run_id`** (= Airflow `dag_run_id`) **groups** every record of one pipeline execution →
-  one-filter investigation. It does *not* span executions.
-- **`lineage_edge`** carries **provenance/direction** and **spans** DAG runs (multi-file merge, late data,
-  re-runs/replay). A re-run is a *new* `workflow_run_id`; the `lineage_edge` chain (+ a `replay` edge) is
-  what ties it back to what it reprocessed.
+`workflow_run_id` groups one execution for investigation. `output_link` and
+`input_edge` provide the lineage graph across files, tasks, days, and refeeds.
 
-So: **id for grouping, edges for provenance.** Both are kept; neither replaces the other.
+## Dashboard
 
-## Status
+The dashboard is a static React app backed by
+`dashboard/data/demo-workflow.json`.
 
-- ✅ Design spec **v2** written and build-ready: `docs/specs/2026-05-29-control-plane-design-v2.md`
-  (supersedes the v1 `…-control-plane-design.md`).
-- ✅ Reviewed by 4 lenses (architect, senior dev, QA, lineage); 5 CRITICAL + ~8 HIGH folded into v2.
-  Review of record: `docs/reviews/2026-05-29-design-review-consolidated.md`.
-- ✅ 4 decisions resolved (baked into v2's "User decisions" section): `workflow_run_id` = **bare UUID
-  value in a TEXT column** + `trigger_type`/`replay_of_run_id` (holds Airflow string `dag_run_id` too);
-  `canonical_to_sink` + `sink_type` on the link; DLQ as a `quarantine` provenance edge; content
-  hash/version in `target_ref`.
-- ✅ **BUILD COMPLETE** (branch `feat/control-plane-p1`, 8 migrations, **96 tests green**). All four
-  phases done, each reviewed; the four hop-by-hop **lineage gates passed** with evidence (Reality-Checker
-  verified):
-  - **P1** — migrations `001`–`004`: schema, 10 `cp.*` functions, sample target, FK + discovery indexes;
-    atomic `write_lineage_link`, FK-enforced sink invariant, `v_provenance` trace view, exhaustive
-    contract + column-drift guards. (spec/security/quality reviewed)
-  - **P2** — Python client `control/` (runs/lineage/stages/recon/dlq), conn-injected, per-write commit;
-    test-isolation verified.
-  - **P3** — Spark-free harness, hop-by-hop, each lineage-gated: ingest (`raw_to_curated`, **GATE A**) →
-    canonicalize (discovery via `latest_succeeded_run`, **GATE B**) → merge (N-edge `merge_to_canonical`
-    + `cp.succeeded_runs`, **GATE C**) → sink (`canonical_to_sink`, postgres-write-last) + fan-out + DLQ
-    + replay-to-raw + `v_provenance` cycle guard (mig `006`), **GATE D**.
-  - **P4** — regression matrix: recon negatives, every-FK rejection, idempotent replay, concurrency,
-    transform-DQ→quarantine, orchestration trigger-edge (excluded from provenance), `clock_timestamp()`
-    discovery-determinism fix (mig `007`), row-idempotent sink retries (mig `008`), adapter-contract
-    test, and the `tests/README.md` coverage boundary.
-- Plan + per-task evidence: `docs/plans/2026-05-29-control-plane-implementation.md`.
-- 👉 **Next:** open a PR / merge `feat/control-plane-p1`; later, a thin integration test confirming the
-  real Spark jobs call this client with the right args (the coverage boundary the fakes can't prove).
+Start it:
 
-## Setup (do once, before Phase 1)
-
-Postgres is reused from the running `avivaods-postgres-1` instance, in an **isolated database** so it
-never collides with the existing `pipeline` schema:
-
-```bash
-# create the isolated DB (one time)
-docker exec -i avivaods-postgres-1 psql -U ods -d postgres -c "CREATE DATABASE ods_cp;"
-# connection used by migrations + client + tests:
-#   host=localhost  port=5440  db=ods_cp  user=ods  password=ods
-# all control tables live in schema  cp.*
+```powershell
+python -m http.server 8099 --directory dashboard
 ```
 
-If `avivaods-postgres-1` isn't running, start that stack's Postgres, or stand up any Postgres 15+ and
-point the connection at it.
+Open:
 
-## Build order (phased — see spec §"Build order")
+```text
+http://localhost:8099/index.html
+```
 
-1. **Migrations** — `db/migrations/`: schema (`cp.*`) + `cp.*` functions, applied to `ods_cp`, plus a
-   **contract test** that invokes every function against the migrated schema (guards function↔column drift).
-2. **Python client** — `control/`: thin per-write-commit wrappers (`runs`, `lineage`, `stages`, `recon`,
-   `dlq`) mirroring the proven `ods_ingestion_control`/`ods_pipeline` shape.
-3. **Harness** — `harness/`: `fake_ingest`/`fake_canonicalize`/`fake_merge`/`fake_sink`/`fake_fail` calling
-   the **real** client; composers `run_single_file` + `run_multi_file` (both share one `workflow_run_id`).
-4. **Tests** — `tests/`: single-file, multi-file (N-edge merge), re-run discovery, replay edge,
-   write-ordering (link before rows), FK rejects dangling link id, DLQ quarantine+replay, recon, contract.
+### Workflow Overview
 
-## Why these decisions (context, not required reading)
+The workflow tab groups runs by `workflow_run_id`, shows counts for runs,
+stages, outputs, inputs, files, and target rows, and exposes buttons for
+process diagrams, developer diagrams, JSON, and OpenLineage-style export.
 
-This is a fresh rebuild informed by a full review of the existing `aviva ODS` control plane. The reasoning
-lives in `docs/reference/` (copied in so this repo stands alone):
+![Workflow overview](docs/assets/dashboard/workflows-overview.png)
 
-- `control-plane-architecture-review.md` — pros/cons, the bugs, the P0s. Explains **why no `orchestrators`,
-  why no `run_events`, why the link FK, why `workflow_run_id`.**
-- `control-plane-cookbook/` — the per-use-case recipes (ingest, canonicalize, merge=1:N lineage, sink,
-  DLQ+replay, lineage-across-reruns). The conceptual building blocks. *Note: these reference the old aviva
-  paths/jobs; the `docs/specs` design is authoritative for THIS repo.*
+### Target Row History
 
-Key fixes baked into the design (so a re-run is reconstructable): jobs **discover** their upstream
-(`latest_succeeded_run`) instead of trusting a passed id; anchor on `file_id`+`business_date`+`dataset`;
-a re-run writes a `replay` edge; `lineage_edge` is the sole parentage; `business_date` recorded on every run.
+Target rows can be inspected by table/date/workflow. Clicking a row shows its
+full business-key history.
 
-## Out of scope
+The current demo uses changed-only upsert behavior:
 
-Spark, S3/LocalStack, Kafka, real sink drivers, the aviva ODS glue jobs. A later thin integration test
-confirms the real Spark jobs call this client correctly.
+- a refeed processes the corrected file
+- only rows whose payload changes are written back to the target table
+- unchanged rows keep their original `_ods_output_link_id`
+- changed rows show the old output as superseded and the new output as latest
+
+![Target row history](docs/assets/dashboard/target-row-history.png)
+
+### Process Model
+
+The process model shows tasks, stage logs, input edges, and output links
+together. Customer and transaction branches are shown in parallel where they are
+not sequential.
+
+![Process model](docs/assets/dashboard/process-model.png)
+
+### Developer Model
+
+The developer model is intended as a teaching view. Clicking task, stage, input,
+or output cards shows the API call or payload shape a developer would use to
+create that metadata.
+
+![Developer model](docs/assets/dashboard/developer-model.png)
+
+## Demo Workflow
+
+The demo workflow lives in
+`harness/customer_transaction_workflow.py`.
+
+It creates:
+
+- three normal business dates: `2026-05-28`, `2026-05-29`, `2026-05-30`
+- two raw files per normal day: customer and transaction
+- independent canonicalization into silver outputs
+- a merge into `customer_transaction`
+- an aggregate into `customer_transaction_daily`
+- a Day 2 transaction refeed with corrected `T101` and `T104`
+
+The refeed intentionally reuses the original Day 2 customer silver output and
+uses a corrected Day 2 transaction file. This validates that lineage can
+distinguish unchanged upstream inputs from corrected inputs.
+
+Regenerate the committed demo database state and dashboard snapshot:
+
+```powershell
+python -m harness.customer_transaction_workflow --out dashboard/data/demo-workflow.json
+```
+
+That command resets generated demo/control rows by default, then writes a clean
+snapshot. To intentionally append instead:
+
+```powershell
+python -m harness.customer_transaction_workflow --out dashboard/data/demo-workflow.json --no-reset
+```
+
+Expected clean demo counts:
+
+| Area | Count |
+|---|---:|
+| workflow executions | 4 |
+| `cp.run_log` | 30 |
+| `cp.run_stage_log` | 30 |
+| `cp.lineage_link` / `cp.output_link` | 30 |
+| `cp.lineage_edge` / `cp.input_edge` | 34 |
+| `cp.file_catalogue` | 7 |
+| `ods.customer_transaction` | 20 |
+| `ods.customer_transaction_daily` | 11 |
+
+## Setup
+
+The default connection is:
+
+```text
+host=localhost
+port=5440
+dbname=ods_cp
+user=ods
+password=ods
+```
+
+Override with:
+
+```powershell
+$env:ODS_CP_HOST="localhost"
+$env:ODS_CP_PORT="5440"
+$env:ODS_CP_DB="ods_cp"
+$env:ODS_CP_USER="ods"
+$env:ODS_CP_PASSWORD="ods"
+```
+
+Apply migrations in order from `db/migrations` to a Postgres 15+ database.
+
+## Tests
+
+Run the full test suite:
+
+```powershell
+python -m pytest -q
+```
+
+Current result:
+
+```text
+230 passed, 2 skipped
+```
+
+Useful focused suites:
+
+```powershell
+python -m pytest tests\test_customer_transaction_workflow.py -q
+python -m pytest tests\test_output_link_rename.py tests\test_target_visibility.py -q
+```
+
+## Naming
+
+The preferred product names are:
+
+| Product name | Meaning | Physical compatibility |
+|---|---|---|
+| `output_link` | the output produced by a run | formerly `lineage_link` |
+| `output_link_id` | id of the produced output | formerly `lineage_link_id` |
+| `input_edge` | one input consumed by an output | formerly `lineage_edge` |
+| `input_edge_id` | id of the relationship row | formerly `lineage_edge_id` |
+| `upstream_output_link_id` | previous output used as input | formerly `upstream_lineage_link_id` |
+
+The dashboard uses the product names so developers can reason about metadata as:
+
+1. task starts
+2. stages record progress
+3. inputs are recorded as `input_edge`
+4. produced data is recorded as `output_link`
+5. target rows are stamped with the output id
+
+## OpenLineage
+
+The dashboard can generate OpenLineage-style events for a workflow. The current
+control plane is still the source of truth; OpenLineage export is a derived view
+for systems that prefer the OL event shape.
+
+## Important Boundary
+
+This repository is not Spark, S3, Kafka, or a production scheduler. It is the
+metadata/control-plane layer that those systems would call. The harness proves
+the metadata behavior without needing the real data plane.

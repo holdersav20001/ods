@@ -50,10 +50,11 @@ BUSINESS_DATES = [
 ]
 REFEED_BUSINESS_DATE = dt.date(2026, 5, 29)
 
-# Stable customer roster per the spec (§Input Files). Same two customers each day.
+# Stable customer roster per the spec (§Input Files). Same customers each day.
 CUSTOMER_ROWS = [
     {"customer_id": "C001", "customer_name": "Ada Lovelace", "segment": "premium"},
     {"customer_id": "C002", "customer_name": "Grace Hopper", "segment": "standard"},
+    {"customer_id": "C003", "customer_name": "Katherine Johnson", "segment": "premium"},
 ]
 
 # Original transaction file per the spec (§Input Files).
@@ -61,15 +62,21 @@ TRANSACTION_ROWS = [
     {"transaction_id": "T100", "customer_id": "C001", "amount": 125.50},
     {"transaction_id": "T101", "customer_id": "C001", "amount": 74.50},
     {"transaction_id": "T102", "customer_id": "C002", "amount": 33.00},
+    {"transaction_id": "T103", "customer_id": "C002", "amount": 48.25},
+    {"transaction_id": "T104", "customer_id": "C003", "amount": 210.00},
+    {"transaction_id": "T105", "customer_id": "C003", "amount": 19.95},
 ]
 
 # Corrected Day-2 transaction refeed (§"Corrected Transaction Refeed File").
-# Same ids/structure, T101 amount corrected 74.50 -> 79.50. Distinct content =>
+# Same ids/structure, two amounts corrected. Distinct content =>
 # distinct file_md5 => distinct raw file identity.
 CORRECTED_TRANSACTION_ROWS = [
     {"transaction_id": "T100", "customer_id": "C001", "amount": 125.50},
     {"transaction_id": "T101", "customer_id": "C001", "amount": 79.50},
     {"transaction_id": "T102", "customer_id": "C002", "amount": 33.00},
+    {"transaction_id": "T103", "customer_id": "C002", "amount": 48.25},
+    {"transaction_id": "T104", "customer_id": "C003", "amount": 225.00},
+    {"transaction_id": "T105", "customer_id": "C003", "amount": 19.95},
 ]
 
 
@@ -105,10 +112,37 @@ def ensure_demo_targets(conn) -> None:
         )
 
 
+def reset_demo_state(conn) -> None:
+    """Clear generated demo/control state before writing a fresh snapshot.
+
+    The static reference tables (`cp.edge_type`, `cp.dataset_config`) are kept.
+    Generated files, runs, stages, links, edges, reconciliation rows, DLQ rows,
+    and the two demo target tables are removed.
+    """
+    ensure_demo_targets(conn)
+    conn.execute(
+        f"TRUNCATE TABLE ods.{DETAIL_DATASET}, ods.{AGG_DATASET} "
+        "RESTART IDENTITY CASCADE"
+    )
+    conn.execute(
+        """
+        TRUNCATE TABLE
+            cp.dlq,
+            cp.reconciliation_log,
+            cp.lineage_edge,
+            cp.lineage_link,
+            cp.run_stage_log,
+            cp.run_log,
+            cp.file_catalogue
+        RESTART IDENTITY CASCADE
+        """
+    )
+
+
 def _content_md5(rows: list[dict[str, Any]]) -> str:
     """Deterministic content hash of a raw file's rows.
 
-    Distinct content (e.g. the corrected T101 amount) yields a distinct md5, so
+    Distinct content (e.g. corrected transaction amounts) yields a distinct md5, so
     the corrected refeed gets a genuinely different raw file identity.
     """
     blob = json.dumps(rows, sort_keys=True, separators=(",", ":"))
@@ -285,6 +319,22 @@ def _aggregate_rows(detail_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         {**row, "total_amount": round(row["total_amount"], 2)}
         for row in by_customer.values()
     ]
+
+
+def _changed_rows(original_rows: list[dict[str, Any]],
+                  new_rows: list[dict[str, Any]],
+                  key_fields: tuple[str, ...]) -> list[dict[str, Any]]:
+    """Return rows whose business key is new or whose payload actually changed."""
+    original_by_key = {
+        tuple(row[field] for field in key_fields): row
+        for row in original_rows
+    }
+    changed = []
+    for row in new_rows:
+        key = tuple(row[field] for field in key_fields)
+        if original_by_key.get(key) != row:
+            changed.append(row)
+    return changed
 
 
 def _merge_to_detail(conn, *, workflow_run_id: str, business_date: dt.date,
@@ -580,6 +630,11 @@ def refeed_execution(conn, *, original_day2_result: dict[str, Any],
     customer_silver = original_day2_result["customer_silver"]
 
     detail_rows = _merge_rows(business_date, corrected_transaction_rows)
+    changed_detail_rows = _changed_rows(
+        original_day2_result["detail_rows"],
+        detail_rows,
+        ("business_date", "transaction_id"),
+    )
     content_tag = f"{workflow_run_id}-corrected"
     merge = _merge_to_detail(
         conn, workflow_run_id=workflow_run_id, business_date=business_date,
@@ -590,11 +645,16 @@ def refeed_execution(conn, *, original_day2_result: dict[str, Any],
         conn, workflow_run_id=workflow_run_id, business_date=business_date,
         dataset=DETAIL_DATASET, upstream_run_id=merge["run_id"],
         upstream_link_id=merge["link_id"], upstream_edge_type="merge_to_canonical",
-        rows=detail_rows, content_tag=content_tag,
+        rows=changed_detail_rows, content_tag=content_tag,
         stage_name="upsert_customer_transaction", trigger_type="replay",
         commit=commit)
 
     aggregate_rows = _aggregate_rows(detail_rows)
+    changed_aggregate_rows = _changed_rows(
+        original_day2_result["aggregate_rows"],
+        aggregate_rows,
+        ("business_date", "customer_id"),
+    )
     aggregate = _aggregate_from_detail(
         conn, workflow_run_id=workflow_run_id, business_date=business_date,
         detail_sink=detail_sink, detail_rows=detail_rows,
@@ -604,7 +664,7 @@ def refeed_execution(conn, *, original_day2_result: dict[str, Any],
         conn, workflow_run_id=workflow_run_id, business_date=business_date,
         dataset=AGG_DATASET, upstream_run_id=aggregate["run_id"],
         upstream_link_id=aggregate["link_id"],
-        upstream_edge_type="merge_to_canonical", rows=aggregate_rows,
+        upstream_edge_type="merge_to_canonical", rows=changed_aggregate_rows,
         content_tag=content_tag, stage_name="upsert_customer_transaction_daily",
         trigger_type="replay", commit=commit)
 
@@ -622,7 +682,9 @@ def refeed_execution(conn, *, original_day2_result: dict[str, Any],
         "aggregate": aggregate,
         "aggregate_sink": aggregate_sink,
         "detail_rows": detail_rows,
+        "changed_detail_rows": changed_detail_rows,
         "aggregate_rows": aggregate_rows,
+        "changed_aggregate_rows": changed_aggregate_rows,
     }
 
 
@@ -677,7 +739,7 @@ def run_demo(conn, *, commit: bool = True) -> dict[str, Any]:
             "business_date": str(refeed["business_date"]),
             "execution_type": "refeed",
             "refeed_of_workflow_run_id": refeed["refeed_of_workflow_run_id"],
-            "description": "Day 2 transaction refeed (corrected T101)",
+            "description": "Day 2 transaction refeed (corrected T101 and T104)",
         },
     ]
 
@@ -833,12 +895,14 @@ def export_demo_snapshot(conn, executions_meta: list[dict[str, Any]]) -> dict[st
     })
 
 
-def write_dashboard_snapshot(path: str | pathlib.Path) -> dict[str, Any]:
+def write_dashboard_snapshot(path: str | pathlib.Path, *, reset: bool = True) -> dict[str, Any]:
     """Run the demo against Postgres (LEAVING data committed) and write JSON."""
     out = pathlib.Path(path)
     out.parent.mkdir(parents=True, exist_ok=True)
     with connect() as conn:
         conn.autocommit = False
+        if reset:
+            reset_demo_state(conn)
         result = run_demo(conn, commit=True)
         snapshot = export_demo_snapshot(conn, result["executions"])
         conn.commit()
@@ -853,8 +917,13 @@ def main() -> None:
         default="dashboard/data/demo-workflow.json",
         help="Path to write dashboard JSON.",
     )
+    parser.add_argument(
+        "--no-reset",
+        action="store_true",
+        help="Append demo rows instead of clearing generated control/target tables first.",
+    )
     args = parser.parse_args()
-    snapshot = write_dashboard_snapshot(args.out)
+    snapshot = write_dashboard_snapshot(args.out, reset=not args.no_reset)
     print(f"wrote {args.out}")
     print(f"executions={len(snapshot['executions'])} "
           f"runs={len(snapshot['runs'])} links={len(snapshot['links'])} "

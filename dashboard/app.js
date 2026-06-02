@@ -9,10 +9,13 @@
   const hasReactFlow = !!Flow && (typeof Flow === "function" || typeof Flow === "object");
 
   const TABS = [
+    ["workflows", "Workflows"],
     ["metadata", "Metadata Map"],
     ["control", "Control Links"],
     ["flow", "Run Flow"],
     ["diagram", "Workflow Diagram"],
+    ["process", "Process Model"],
+    ["developer", "Developer Model"],
     ["rows", "Target Rows"],
     ["templates", "Templates"],
     ["docs", "Documentation"],
@@ -1305,13 +1308,17 @@ if sync_to_postgres:
   function App() {
     const [data, setData] = React.useState(null);
     const [error, setError] = React.useState(null);
-    const [tab, setTab] = React.useState("metadata");
+    const [tab, setTab] = React.useState("workflows");
     const [selectedExecutionId, setSelectedExecutionId] = React.useState("all");
     const [selectedRunId, setSelectedRunId] = React.useState("");
     const [focusedLinkId, setFocusedLinkId] = React.useState("");
     const [selectedTable, setSelectedTable] = React.useState("");
+    const [selectedRowsWorkflowId, setSelectedRowsWorkflowId] = React.useState("all");
     const [selectedDate, setSelectedDate] = React.useState("all");
+    const [targetRowSort, setTargetRowSort] = React.useState("row_id:asc");
     const [flowScope, setFlowScope] = React.useState("overview");
+    const [jsonWorkflowId, setJsonWorkflowId] = React.useState("");
+    const [olWorkflowId, setOlWorkflowId] = React.useState("");
 
     React.useEffect(() => {
       fetch("./data/demo-workflow.json", { cache: "no-store" })
@@ -1324,7 +1331,7 @@ if sync_to_postgres:
           setData(normalizeSnapshot(snapshot));
           setSelectedExecutionId(firstExecution);
           setSelectedTable(Object.keys(snapshot.tables || {})[0] || "");
-          setSelectedDate(snapshot.scenario?.business_dates?.[0] || "all");
+          setSelectedDate("all");
         })
         .catch((err) => setError(err.message));
     }, []);
@@ -1369,6 +1376,26 @@ if sync_to_postgres:
     return e("div", { className: "app" },
       e(Header, { data, tab, setTab }),
       e("main", { className: "content" },
+        tab === "workflows" && e(WorkflowsTab, {
+          data,
+          selectedExecutionId,
+          jsonWorkflowId,
+          setJsonWorkflowId,
+          olWorkflowId,
+          setOlWorkflowId,
+          openDetails: (workflowRunId) => {
+            setSelectedExecutionId(workflowRunId);
+            setTab("diagram");
+          },
+          openProcess: (workflowRunId) => {
+            setSelectedExecutionId(workflowRunId);
+            setTab("process");
+          },
+          openDeveloper: (workflowRunId) => {
+            setSelectedExecutionId(workflowRunId);
+            setTab("developer");
+          },
+        }),
         tab === "metadata" && e(MetadataTab, {
           data,
           selectedExecutionId,
@@ -1407,12 +1434,31 @@ if sync_to_postgres:
           setSelectedExecutionId,
           focusLink,
         }),
+        tab === "process" && e(ProcessModelTab, {
+          data,
+          selectedExecutionId,
+          setSelectedExecutionId,
+          focusLink,
+        }),
+        tab === "developer" && e(DeveloperProcessModelTab, {
+          data,
+          selectedExecutionId,
+          setSelectedExecutionId,
+        }),
         tab === "rows" && e(RowsTab, {
           data,
           selectedTable,
           setSelectedTable,
+          selectedRowsWorkflowId,
+          setSelectedRowsWorkflowId,
           selectedDate,
           setSelectedDate,
+          targetRowSort,
+          setTargetRowSort,
+          openWorkflow: (workflowRunId) => {
+            setSelectedExecutionId(workflowRunId);
+            setTab("process");
+          },
           focusLink,
         }),
         tab === "templates" && e(TemplatesTab),
@@ -1505,6 +1551,396 @@ if sync_to_postgres:
         )
       )
     );
+  }
+
+  function WorkflowsTab({ data, selectedExecutionId, jsonWorkflowId, setJsonWorkflowId, olWorkflowId, setOlWorkflowId, openDetails, openProcess, openDeveloper }) {
+    const summaries = workflowSummaries(data);
+    const selectedJson = jsonWorkflowId
+      ? buildWorkflowJson(data, jsonWorkflowId)
+      : null;
+    const selectedOl = olWorkflowId
+      ? buildOpenLineageEvents(data, olWorkflowId)
+      : null;
+
+    return e("div", { className: "workflows-page" },
+      e("section", { className: "workflow-overview-grid" },
+        e("div", { className: "panel workflow-overview-card" },
+          e("span", null, "workflows"),
+          e("strong", null, summaries.length),
+          e("small", null, "Grouped by workflow_run_id")
+        ),
+        e("div", { className: "panel workflow-overview-card" },
+          e("span", null, "runs"),
+          e("strong", null, data.runs.length),
+          e("small", null, "Scheduler/task executions")
+        ),
+        e("div", { className: "panel workflow-overview-card" },
+          e("span", null, "outputs"),
+          e("strong", null, data.links.length),
+          e("small", null, "cp.output_link rows")
+        ),
+        e("div", { className: "panel workflow-overview-card" },
+          e("span", null, "target rows"),
+          e("strong", null, Object.values(data.tables || {}).reduce((sum, rows) => sum + rows.length, 0)),
+          e("small", null, "Rows stamped by workflow")
+        )
+      ),
+      e("section", { className: "panel" },
+        e("div", { className: "panel-head" },
+          e("h2", null, "Workflow Runs"),
+          e("span", { className: "pill" }, `${summaries.length}`)
+        ),
+        e("div", { className: "workflow-list" },
+          summaries.map((summary) => e(WorkflowSummaryCard, {
+            key: summary.workflow_run_id,
+            summary,
+            selected: selectedExecutionId === summary.workflow_run_id,
+            jsonOpen: jsonWorkflowId === summary.workflow_run_id,
+            olOpen: olWorkflowId === summary.workflow_run_id,
+            onDetails: () => openDetails(summary.workflow_run_id),
+            onProcess: () => openProcess(summary.workflow_run_id),
+            onDeveloper: () => openDeveloper(summary.workflow_run_id),
+            onJson: () => {
+              setOlWorkflowId("");
+              setJsonWorkflowId(jsonWorkflowId === summary.workflow_run_id ? "" : summary.workflow_run_id);
+            },
+            onOpenLineage: () => {
+              setJsonWorkflowId("");
+              setOlWorkflowId(olWorkflowId === summary.workflow_run_id ? "" : summary.workflow_run_id);
+            },
+          }))
+        )
+      ),
+      selectedJson && e("section", { className: "panel workflow-json-panel" },
+        e("div", { className: "panel-head" },
+          e("div", null,
+            e("h2", null, "Workflow JSON"),
+            e("p", null, "Generated from the dashboard snapshot. Inputs use a generic input.type + input.id shape.")
+          ),
+          e("button", { type: "button", className: "small-action", onClick: () => setJsonWorkflowId("") }, "close")
+        ),
+        e("pre", { className: "template-code workflow-json-code" },
+          e("code", null, JSON.stringify(selectedJson, null, 2))
+        )
+      ),
+      selectedOl && e("section", { className: "panel workflow-json-panel" },
+        e("div", { className: "panel-head" },
+          e("div", null,
+            e("h2", null, "OpenLineage Events"),
+            e("p", null, "Generated OpenLineage-style COMPLETE events from the selected workflow. ODS identifiers are carried in custom facets.")
+          ),
+          e("button", { type: "button", className: "small-action", onClick: () => setOlWorkflowId("") }, "close")
+        ),
+        e("pre", { className: "template-code workflow-json-code" },
+          e("code", null, JSON.stringify(selectedOl, null, 2))
+        )
+      )
+    );
+  }
+
+  function WorkflowSummaryCard({ summary, selected, jsonOpen, olOpen, onDetails, onProcess, onDeveloper, onJson, onOpenLineage }) {
+    const statusClass = summary.execution_type === "refeed" ? "amber" : "green";
+    return e("article", { className: `workflow-summary-card ${selected ? "selected" : ""}` },
+      e("div", { className: "workflow-summary-main" },
+        e("div", { className: "workflow-summary-title" },
+          e("span", { className: `pill ${statusClass}` }, summary.execution_type),
+          e("strong", null, summary.business_date),
+          e("code", null, summary.workflow_run_id)
+        ),
+        e("p", null, summary.description || "Workflow grouped from run_log rows"),
+        summary.refeed_of_workflow_run_id && e("div", { className: "workflow-refeed" },
+          e("span", null, "refeed of"),
+          e("code", null, shortId(summary.refeed_of_workflow_run_id))
+        )
+      ),
+      e("div", { className: "workflow-metrics" },
+        e(WorkflowMetric, { label: "runs", value: summary.runCount }),
+        e(WorkflowMetric, { label: "stages", value: summary.stageCount }),
+        e(WorkflowMetric, { label: "outputs", value: summary.outputCount }),
+        e(WorkflowMetric, { label: "inputs", value: summary.inputCount }),
+        e(WorkflowMetric, { label: "files", value: summary.fileCount }),
+        e(WorkflowMetric, { label: "target rows", value: summary.targetRowCount }),
+        e(WorkflowMetric, { label: "succeeded", value: summary.succeededCount }),
+        e(WorkflowMetric, { label: "failed", value: summary.failedCount })
+      ),
+      e("div", { className: "workflow-tags" },
+        summary.datasets.map((dataset) => e("span", {
+          className: `workflow-tag ${summary.datasetRoles?.[dataset] || ""}`,
+          key: dataset,
+        }, dataset)),
+        summary.pipelineTypes.map((type) => e("span", { className: "workflow-tag muted", key: type }, type))
+      ),
+      e("div", { className: "workflow-actions" },
+        e("button", { type: "button", className: "small-action", onClick: onDetails }, "Details"),
+        e("button", { type: "button", className: "small-action", onClick: onProcess }, "Process Diagram"),
+        e("button", { type: "button", className: "small-action", onClick: onDeveloper }, "Developer Model"),
+        e("button", { type: "button", className: `small-action ${olOpen ? "active" : ""}`, onClick: onOpenLineage },
+          olOpen ? "Hide OL" : "OL"
+        ),
+        e("button", { type: "button", className: `small-action ${jsonOpen ? "active" : ""}`, onClick: onJson },
+          jsonOpen ? "Hide JSON" : "JSON"
+        )
+      )
+    );
+  }
+
+  function WorkflowMetric({ label, value }) {
+    return e("div", { className: "workflow-metric" },
+      e("strong", null, value),
+      e("span", null, label)
+    );
+  }
+
+  function workflowSummaries(data) {
+    return (data.executions || []).map((execution) => {
+      const runs = filteredRuns(data, execution.workflow_run_id);
+      const runIds = new Set(runs.map((run) => run.run_id));
+      const links = (data.links || []).filter((link) => runIds.has(link.consumer_run_id));
+      const inputEdges = links.flatMap((link) => link.edges || []);
+      const sourceFileIds = new Set();
+      runs.forEach((run) => run.file_id && sourceFileIds.add(run.file_id));
+      inputEdges.forEach((edge) => edge.source_file_id && sourceFileIds.add(edge.source_file_id));
+      const targetRows = workflowTargetRows(data, execution.workflow_run_id);
+      const statusCounts = runs.reduce((counts, run) => {
+        counts[run.status] = (counts[run.status] || 0) + 1;
+        return counts;
+      }, {});
+      return {
+        ...execution,
+        runCount: runs.length,
+        stageCount: runs.reduce((sum, run) => sum + (run.stages?.length || 0), 0),
+        outputCount: links.length,
+        inputCount: inputEdges.length,
+        fileCount: sourceFileIds.size,
+        targetRowCount: targetRows.length,
+        succeededCount: statusCounts.succeeded || 0,
+        failedCount: statusCounts.failed || 0,
+        runningCount: statusCounts.running || 0,
+        datasets: unique(runs.map((run) => run.dataset)).sort(),
+        datasetRoles: workflowDatasetRoles(execution, runs),
+        pipelineTypes: unique(runs.map((run) => run.pipeline_type)).sort(),
+      };
+    });
+  }
+
+  function workflowDatasetRoles(execution, runs) {
+    if (execution.execution_type !== "refeed") return {};
+    const changed = new Set(
+      runs
+        .filter((run) => ["ingestion", "canonicalization"].includes(run.pipeline_type))
+        .map((run) => run.dataset)
+    );
+    return Object.fromEntries(
+      unique(runs.map((run) => run.dataset)).map((dataset) => [
+        dataset,
+        changed.has(dataset) ? "changed" : "impacted",
+      ])
+    );
+  }
+
+  function workflowTargetRows(data, workflowRunId) {
+    return Object.entries(data.tables || {}).flatMap(([tableName, rows]) =>
+      rows
+        .filter((row) => row._ods_workflow_run_id === workflowRunId)
+        .map((row) => ({ tableName, ...row }))
+    );
+  }
+
+  function buildWorkflowJson(data, workflowRunId) {
+    const execution = data.executionByWorkflow[workflowRunId] || { workflow_run_id: workflowRunId };
+    const runs = filteredRuns(data, workflowRunId).slice().sort(compareWorkflowRuns);
+    const runIds = new Set(runs.map((run) => run.run_id));
+    const links = (data.links || []).filter((link) => runIds.has(link.consumer_run_id));
+    const sourceFileIds = new Set();
+    runs.forEach((run) => run.file_id && sourceFileIds.add(run.file_id));
+    links.forEach((link) => (link.edges || []).forEach((edge) => {
+      if (edge.source_file_id) sourceFileIds.add(edge.source_file_id);
+    }));
+
+    return {
+      workflow_run_id: workflowRunId,
+      business_date: execution.business_date || null,
+      execution_type: execution.execution_type || null,
+      refeed_of_workflow_run_id: execution.refeed_of_workflow_run_id || null,
+      description: execution.description || null,
+      metrics: workflowSummaries(data).find((item) => item.workflow_run_id === workflowRunId) || null,
+      runs: runs.map((run) => ({
+        run_id: run.run_id,
+        pipeline_type: run.pipeline_type,
+        domain: run.domain,
+        dataset: run.dataset,
+        business_date: run.business_date,
+        trigger_type: run.trigger_type,
+        status: run.status,
+        record_count_in: run.record_count_in,
+        record_count_out: run.record_count_out,
+        stages: run.stages || [],
+        outputs: (data.linksByRun[run.run_id] || []).map((link) => ({
+          output_link_id: outputLinkId(link),
+          edge_type: link.edge_type,
+          sink_type: link.sink_type || null,
+          target_ref: link.target_ref,
+          transform_version: link.transform_version || null,
+          record_count: link.record_count,
+          inputs: (link.edges || []).map((edge) => workflowJsonInput(edge)),
+        })),
+      })),
+      files: Array.from(sourceFileIds)
+        .map((fileId) => data.fileById[fileId])
+        .filter(Boolean),
+      target_rows: workflowTargetRows(data, workflowRunId).map((row) => ({
+        table_name: row.tableName,
+        row_id: row.row_id,
+        output_link_id: rowOutputLinkId(row),
+        workflow_run_id: row._ods_workflow_run_id,
+        payload: row.payload,
+      })),
+    };
+  }
+
+  function workflowJsonInput(edge) {
+    const sourceFileId = edge.source_file_id || "";
+    const upstreamId = upstreamOutputLinkId(edge);
+    const input = sourceFileId
+      ? { type: "raw_file", id: sourceFileId }
+      : { type: "output_link", id: upstreamId || null };
+    return {
+      input_edge_id: inputEdgeId(edge),
+      input,
+      input_slot: edge.input_slot ?? null,
+      edge_type: edge.edge_type,
+      source_ref: edge.source_ref || null,
+      record_count: edge.record_count,
+    };
+  }
+
+  function buildOpenLineageEvents(data, workflowRunId) {
+    const execution = data.executionByWorkflow[workflowRunId] || { workflow_run_id: workflowRunId };
+    return filteredRuns(data, workflowRunId)
+      .slice()
+      .sort(compareWorkflowRuns)
+      .map((run) => {
+        const links = data.linksByRun[run.run_id] || [];
+        const inputEdges = links.flatMap((link) => link.edges || []);
+        return {
+          eventType: run.status === "failed" ? "FAIL" : "COMPLETE",
+          eventTime: openLineageEventTime(run.finished_at || run.started_at),
+          run: {
+            runId: run.run_id,
+            facets: {
+              ods_workflow: openLineageFacet({
+                workflow_run_id: run.workflow_run_id,
+                business_date: run.business_date,
+                execution_type: execution.execution_type || null,
+                refeed_of_workflow_run_id: execution.refeed_of_workflow_run_id || null,
+              }),
+              ods_run: openLineageFacet({
+                pipeline_type: run.pipeline_type,
+                domain: run.domain,
+                dataset: run.dataset,
+                trigger_type: run.trigger_type,
+                record_count_in: run.record_count_in,
+                record_count_out: run.record_count_out,
+              }),
+            },
+          },
+          job: {
+            namespace: "ods-control-plane",
+            name: `${run.domain}.${run.pipeline_type}.${run.dataset}`,
+            facets: {
+              ods_job: openLineageFacet({
+                domain: run.domain,
+                pipeline_type: run.pipeline_type,
+                dataset: run.dataset,
+              }),
+            },
+          },
+          inputs: inputEdges.map((edge) => openLineageInputDataset(data, edge)),
+          outputs: links.map((link) => openLineageOutputDataset(link)),
+          producer: "ods-control-plane-dashboard",
+          schemaURL: "https://openlineage.io/spec/1-0-5/OpenLineage.json#/definitions/RunEvent",
+        };
+      });
+  }
+
+  function openLineageInputDataset(data, edge) {
+    const sourceFileId = edge.source_file_id || "";
+    const upstreamId = upstreamOutputLinkId(edge);
+    const upstream = upstreamId ? data.linkById[upstreamId] : null;
+    const file = sourceFileId ? data.fileById[sourceFileId] : null;
+    const path = sourceFileId
+      ? file?.s3_raw_path || edge.source_ref?.path || `file:${sourceFileId}`
+      : upstream?.target_ref?.path || `output_link:${upstreamId}`;
+    const dataset = openLineageDatasetRef(path);
+    return {
+      ...dataset,
+      facets: {
+        ods_inputEdge: openLineageFacet({
+          input_edge_id: inputEdgeId(edge),
+          source_file_id: sourceFileId || null,
+          upstream_output_link_id: upstreamId || null,
+          edge_type: edge.edge_type,
+          input_slot: edge.input_slot ?? null,
+          record_count: edge.record_count,
+        }),
+      },
+    };
+  }
+
+  function openLineageOutputDataset(link) {
+    const path = link.target_ref?.path || `output_link:${outputLinkId(link)}`;
+    const dataset = openLineageDatasetRef(path);
+    return {
+      ...dataset,
+      facets: {
+        ods_outputLink: openLineageFacet({
+          output_link_id: outputLinkId(link),
+          consumer_run_id: link.consumer_run_id,
+          edge_type: link.edge_type,
+          sink_type: link.sink_type || null,
+          target_ref: link.target_ref,
+          record_count: link.record_count,
+          transform_version: link.transform_version || null,
+        }),
+      },
+    };
+  }
+
+  function openLineageDatasetRef(path) {
+    const text = String(path || "-");
+    if (text.startsWith("s3://")) {
+      const withoutScheme = text.slice("s3://".length);
+      const slash = withoutScheme.indexOf("/");
+      return {
+        namespace: slash >= 0 ? `s3://${withoutScheme.slice(0, slash)}` : "s3",
+        name: slash >= 0 ? withoutScheme.slice(slash + 1) : withoutScheme,
+      };
+    }
+    if (text.startsWith("postgres://")) {
+      return {
+        namespace: "postgres",
+        name: text.slice("postgres://".length),
+      };
+    }
+    return {
+      namespace: "ods-control-plane",
+      name: text,
+    };
+  }
+
+  function openLineageFacet(values) {
+    return {
+      _producer: "ods-control-plane-dashboard",
+      _schemaURL: "https://example.com/ods-control-plane/facets/1-0-0/OdsControlFacet.json",
+      ...values,
+    };
+  }
+
+  function openLineageEventTime(value) {
+    if (!value) return new Date().toISOString();
+    const text = String(value).replace(" ", "T").replace(/\+00$/, "Z");
+    const parsed = new Date(text);
+    return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toISOString();
   }
 
   function ControlTab(props) {
@@ -2232,19 +2668,596 @@ if sync_to_postgres:
     );
   }
 
-  function DiagramFact({ label, value }) {
-    return e("div", { className: "diagram-fact" },
+  function DiagramFact({ label, value, stored }) {
+    return e("div", { className: `diagram-fact ${stored ? "stored" : ""}` },
       e("span", null, label),
       e("code", null, value == null ? "-" : String(value))
     );
   }
 
-  function RowsTab({ data, selectedTable, setSelectedTable, selectedDate, setSelectedDate, focusLink }) {
+  function ProcessModelTab({ data, selectedExecutionId, setSelectedExecutionId, focusLink }) {
+    const [showGuide, setShowGuide] = React.useState(true);
+    const execution = data.executionByWorkflow[selectedExecutionId] || data.executions[0];
+    const runs = filteredRuns(data, execution.workflow_run_id)
+      .slice()
+      .sort(compareWorkflowRuns);
+    const groups = groupDiagramRuns(runs);
+
+    return e(React.Fragment, null,
+      e("div", { className: "toolbar" },
+        e(SelectField, {
+          label: "Execution",
+          value: execution.workflow_run_id,
+          onChange: setSelectedExecutionId,
+          options: data.executions.map((item) => [
+            item.workflow_run_id,
+            `${item.business_date} - ${item.execution_type} - ${shortId(item.workflow_run_id)}`,
+          ]),
+        }),
+        e("div", { className: "diagram-note" },
+          e("strong", null, "Process model rule"),
+          e("span", null, "Inside each process, the task records 1. input_edge rows for what it consumed, then 2. output_link rows for what it produced.")
+        ),
+        e("button", {
+          type: "button",
+          className: `small-action ${showGuide ? "active" : ""}`,
+          onClick: () => setShowGuide(!showGuide),
+        },
+          showGuide ? "Hide Guide" : "Show Guide"
+        )
+      ),
+      showGuide && e(ProcessModelGuide),
+      e("section", { className: "process-board panel" },
+        e("div", { className: "panel-head" },
+          e("h2", null, `Process model: ${execution.business_date} ${execution.execution_type}`),
+          e("span", { className: `pill ${execution.execution_type === "refeed" ? "amber" : "green"}` },
+            execution.execution_type
+          )
+        ),
+        e("div", { className: "process-board-scroll" },
+          groups.map((group, index) => e(React.Fragment, { key: group.key },
+            e(ProcessStageSection, { data, group, focusLink, showGuide }),
+            index < groups.length - 1 && e("div", { className: "process-stage-arrow" },
+              "next process consumes prior output_link through its own input_edge"
+            )
+          ))
+        )
+      )
+    );
+  }
+
+  function ProcessModelGuide() {
+    return e("section", { className: "process-guide panel" },
+      e("div", { className: "process-guide-card task" },
+        e("strong", null, "task / run_log"),
+        e("span", null, "What executed. Owns stages and creates metadata rows.")
+      ),
+      e("div", { className: "process-guide-card input" },
+        e("strong", null, "input_edge"),
+        e("span", null, "What this task consumed. Points to a raw file or upstream output_link.")
+      ),
+      e("div", { className: "process-guide-card output" },
+        e("strong", null, "output_link"),
+        e("span", null, "What this task produced. Later tasks consume this ID.")
+      ),
+      e("div", { className: "process-guide-card stage" },
+        e("strong", null, "run_stage_log"),
+        e("span", null, "Internal checkpoints inside the task.")
+      ),
+      e("div", { className: "process-guide-card stored" },
+        e("strong", null, "bold values"),
+        e("span", null, "Stored directly in the named table/column.")
+      )
+    );
+  }
+
+  function ProcessStageSection({ data, group, focusLink, showGuide }) {
+    return e("section", { className: `process-stage process-stage-${group.key}` },
+      e("div", { className: "process-stage-head" },
+        e("strong", null, group.label),
+        e("span", null, group.hint)
+      ),
+      e("div", {
+        className: `process-stage-lanes ${group.runs.length > 1 ? "multi" : "single"}`,
+      },
+        group.runs.map((run) => e(ProcessRunBox, {
+          key: run.run_id,
+          data,
+          run,
+          focusLink,
+          showGuide,
+        }))
+      )
+    );
+  }
+
+  function ProcessRunBox({ data, run, focusLink, showGuide }) {
+    const links = data.linksByRun[run.run_id] || [];
+    const inputItems = links.flatMap((link) =>
+      (link.edges || []).map((edge) => ({ edge, link }))
+    );
+    const stages = run.stages || [];
+    const inputCount = inputItems.length;
+    const outputCount = links.length;
+
+    return e("article", { className: "process-box" },
+      e("div", { className: "process-task-card" },
+        e("span", { className: "pill mini" }, "task"),
+        e("strong", null, `${run.pipeline_type} / ${run.dataset}`),
+        e("code", null, `run_log ${shortId(run.run_id)}`),
+        e("small", null, `${run.record_count_in ?? "-"} -> ${run.record_count_out ?? "-"} records`)
+      ),
+      showGuide && e("div", { className: "process-ownership-strip" },
+        e("span", null, "run_log owns run_stage_log"),
+        e("span", null, "1 creates input_edge"),
+        e("span", null, "2 creates output_link")
+      ),
+      e("div", { className: "process-action-grid" },
+        e("div", { className: "process-action-column" },
+          e("div", { className: "process-action-title" }, "1. task creates input_edge"),
+          inputItems.length
+            ? inputItems.map((item, index) => e(ProcessInputCard, {
+                key: `${outputLinkId(item.link)}-${inputEdgeId(item.edge)}`,
+                data,
+                run,
+                edge: item.edge,
+                link: item.link,
+                label: processStepLabel(1, index, inputCount),
+              }))
+            : e("div", { className: "process-empty-card" }, "No input_edge rows")
+        ),
+        e("div", { className: "process-action-column" },
+          e("div", { className: "process-action-title" }, "2. task creates output_link"),
+          links.length
+            ? links.map((link, index) => e(ProcessOutputCard, {
+                key: outputLinkId(link),
+                run,
+                link,
+                label: processStepLabel(2, index, outputCount),
+                onClick: () => focusLink(outputLinkId(link)),
+              }))
+            : e("div", { className: "process-empty-card" }, "No output_link rows")
+        )
+      ),
+      e("div", { className: "process-stage-log-section" },
+        e("div", { className: "process-action-title" }, "task stages"),
+        stages.length
+          ? e("div", { className: "process-stage-log-grid" },
+              stages.map((stage, index) => e(ProcessStageLogCard, {
+                key: `${run.run_id}-${stage.stage || index}-${stage.attempt || 0}`,
+                run,
+                stage,
+                label: processStepLabel("stage", index, stages.length),
+              }))
+            )
+          : e("div", { className: "process-empty-card" }, "No run_stage_log rows")
+      )
+    );
+  }
+
+  function ProcessInputCard({ data, run, edge, label }) {
+    const edgeId = inputEdgeId(edge);
+    const sourceFileId = edge.source_file_id || "";
+    const upstreamId = upstreamOutputLinkId(edge);
+    const upstream = upstreamId ? data.linkById[upstreamId] : null;
+    const upstreamRun = upstream ? data.runById[upstream.consumer_run_id] : null;
+    const file = sourceFileId ? data.fileById[sourceFileId] : null;
+    const inputKind = sourceFileId ? "raw file" : "output_link";
+    const inputId = sourceFileId || upstreamId;
+    const inputName = sourceFileId
+      ? file?.source_name || file?.file_name || "raw file"
+      : `${upstreamRun?.pipeline_type || "upstream"} / ${upstreamRun?.dataset || "output"}`;
+    const inputPath = sourceFileId
+      ? file?.s3_raw_path || edge.source_ref?.path || "-"
+      : upstream?.target_ref?.path || "-";
+
+    return e("div", { className: "process-meta-card process-input-card" },
+      e("div", { className: "process-card-title" },
+        e("span", null, `${label} input_edge`),
+        e("code", { className: "stored-value" }, shortId(edgeId))
+      ),
+      e("p", null, `created by task ${shortId(run.run_id)}`),
+      e("div", { className: "process-table-name" }, "table: input_edge"),
+      e("div", { className: "process-column-head" },
+        e("span", null, "column"),
+        e("span", null, "value")
+      ),
+      e("div", { className: "process-facts" },
+        e(DiagramFact, { label: "input_edge_id", value: shortId(edgeId), stored: true }),
+        e(DiagramFact, { label: sourceFileId ? "source_file_id" : "upstream_output_link_id", value: shortId(inputId), stored: true }),
+        e(DiagramFact, { label: "reads", value: inputName }),
+        e(DiagramFact, { label: "path", value: inputPath }),
+        e(DiagramFact, { label: "input kind", value: inputKind })
+      )
+    );
+  }
+
+  function ProcessOutputCard({ run, link, label, onClick }) {
+    const linkId = outputLinkId(link);
+    return e("button", { className: "process-meta-card process-output-card", type: "button", onClick },
+      e("div", { className: "process-card-title" },
+        e("span", null, `${label} output_link`),
+        e("code", { className: "stored-value" }, shortId(linkId))
+      ),
+      e("p", null, `created by task ${shortId(run.run_id)}`),
+      e("div", { className: "process-table-name" }, "table: output_link"),
+      e("div", { className: "process-column-head" },
+        e("span", null, "column"),
+        e("span", null, "value")
+      ),
+      e("div", { className: "process-facts" },
+        e(DiagramFact, { label: "output_link_id", value: shortId(linkId), stored: true }),
+        e(DiagramFact, { label: "consumer_run_id", value: shortId(run.run_id), stored: true }),
+        e(DiagramFact, { label: "edge_type", value: link.edge_type || "-", stored: true }),
+        e(DiagramFact, { label: "target_ref.path", value: link.target_ref?.path || "-", stored: true }),
+        e(DiagramFact, { label: "record_count", value: link.record_count ?? "-", stored: true }),
+        e(DiagramFact, { label: "target_ref.content_hash", value: shortId(link.target_ref?.content_hash), stored: true })
+      )
+    );
+  }
+
+  function ProcessStageLogCard({ run, stage, label }) {
+    return e("div", { className: "process-meta-card process-stage-log-card" },
+      e("div", { className: "process-card-title" },
+        e("span", null, label),
+        e("code", { className: "stored-value" }, stage.stage || "-")
+      ),
+      e("p", null, `stage recorded under task ${shortId(run.run_id)}`),
+      e("div", { className: "process-table-name" }, "table: run_stage_log"),
+      e("div", { className: "process-column-head" },
+        e("span", null, "column"),
+        e("span", null, "value")
+      ),
+      e("div", { className: "process-facts" },
+        e(DiagramFact, { label: "run_id", value: shortId(run.run_id), stored: true }),
+        e(DiagramFact, { label: "stage", value: stage.stage || "-", stored: true }),
+        e(DiagramFact, { label: "attempt", value: stage.attempt ?? "-", stored: true }),
+        e(DiagramFact, { label: "status", value: stage.status || "-", stored: true }),
+        e(DiagramFact, { label: "record_count_in", value: stage.record_count_in ?? "-", stored: true }),
+        e(DiagramFact, { label: "record_count_out", value: stage.record_count_out ?? "-", stored: true }),
+        e(DiagramFact, { label: "started_at", value: shortTimestamp(stage.started_at), stored: true }),
+        e(DiagramFact, { label: "finished_at", value: shortTimestamp(stage.finished_at), stored: true }),
+        e(DiagramFact, { label: "metrics", value: stage.metrics ? JSON.stringify(stage.metrics) : "-", stored: true })
+      )
+    );
+  }
+
+  function processStepLabel(step, index, count) {
+    if (step === "stage") {
+      if (count <= 1) return "stage";
+      return `stage ${index + 1}`;
+    }
+    if (count <= 1) return `${step}.`;
+    return `${step}${String.fromCharCode(97 + index)}.`;
+  }
+
+  function DeveloperProcessModelTab({ data, selectedExecutionId, setSelectedExecutionId }) {
+    const execution = data.executionByWorkflow[selectedExecutionId] || data.executions[0];
+    const runs = filteredRuns(data, execution.workflow_run_id)
+      .slice()
+      .sort(compareWorkflowRuns);
+    const groups = groupDiagramRuns(runs);
+    const firstRun = runs[0] || null;
+    const [selectedItem, setSelectedItem] = React.useState(null);
+    const activeItem = selectedItem && selectedItem.workflow_run_id === execution.workflow_run_id
+      ? selectedItem
+      : firstRun
+        ? { kind: "task", workflow_run_id: execution.workflow_run_id, run_id: firstRun.run_id }
+        : null;
+    const command = activeItem ? buildDeveloperCommand(data, activeItem) : null;
+    const activeKey = activeItem ? developerItemKey(activeItem) : "";
+
+    return e(React.Fragment, null,
+      e("div", { className: "toolbar" },
+        e(SelectField, {
+          label: "Execution",
+          value: execution.workflow_run_id,
+          onChange: setSelectedExecutionId,
+          options: data.executions.map((item) => [
+            item.workflow_run_id,
+            `${item.business_date} - ${item.execution_type} - ${shortId(item.workflow_run_id)}`,
+          ]),
+        }),
+        e("div", { className: "diagram-note" },
+          e("strong", null, "Developer model"),
+          e("span", null, "Click a task, input, output, or stage to see the wrapper call that creates the control-plane rows.")
+        )
+      ),
+      e("section", { className: "developer-model-layout" },
+        e("div", { className: "developer-model-board panel" },
+          e("div", { className: "panel-head" },
+            e("h2", null, `Developer model: ${execution.business_date} ${execution.execution_type}`),
+            e("span", { className: `pill ${execution.execution_type === "refeed" ? "amber" : "green"}` },
+              execution.execution_type
+            )
+          ),
+          e("div", { className: "developer-board-scroll" },
+            groups.map((group, index) => e(React.Fragment, { key: group.key },
+              e(DeveloperStageSection, {
+                data,
+                group,
+                activeKey,
+                selectItem: setSelectedItem,
+                workflowRunId: execution.workflow_run_id,
+              }),
+              index < groups.length - 1 && e("div", { className: "process-stage-arrow" },
+                "next process consumes prior output_link through inputs=[...]"
+              )
+            ))
+          )
+        ),
+        e("aside", { className: "developer-command-panel panel" },
+          command
+            ? e(DeveloperCommandView, { command })
+            : e("div", { className: "empty" }, "Select a card")
+        )
+      )
+    );
+  }
+
+  function DeveloperStageSection({ data, group, activeKey, selectItem, workflowRunId }) {
+    return e("section", { className: `process-stage process-stage-${group.key}` },
+      e("div", { className: "process-stage-head" },
+        e("strong", null, group.label),
+        e("span", null, group.hint)
+      ),
+      e("div", {
+        className: `process-stage-lanes ${group.runs.length > 1 ? "multi" : "single"}`,
+      },
+        group.runs.map((run) => e(DeveloperRunBox, {
+          key: run.run_id,
+          data,
+          run,
+          activeKey,
+          selectItem,
+          workflowRunId,
+        }))
+      )
+    );
+  }
+
+  function DeveloperRunBox({ data, run, activeKey, selectItem, workflowRunId }) {
+    const links = data.linksByRun[run.run_id] || [];
+    const inputItems = links.flatMap((link) =>
+      (link.edges || []).map((edge) => ({ edge, link }))
+    );
+    const stages = run.stages || [];
+    const pick = (item) => selectItem({ workflow_run_id: workflowRunId, ...item });
+
+    return e("article", { className: "developer-run-box" },
+      e(DeveloperClickCard, {
+        kind: "task",
+        title: `${run.pipeline_type} / ${run.dataset}`,
+        subtitle: `run_log ${shortId(run.run_id)}`,
+        active: activeKey === developerItemKey({ kind: "task", run_id: run.run_id }),
+        onClick: () => pick({ kind: "task", run_id: run.run_id }),
+      }),
+      e("div", { className: "developer-card-grid" },
+        e("div", { className: "developer-card-column" },
+          e("div", { className: "process-action-title" }, "inputs"),
+          inputItems.length
+            ? inputItems.map(({ edge, link }, index) => e(DeveloperClickCard, {
+                key: `${outputLinkId(link)}-${inputEdgeId(edge)}`,
+                kind: "input",
+                title: `${processStepLabel(1, index, inputItems.length)} input_edge`,
+                subtitle: `${shortId(inputEdgeId(edge))} -> ${shortId(edge.source_file_id || upstreamOutputLinkId(edge))}`,
+                active: activeKey === developerItemKey({ kind: "input", link_id: outputLinkId(link), edge_id: inputEdgeId(edge) }),
+                onClick: () => pick({ kind: "input", run_id: run.run_id, link_id: outputLinkId(link), edge_id: inputEdgeId(edge) }),
+              }))
+            : e("div", { className: "process-empty-card" }, "No input")
+        ),
+        e("div", { className: "developer-card-column" },
+          e("div", { className: "process-action-title" }, "outputs"),
+          links.length
+            ? links.map((link, index) => e(DeveloperClickCard, {
+                key: outputLinkId(link),
+                kind: "output",
+                title: `${processStepLabel(2, index, links.length)} output_link`,
+                subtitle: `${shortId(outputLinkId(link))} ${link.edge_type}`,
+                active: activeKey === developerItemKey({ kind: "output", link_id: outputLinkId(link) }),
+                onClick: () => pick({ kind: "output", run_id: run.run_id, link_id: outputLinkId(link) }),
+              }))
+            : e("div", { className: "process-empty-card" }, "No output")
+        )
+      ),
+      e("div", { className: "developer-stage-clicks" },
+        e("div", { className: "process-action-title" }, "stages"),
+        stages.length
+          ? stages.map((stage, index) => e(DeveloperClickCard, {
+              key: `${run.run_id}-${stage.stage}-${stage.attempt || 0}-${index}`,
+              kind: "stage",
+              title: stages.length > 1 ? `stage ${index + 1}` : "stage",
+              subtitle: `${stage.stage} ${stage.status}`,
+              active: activeKey === developerItemKey({ kind: "stage", run_id: run.run_id, stage_name: stage.stage, attempt: stage.attempt || 1 }),
+              onClick: () => pick({ kind: "stage", run_id: run.run_id, stage_name: stage.stage, attempt: stage.attempt || 1 }),
+            }))
+          : e("div", { className: "process-empty-card" }, "No stage")
+      )
+    );
+  }
+
+  function DeveloperClickCard({ kind, title, subtitle, active, onClick }) {
+    return e("button", {
+      type: "button",
+      className: `developer-click-card ${kind} ${active ? "active" : ""}`,
+      onClick,
+    },
+      e("strong", null, title),
+      e("span", null, subtitle)
+    );
+  }
+
+  function DeveloperCommandView({ command }) {
+    return e(React.Fragment, null,
+      e("div", { className: "panel-head" },
+        e("div", null,
+          e("h2", null, command.title),
+          e("p", null, command.description)
+        ),
+        e("span", { className: `pill ${command.kind}` }, command.kind)
+      ),
+      e("pre", { className: "template-code developer-command-code" },
+        e("code", null, command.code)
+      )
+    );
+  }
+
+  function buildDeveloperCommand(data, item) {
+    if (item.kind === "task") return taskCommand(data.runById[item.run_id]);
+    if (item.kind === "stage") {
+      const run = data.runById[item.run_id];
+      const stage = (run?.stages || []).find((candidate) =>
+        candidate.stage === item.stage_name && (candidate.attempt || 1) === (item.attempt || 1)
+      );
+      return stageCommand(run, stage);
+    }
+    if (item.kind === "output") {
+      const link = data.linkById[item.link_id];
+      const run = data.runById[link?.consumer_run_id];
+      return outputCommand(data, run, link);
+    }
+    if (item.kind === "input") {
+      const link = data.linkById[item.link_id];
+      const run = data.runById[link?.consumer_run_id];
+      const edge = (link?.edges || []).find((candidate) => inputEdgeId(candidate) === item.edge_id);
+      return inputCommand(data, run, link, edge);
+    }
+    return {
+      kind: "unknown",
+      title: "Unknown command",
+      description: "No command available.",
+      code: "",
+    };
+  }
+
+  function taskCommand(run) {
+    if (!run) return emptyCommand("task");
+    const fileArg = run.file_id ? `,\n    file_id=${py(run.file_id)}` : "";
+    return {
+      kind: "task",
+      title: `Create task ${run.pipeline_type} / ${run.dataset}`,
+      description: "Creates or identifies the run_log row for one restartable task execution.",
+      code: `from control import runs\n\nrun_id = runs.start(\n    conn,\n    workflow_run_id=${py(run.workflow_run_id)},\n    pipeline_type=${py(run.pipeline_type)},\n    domain=${py(run.domain)},\n    dataset=${py(run.dataset)},\n    business_date=${py(run.business_date)},\n    trigger_type=${py(run.trigger_type || "manual")}${fileArg},\n    commit=False,\n)\n\n# after the task succeeds\nruns.finalise(\n    conn,\n    run_id,\n    status=\"succeeded\",\n    record_count_out=${py(run.record_count_out)},\n    commit=False,\n)`,
+    };
+  }
+
+  function stageCommand(run, stage) {
+    if (!run || !stage) return emptyCommand("stage");
+    return {
+      kind: "stage",
+      title: `Create stage ${stage.stage}`,
+      description: "The stage context manager inserts run_stage_log at start and finishes it on success or failure.",
+      code: `from control import stages\n\nwith stages.stage_scope(\n    conn,\n    run_id=${py(run.run_id)},\n    stage=${py(stage.stage)},\n    attempt=${py(stage.attempt || 1)},\n    commit=False,\n) as stage_log:\n    # do the stage work here\n    stage_log.record_in = ${py(stage.record_count_in)}\n    stage_log.record_out = ${py(stage.record_count_out)}\n    stage_log.metrics = ${py(stage.metrics || {})}\n\n# stage_scope calls cp.finish_stage(..., status=\"succeeded\") on clean exit`,
+    };
+  }
+
+  function outputCommand(data, run, link) {
+    if (!run || !link) return emptyCommand("output");
+    const inputs = (link.edges || []).map((edge) => edgeInputObject(edge));
+    const targetRows = data.targetRowsByLink[outputLinkId(link)] || [];
+    const writer = targetRows.length ? "lineage.write_output_then_rows" : "lineage.write_output_link";
+    const rowArg = targetRows.length ? `,\n    rows=target_rows  # ${targetRows.length} row(s) stamped with produced_output_link_id` : "";
+    const sinkArg = link.sink_type ? `,\n    sink_type=${py(link.sink_type)}` : "";
+    return {
+      kind: "output",
+      title: `Create output_link ${shortId(outputLinkId(link))}`,
+      description: "Creates one output_link row and all of its input_edge rows from inputs=[...].",
+      code: `from control import lineage\n\nproduced_output_link_id = ${writer}(\n    conn,\n    consumer_run_id=${py(run.run_id)},\n    edge_type=${py(link.edge_type)},\n    target_ref=${py(link.target_ref)},\n    record_count=${py(link.record_count)},\n    inputs=${py(inputs)}${rowArg}${sinkArg},\n    transform_version=${py(link.transform_version)},\n    commit=False,\n)\n\n# returns produced_output_link_id ${shortId(outputLinkId(link))}\n# inputs=[...] creates the input_edge row(s) for this output`,
+    };
+  }
+
+  function inputCommand(data, run, link, edge) {
+    if (!run || !link || !edge) return emptyCommand("input");
+    const source = edge.source_file_id
+      ? `raw file ${shortId(edge.source_file_id)}`
+      : `upstream output_link ${shortId(upstreamOutputLinkId(edge))}`;
+    return {
+      kind: "input",
+      title: `Create input_edge ${shortId(inputEdgeId(edge))}`,
+      description: `This shows only the input payload for ${source}. The payload becomes an input_edge row when the parent output_link is written.`,
+      code: `# input_edge is not created by a standalone API call.\n# This payload is passed inside inputs=[...] on the parent output_link write.\n\ninput_edge_payload = ${py(edgeInputObject(edge))}\n\n# creates input_edge ${shortId(inputEdgeId(edge))}\n# belongs to output_link ${shortId(outputLinkId(link))}\n# parent task/run_log ${shortId(run.run_id)}`,
+    };
+  }
+
+  function edgeInputObject(edge) {
+    const input = {
+      edge_type: edge.edge_type,
+      input_slot: edge.input_slot ?? 0,
+      record_count: edge.record_count,
+    };
+    if (edge.source_file_id) {
+      input.source_file_id = edge.source_file_id;
+    }
+    if (upstreamOutputLinkId(edge)) {
+      input.upstream_output_link_id = upstreamOutputLinkId(edge);
+    }
+    if (edge.upstream_run_id) {
+      input.upstream_run_id = edge.upstream_run_id;
+    }
+    if (edge.source_ref) {
+      input.source_ref = edge.source_ref;
+    }
+    return input;
+  }
+
+  function emptyCommand(kind) {
+    return {
+      kind,
+      title: `No ${kind} selected`,
+      description: "Select another item.",
+      code: "",
+    };
+  }
+
+  function developerItemKey(item) {
+    if (!item) return "";
+    if (item.kind === "task") return `task:${item.run_id}`;
+    if (item.kind === "stage") return `stage:${item.run_id}:${item.stage_name}:${item.attempt || 1}`;
+    if (item.kind === "output") return `output:${item.link_id}`;
+    if (item.kind === "input") return `input:${item.link_id}:${item.edge_id}`;
+    return item.kind;
+  }
+
+  function py(value) {
+    if (value === undefined || value === null) return "None";
+    if (typeof value === "string") return JSON.stringify(value);
+    if (typeof value === "number" || typeof value === "boolean") return String(value);
+    return JSON.stringify(value, null, 4)
+      .replace(/\n/g, "\n    ")
+      .replace(/\btrue\b/g, "True")
+      .replace(/\bfalse\b/g, "False")
+      .replace(/\bnull\b/g, "None");
+  }
+
+  function RowsTab({
+    data,
+    selectedTable,
+    setSelectedTable,
+    selectedRowsWorkflowId,
+    setSelectedRowsWorkflowId,
+    selectedDate,
+    setSelectedDate,
+    targetRowSort,
+    setTargetRowSort,
+    openWorkflow,
+    focusLink,
+  }) {
+    const [selectedTargetRowKey, setSelectedTargetRowKey] = React.useState("");
     const tableNames = Object.keys(data.tables || {});
-    const rows = (data.tables[selectedTable] || []).filter((row) => {
+    const allTableRows = data.tables[selectedTable] || [];
+    const sortOptions = targetRowSortOptions(allTableRows);
+    const rowVersions = targetRowVersionMap(allTableRows);
+    const rows = allTableRows.filter((row) => {
+      if (selectedRowsWorkflowId !== "all" && row._ods_workflow_run_id !== selectedRowsWorkflowId) return false;
       if (selectedDate === "all") return true;
       return row.payload?.business_date === selectedDate;
-    });
+    }).slice().sort((a, b) => compareTargetRows(a, b, targetRowSort));
+    const selectedTargetRow = rows.find((row) => targetRowKey(selectedTable, row) === selectedTargetRowKey) || null;
+    const workflowCounts = rows.reduce((counts, row) => {
+      const workflowId = row._ods_workflow_run_id || "unknown";
+      counts[workflowId] = (counts[workflowId] || 0) + 1;
+      return counts;
+    }, {});
 
     return e(React.Fragment, null,
       e("div", { className: "toolbar" },
@@ -2255,45 +3268,112 @@ if sync_to_postgres:
           options: tableNames.map((name) => [name, `ods.${name}`]),
         }),
         e(SelectField, {
+          label: "Producer Workflow",
+          value: selectedRowsWorkflowId,
+          onChange: setSelectedRowsWorkflowId,
+          options: [
+            ["all", "All workflows"],
+            ...data.executions.map((item) => [
+              item.workflow_run_id,
+              `${item.business_date} - ${item.execution_type} - ${shortId(item.workflow_run_id)}`,
+            ]),
+          ],
+        }),
+        e(SelectField, {
           label: "Business Date",
           value: selectedDate,
           onChange: setSelectedDate,
           options: [["all", "All dates"], ...(data.scenario?.business_dates || []).map((date) => [date, date])],
+        }),
+        e(SelectField, {
+          label: "Order By",
+          value: targetRowSort,
+          onChange: setTargetRowSort,
+          options: sortOptions,
         })
       ),
+      e("section", { className: "target-row-summary" },
+        e("strong", null, `${rows.length} target rows`),
+        e("span", null, `from ${Object.keys(workflowCounts).length} producer workflow(s)`),
+        Object.entries(workflowCounts).map(([workflowId, count]) => {
+          const execution = data.executionByWorkflow[workflowId];
+          return e("span", { className: "pill mini", key: workflowId },
+            `${execution?.execution_type || "unknown"} ${shortId(workflowId)}: ${count}`
+          );
+        })
+      ),
+      selectedTargetRow && e(TargetRowLineagePanel, {
+        data,
+        tableName: selectedTable,
+        tableRows: allTableRows,
+        rowVersions,
+        row: selectedTargetRow,
+        updateInfo: rowVersions[targetRowKey(selectedTable, selectedTargetRow)],
+        openWorkflow,
+        focusLink,
+      }),
       e("div", { className: "table-wrap" },
         e("table", null,
           e("thead", null, e("tr", null,
             e("th", null, "row"),
+            e("th", null, "update"),
+            e("th", null, "original_output_link_id"),
+            e("th", null, "new_output_link_id"),
             e("th", null, "business_date"),
-            e("th", null, "execution"),
-            e("th", null, "payload"),
-            e("th", null, "output_link_id")
+            e("th", null, "producer workflow"),
+            e("th", null, "payload")
           )),
           e("tbody", null,
             rows.map((row) => {
               const execution = data.executionByWorkflow[row._ods_workflow_run_id];
               const linkId = rowOutputLinkId(row);
+              const updateInfo = rowVersions[targetRowKey(selectedTable, row)] || { status: "original", label: "original", outputLinkId: linkId };
               return e("tr", {
                 key: `${selectedTable}-${row.row_id}-${linkId}`,
-                onClick: () => focusLink(linkId),
+                className: selectedTargetRowKey === targetRowKey(selectedTable, row) ? "selected-row" : "",
+                onClick: () => setSelectedTargetRowKey(targetRowKey(selectedTable, row)),
               },
                 e("td", null, row.row_id),
+                e("td", null,
+                  e("span", { className: `pill mini update-${updateInfo.status}` }, updateInfo.label)
+                ),
+                e("td", null, e("code", null, shortId(targetRowOriginalOutputLinkId(updateInfo, linkId)))),
+                e("td", null, e("code", null, shortId(targetRowNewOutputLinkId(updateInfo, linkId)) || "-")),
                 e("td", null, row.payload?.business_date || "-"),
                 e("td", null,
                   e("span", { className: `pill ${execution?.execution_type === "refeed" ? "amber" : "green"}` },
                     execution?.execution_type || "unknown"
                   ),
-                  e("div", { className: "mono table-id" }, shortId(row._ods_workflow_run_id))
+                  e("div", { className: "mono table-id" }, `workflow ${shortId(row._ods_workflow_run_id)}`),
+                  e("button", {
+                    type: "button",
+                    className: "small-action row-action",
+                    onClick: (event) => {
+                      event.stopPropagation();
+                      openWorkflow(row._ods_workflow_run_id);
+                    },
+                  }, "Open workflow")
                 ),
-                e("td", null, e(PayloadView, { payload: row.payload })),
-                e("td", null, e("code", null, shortId(linkId)))
+                e("td", null, e(PayloadView, { payload: row.payload }))
               );
             })
           )
         )
       )
     );
+  }
+
+  function targetRowOriginalOutputLinkId(updateInfo, linkId) {
+    if (updateInfo?.status === "latest" && updateInfo.previousOutputLinkId) {
+      return updateInfo.previousOutputLinkId;
+    }
+    return updateInfo?.outputLinkId || linkId || "";
+  }
+
+  function targetRowNewOutputLinkId(updateInfo, linkId) {
+    if (updateInfo?.status === "superseded") return updateInfo.nextOutputLinkId || "";
+    if (updateInfo?.status === "latest") return updateInfo.outputLinkId || linkId || "";
+    return "";
   }
 
   function PayloadView({ payload }) {
@@ -2304,6 +3384,260 @@ if sync_to_postgres:
         e("strong", null, String(value))
       ))
     );
+  }
+
+  function TargetRowLineagePanel({ data, tableName, tableRows, rowVersions, row, updateInfo, openWorkflow, focusLink }) {
+    const linkId = rowOutputLinkId(row);
+    const link = data.linkById[linkId];
+    const producerRun = link ? data.runById[link.consumer_run_id] : null;
+    const execution = data.executionByWorkflow[row._ods_workflow_run_id];
+    const trace = data.traces[linkId] || [];
+    const rawPaths = unique(trace.map((hop) => hop.raw_s3_path).filter(Boolean));
+    const directEdges = link?.edges || [];
+    const historyRows = targetRowHistoryRows(tableRows, row);
+
+    return e("section", { className: "panel target-lineage-panel" },
+      e("div", { className: "panel-head" },
+        e("div", null,
+          e("h2", null, `Selected target row: ods.${tableName}`),
+          e("p", null, `Row history is shown first for this business key, followed by the selected row lineage. ${historyRows.length} version(s) found.`)
+        ),
+        e("div", { className: "target-lineage-actions" },
+          e("span", { className: `pill mini update-${updateInfo?.status || "original"}` }, updateInfo?.label || "original"),
+          e("span", { className: "pill mini green" }, `output_link ${shortId(linkId)}`),
+          e("span", { className: "pill mini" }, `workflow ${shortId(row._ods_workflow_run_id)}`),
+          e("button", { type: "button", className: "small-action", onClick: () => openWorkflow(row._ods_workflow_run_id) }, "Open workflow"),
+          e("button", { type: "button", className: "small-action", onClick: () => focusLink(linkId) }, "Open control links")
+        )
+      ),
+      e("div", { className: "target-lineage-section target-history-section" },
+        e("h3", null, `Row History (${historyRows.length})`),
+        e("div", { className: "target-history-list" },
+          historyRows.map((historyRow, index) => e(TargetRowHistoryCard, {
+            key: targetRowKey(tableName, historyRow),
+            data,
+            row: historyRow,
+            updateInfo: rowVersions[targetRowKey(tableName, historyRow)] || { status: "original", label: "original", outputLinkId: rowOutputLinkId(historyRow) },
+            selected: targetRowKey(tableName, historyRow) === targetRowKey(tableName, row),
+            versionNumber: index + 1,
+            openWorkflow,
+            focusLink,
+          }))
+        )
+      ),
+      e("div", { className: "target-lineage-grid" },
+        e("article", { className: "metadata-card output" },
+          e("strong", null, "target row"),
+          e(MetadataFact, { label: "row_id", value: row.row_id }),
+          e(MetadataFact, { label: "business key", value: targetRowBusinessKey(row) }),
+          e(MetadataFact, { label: "updated by workflow", value: `${shortId(row._ods_workflow_run_id)} (${execution?.execution_type || "unknown"})` }),
+          e(MetadataFact, { label: "_ods_workflow_run_id", value: shortId(row._ods_workflow_run_id) }),
+          e(MetadataFact, { label: "_ods_output_link_id", value: shortId(linkId) }),
+          e(MetadataFact, { label: "producer", value: `${execution?.execution_type || "unknown"} ${shortId(row._ods_workflow_run_id)}` })
+        ),
+        e("article", { className: "metadata-card output" },
+          e("strong", null, "output_link"),
+          e(MetadataFact, { label: "output_link_id", value: shortId(linkId) }),
+          e(MetadataFact, { label: "run", value: producerRun ? `${producerRun.pipeline_type} / ${producerRun.dataset}` : "-" }),
+          e(MetadataFact, { label: "edge_type", value: link?.edge_type || "-" }),
+          e(MetadataFact, { label: "target", value: link?.target_ref?.path || "-" }),
+          e(MetadataFact, { label: "records", value: link?.record_count ?? "-" })
+        )
+      ),
+      e("div", { className: "target-lineage-section" },
+        e("h3", null, "Direct Inputs"),
+        directEdges.length
+          ? e("div", { className: "target-lineage-inputs" },
+              directEdges.map((edge) => e(TargetInputEdgeCard, {
+                key: inputEdgeId(edge),
+                data,
+                edge,
+              }))
+            )
+          : e("div", { className: "empty" }, "No input edges recorded for this output")
+      ),
+      e("div", { className: "target-lineage-section" },
+        e("h3", null, "Raw Files In Trace"),
+        rawPaths.length
+          ? e("div", { className: "raw-summary" },
+              rawPaths.map((path) => e("span", { className: "raw-chip", key: path }, path))
+            )
+          : e("div", { className: "empty" }, "No raw file paths found in trace")
+      )
+    );
+  }
+
+  function TargetRowHistoryCard({ data, row, updateInfo, selected, versionNumber, openWorkflow, focusLink }) {
+    const linkId = rowOutputLinkId(row);
+    const link = data.linkById[linkId];
+    const run = link ? data.runById[link.consumer_run_id] : null;
+    const execution = data.executionByWorkflow[row._ods_workflow_run_id];
+    return e("article", { className: `target-history-card ${selected ? "selected" : ""}` },
+      e("div", { className: "target-history-version" },
+        e("span", null, versionNumber),
+        e("strong", null, "version")
+      ),
+      e("div", { className: "target-history-main" },
+        e("div", { className: "target-history-head" },
+          e("span", { className: `pill mini update-${updateInfo.status || "original"}` }, updateInfo.label || "original"),
+          e("span", { className: `pill mini ${execution?.execution_type === "refeed" ? "amber" : "green"}` },
+            execution?.execution_type || "unknown"
+          ),
+          selected && e("span", { className: "pill mini" }, "selected row")
+        ),
+        e("div", { className: "target-history-facts" },
+          e(MetadataFact, { label: "row_id", value: row.row_id }),
+          e(MetadataFact, { label: "this_row_output_link_id", value: shortId(linkId) }),
+          e(MetadataFact, { label: "workflow_run_id", value: shortId(row._ods_workflow_run_id) }),
+          e(MetadataFact, { label: "task", value: run ? `${run.pipeline_type} / ${run.dataset}` : "-" }),
+          updateInfo.status === "superseded" && e(MetadataFact, {
+            label: "replaced_by_output_link_id",
+            value: shortId(updateInfo.nextOutputLinkId),
+          }),
+          updateInfo.status === "latest" && e(MetadataFact, {
+            label: "replaces_output_link_id",
+            value: shortId(updateInfo.previousOutputLinkId),
+          }),
+          updateInfo.status === "original" && e(MetadataFact, {
+            label: "replacement_output_link_id",
+            value: "-",
+          })
+        ),
+        e("div", { className: "target-history-actions" },
+          e("button", { type: "button", className: "small-action", onClick: () => openWorkflow(row._ods_workflow_run_id) }, "Open workflow"),
+          e("button", { type: "button", className: "small-action", onClick: () => focusLink(linkId) }, "Open output")
+        ),
+        e(PayloadView, { payload: row.payload })
+      )
+    );
+  }
+
+  function targetRowHistoryRows(tableRows, row) {
+    const businessKey = targetRowBusinessKey(row);
+    return (tableRows || [])
+      .filter((candidate) => targetRowBusinessKey(candidate) === businessKey)
+      .slice()
+      .sort((a, b) => compareScalar(a.row_id, b.row_id));
+  }
+
+  function TargetInputEdgeCard({ data, edge }) {
+    const edgeId = inputEdgeId(edge);
+    const sourceFileId = edge.source_file_id || "";
+    const upstreamId = upstreamOutputLinkId(edge);
+    const upstream = upstreamId ? data.linkById[upstreamId] : null;
+    const upstreamRun = upstream ? data.runById[upstream.consumer_run_id] : null;
+    const file = sourceFileId ? data.fileById[sourceFileId] : null;
+    return e("article", { className: "flow-mini-card input" },
+      e("strong", null, "input_edge"),
+      e(FlowFact, { label: "input_edge_id", value: shortId(edgeId) }),
+      sourceFileId
+        ? e(React.Fragment, null,
+            e(FlowFact, { label: "source_file_id", value: shortId(sourceFileId) }),
+            e(FlowFact, { label: "raw path", value: file?.s3_raw_path || edge.source_ref?.path || "-" })
+          )
+        : e(React.Fragment, null,
+            e(FlowFact, { label: "upstream_output_link_id", value: shortId(upstreamId) }),
+            e(FlowFact, { label: "upstream run", value: upstreamRun ? `${upstreamRun.pipeline_type} / ${upstreamRun.dataset}` : "-" }),
+            e(FlowFact, { label: "upstream target", value: upstream?.target_ref?.path || "-" })
+          ),
+      e(FlowFact, { label: "record_count", value: edge.record_count ?? "-" })
+    );
+  }
+
+  function FlowFact({ label, value }) {
+    return e("div", { className: "flow-fact" },
+      e("span", null, label),
+      e("code", null, value == null ? "-" : String(value))
+    );
+  }
+
+  function targetRowSortOptions(rows) {
+    const payloadKeys = unique(
+      rows.flatMap((row) => Object.keys(row.payload || {}))
+    ).sort();
+    return [
+      ["row_id:asc", "row_id ascending"],
+      ["row_id:desc", "row_id descending"],
+      ["business_date:asc", "business_date ascending"],
+      ["business_date:desc", "business_date descending"],
+      ["workflow:asc", "producer workflow ascending"],
+      ["workflow:desc", "producer workflow descending"],
+      ["output_link:asc", "output_link_id ascending"],
+      ["output_link:desc", "output_link_id descending"],
+      ...payloadKeys.flatMap((key) => [
+        [`payload.${key}:asc`, `${key} ascending`],
+        [`payload.${key}:desc`, `${key} descending`],
+      ]),
+    ];
+  }
+
+  function compareTargetRows(a, b, sortSpec) {
+    const [field, direction = "asc"] = String(sortSpec || "row_id:asc").split(":");
+    const av = targetRowSortValue(a, field);
+    const bv = targetRowSortValue(b, field);
+    const result = compareScalar(av, bv);
+    return direction === "desc" ? -result : result;
+  }
+
+  function targetRowSortValue(row, field) {
+    if (field === "row_id") return row.row_id;
+    if (field === "business_date") return row.payload?.business_date || "";
+    if (field === "workflow") return row._ods_workflow_run_id || "";
+    if (field === "output_link") return rowOutputLinkId(row);
+    if (field.startsWith("payload.")) return row.payload?.[field.slice("payload.".length)];
+    return row.row_id;
+  }
+
+  function compareScalar(a, b) {
+    if (a == null && b == null) return 0;
+    if (a == null) return 1;
+    if (b == null) return -1;
+    const an = typeof a === "number" ? a : Number(a);
+    const bn = typeof b === "number" ? b : Number(b);
+    if (!Number.isNaN(an) && !Number.isNaN(bn)) return an - bn;
+    return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: "base" });
+  }
+
+  function targetRowVersionMap(rows) {
+    const groups = {};
+    rows.forEach((row) => {
+      const key = targetRowBusinessKey(row);
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(row);
+    });
+    const result = {};
+    Object.values(groups).forEach((group) => {
+      const ordered = group.slice().sort((a, b) => compareScalar(a.row_id, b.row_id));
+      ordered.forEach((row, index) => {
+        const key = targetRowKey("", row);
+        const outputLinkId = rowOutputLinkId(row);
+        const previousOutputLinkId = index > 0 ? rowOutputLinkId(ordered[index - 1]) : "";
+        const nextOutputLinkId = index < ordered.length - 1 ? rowOutputLinkId(ordered[index + 1]) : "";
+        if (ordered.length === 1) {
+          result[key] = { status: "original", label: "original", outputLinkId };
+        } else if (index === ordered.length - 1) {
+          result[key] = { status: "latest", label: "latest update", outputLinkId, previousOutputLinkId };
+        } else {
+          result[key] = { status: "superseded", label: "superseded", outputLinkId, nextOutputLinkId };
+        }
+      });
+    });
+    return result;
+  }
+
+  function targetRowBusinessKey(row) {
+    const payload = row.payload || {};
+    const idKeys = Object.keys(payload)
+      .filter((key) => /(^id$|_id$)/.test(key))
+      .sort();
+    const parts = [["business_date", payload.business_date || ""]];
+    const selectedKeys = idKeys.length ? idKeys : Object.keys(payload).sort();
+    selectedKeys.forEach((key) => parts.push([key, payload[key]]));
+    return parts.map(([key, value]) => `${key}=${value ?? ""}`).join(" | ");
+  }
+
+  function targetRowKey(tableName, row) {
+    return `${row.row_id}:${rowOutputLinkId(row)}`;
   }
 
   function TemplatesTab() {
@@ -2542,6 +3876,11 @@ if sync_to_postgres:
   function shortId(id) {
     if (!id) return "-";
     return String(id).slice(0, 8);
+  }
+
+  function shortTimestamp(value) {
+    if (!value) return "-";
+    return String(value).replace("T", " ").slice(0, 19);
   }
 
   ReactDOM.createRoot(document.getElementById("root")).render(e(App));
