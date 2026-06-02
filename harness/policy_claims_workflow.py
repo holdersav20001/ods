@@ -209,31 +209,61 @@ def ensure_targets(conn) -> None:
 
 
 def reset_demo_state(conn) -> None:
-    """Clear generated demo/control state before writing a fresh snapshot.
+    """Clear THIS domain's generated demo/control state before a fresh snapshot.
 
-    Keeps static reference tables (cp.edge_type, cp.dataset_config). Removes the
-    target-visibility rows, the two demo target tables, and all generated files/
-    runs/stages/links/edges/reconciliation/DLQ rows.
+    DOMAIN-SCOPED (domain = ``insurance``): clears ONLY this demo's data so the
+    customer/transaction (``sales``) demo can coexist live in the same database.
+    Keeps static reference tables (cp.edge_type, cp.dataset_config) and uses no
+    global ``TRUNCATE ... CASCADE``.
+
+    Removes (scoped to this domain's run set / domain column): the two demo
+    target tables' rows, this domain's target-visibility rows, and the control-
+    plane reconciliation/DLQ/lineage-edge/lineage-link/run-stage/run/file rows
+    for this domain. Deleted in FK-safe child->parent order. Re-running the demo
+    yields the same single set (no duplicates).
     """
     ensure_targets(conn)
+
+    # The two target tables belong entirely to this domain -> clear all rows.
+    conn.execute(f"DELETE FROM ods.{DETAIL_DATASET}")
+    conn.execute(f"DELETE FROM ods.{AGG_DATASET}")
+
+    # This domain's target-visibility rows (changed-only supersession lives here).
+    conn.execute("DELETE FROM ods.target_visibility WHERE domain = %s", (DOMAIN,))
+
+    # Control-plane rows, FK-safe child->parent order, all scoped to this
+    # domain's run set (run_log.domain = DOMAIN). The lineage_link/edge graph is
+    # self-contained within one domain's runs (the refeed merge references the
+    # original policy silver link -- same insurance domain).
+    domain_runs = "SELECT run_id FROM cp.run_log WHERE domain = %s"
     conn.execute(
-        f"TRUNCATE TABLE ods.{DETAIL_DATASET}, ods.{AGG_DATASET} "
-        "RESTART IDENTITY CASCADE"
+        f"DELETE FROM cp.reconciliation_log WHERE run_id IN ({domain_runs})",
+        (DOMAIN,),
     )
-    conn.execute("DELETE FROM ods.target_visibility")
     conn.execute(
-        """
-        TRUNCATE TABLE
-            cp.dlq,
-            cp.reconciliation_log,
-            cp.lineage_edge,
-            cp.lineage_link,
-            cp.run_stage_log,
-            cp.run_log,
-            cp.file_catalogue
-        RESTART IDENTITY CASCADE
-        """
+        f"DELETE FROM cp.dlq WHERE run_id IN ({domain_runs})",
+        (DOMAIN,),
     )
+    conn.execute(
+        f"""
+        DELETE FROM cp.lineage_edge
+        WHERE lineage_link_id IN (
+            SELECT lineage_link_id FROM cp.lineage_link
+            WHERE consumer_run_id IN ({domain_runs})
+        )
+        """,
+        (DOMAIN,),
+    )
+    conn.execute(
+        f"DELETE FROM cp.lineage_link WHERE consumer_run_id IN ({domain_runs})",
+        (DOMAIN,),
+    )
+    conn.execute(
+        f"DELETE FROM cp.run_stage_log WHERE run_id IN ({domain_runs})",
+        (DOMAIN,),
+    )
+    conn.execute("DELETE FROM cp.run_log WHERE domain = %s", (DOMAIN,))
+    conn.execute("DELETE FROM cp.file_catalogue WHERE domain = %s", (DOMAIN,))
 
 
 def _content_md5(rows: list[dict[str, Any]]) -> str:

@@ -186,7 +186,13 @@ def test_4_no_activation_on_failed_run(conn):
             (BD, link, run_id, "wf-f4"))
     # rollback the failed statement's aborted state to assert no Y row.
     conn.rollback()
-    assert conn.execute("SELECT count(*) FROM ods.target_visibility").fetchone()[0] == 0
+    # Scope to THIS test's own output (its producer run + sink link) so the
+    # assertion stays robust to other committed visibility rows (e.g. demo data
+    # we deliberately leave live in the shared DB).
+    assert conn.execute(
+        "SELECT count(*) FROM ods.target_visibility "
+        "WHERE producer_run_id=%s OR lineage_link_id=%s", (run_id, link)
+    ).fetchone()[0] == 0
     print("\n[§9.4] non-succeeded run: activate RAISED 'must be succeeded', no Y row")
 
 
@@ -235,7 +241,12 @@ def test_5_no_activation_on_recon_breach(conn):
             "'sales','orders',%s,'postgres','ods.orders',NULL,%s,%s,%s)",
             (BD, link, run_id, "wf-f5"))
     conn.rollback()
-    assert conn.execute("SELECT count(*) FROM ods.target_visibility").fetchone()[0] == 0
+    # Scope to THIS test's own output (its producer run + sink link) so the
+    # assertion stays robust to other committed visibility rows.
+    assert conn.execute(
+        "SELECT count(*) FROM ods.target_visibility "
+        "WHERE producer_run_id=%s OR lineage_link_id=%s", (run_id, link)
+    ).fetchone()[0] == 0
     print("\n[§9.5] recon breach (5 vs 3): activate RAISED 'must be ok', no Y row")
 
 
@@ -328,12 +339,15 @@ def test_9_audit_superseded_by_chain(conn):
         conn, original_run_id=res1["sink"]["run_id"], file=corrected,
         commit=False)
 
-    # start from the inactive row, walk superseded_by to the live one.
+    # start from the inactive row, walk superseded_by to the live one. Scope to
+    # THIS test's own inactive row (its original sink's visibility_id) so the
+    # chain assertion is robust to other committed N rows (e.g. demo data).
     chain = conn.execute(
         "SELECT n.visibility_id, n.status, y.visibility_id, y.status "
         "FROM ods.target_visibility n "
         "JOIN ods.target_visibility y ON y.visibility_id = n.superseded_by "
-        "WHERE n.status='N'").fetchall()
+        "WHERE n.status='N' AND n.visibility_id=%s",
+        (res1["sink"]["visibility_id"],)).fetchall()
     assert len(chain) == 1
     n_id, n_st, y_id, y_st = chain[0]
     assert n_st == "N" and y_st == "Y"
