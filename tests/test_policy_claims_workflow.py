@@ -56,23 +56,30 @@ def _raw_paths(trace_rows):
     return {row[5] for row in trace_rows if row[5] is not None}
 
 
-def _vis_rows(conn, *, dataset, replacement_key, business_date=REFEED_DATE):
+def _vis_rows(conn, *, dataset, replacement_key, business_date=REFEED_DATE,
+              workflow_run_ids=None):
     """All visibility rows for one (dataset, business_date, business_key).
 
     The active-uniqueness index is scoped by business_date, so the same detail
     key (policy_id:claim_id) legitimately has one active row PER business_date.
     Scope to the business_date under test (default: the refeed Day-2 slice).
+
+    The committing demo LEAVES insurance rows in ods.target_visibility, so when
+    ``workflow_run_ids`` is supplied this scopes to THIS run's own workflows
+    (robust to committed demo data sharing the same dataset/replacement_key).
     """
-    return conn.execute(
-        """
+    sql = """
         SELECT status, lineage_link_id::text, workflow_run_id, deactivated_at
         FROM ods.target_visibility
         WHERE domain = %s AND dataset = %s AND business_date = %s
           AND replacement_scope = 'business_key' AND replacement_key = %s
-        ORDER BY activated_at, created_at
-        """,
-        (DOMAIN, dataset, business_date, replacement_key),
-    ).fetchall()
+    """
+    params = [DOMAIN, dataset, business_date, replacement_key]
+    if workflow_run_ids is not None:
+        sql += " AND workflow_run_id = ANY(%s)"
+        params.append(list(workflow_run_ids))
+    sql += " ORDER BY activated_at, created_at"
+    return conn.execute(sql, params).fetchall()
 
 
 # --------------------------------------------------------------------------- #
@@ -225,10 +232,17 @@ def test_07_changed_only_visibility(demo, conn):
     refeed_detail_sink = refeed["detail_sink"]["link_id"]
     refeed_agg_sink = refeed["aggregate_sink"]["link_id"]
 
+    # The committing demo leaves insurance rows in ods.target_visibility, and a
+    # prior run shares the same dataset/business_date/replacement_key. Scope
+    # every query below to THIS run's OWN workflow_run_ids so the assertions are
+    # robust to committed demo data.
+    wfids = [demo[k]["workflow_run_id"] for k in ("day1", "day2", "day3", "refeed")]
+
     # ---- A CHANGED detail key: original N (superseded), corrected Y. ----
     changed_key = detail_business_key(
         {"policy_id": "P001", "claim_id": "CL100"})  # amount 500 -> 600
-    rows = _vis_rows(conn, dataset=DETAIL_DATASET, replacement_key=changed_key)
+    rows = _vis_rows(conn, dataset=DETAIL_DATASET, replacement_key=changed_key,
+                     workflow_run_ids=wfids)
     statuses = [r[0] for r in rows]
     links = [r[1] for r in rows]
     assert statuses == ["N", "Y"], f"{changed_key}: expected N then Y, got {statuses}"
@@ -239,7 +253,8 @@ def test_07_changed_only_visibility(demo, conn):
     # ---- An UNCHANGED detail key: still the ORIGINAL Y, no N. ----
     unchanged_key = detail_business_key(
         {"policy_id": "P003", "claim_id": "CL103"})  # identical in refeed
-    rows = _vis_rows(conn, dataset=DETAIL_DATASET, replacement_key=unchanged_key)
+    rows = _vis_rows(conn, dataset=DETAIL_DATASET, replacement_key=unchanged_key,
+                     workflow_run_ids=wfids)
     assert [r[0] for r in rows] == ["Y"], (
         f"{unchanged_key}: unchanged key must keep a single original Y, "
         f"got {[r[0] for r in rows]}")
@@ -250,7 +265,8 @@ def test_07_changed_only_visibility(demo, conn):
     # ---- Changed AGGREGATE key (auto): original N, corrected Y. ----
     changed_agg_key = aggregate_business_key(
         {"business_date": REFEED_DATE, "policy_type": "auto"})
-    rows = _vis_rows(conn, dataset=AGG_DATASET, replacement_key=changed_agg_key)
+    rows = _vis_rows(conn, dataset=AGG_DATASET, replacement_key=changed_agg_key,
+                     workflow_run_ids=wfids)
     assert [r[0] for r in rows] == ["N", "Y"]
     assert rows[0][1] == day2_agg_sink
     assert rows[1][1] == refeed_agg_sink
@@ -258,32 +274,35 @@ def test_07_changed_only_visibility(demo, conn):
     # ---- Unchanged AGGREGATE key (home): still original Y, no N. ----
     unchanged_agg_key = aggregate_business_key(
         {"business_date": REFEED_DATE, "policy_type": "home"})
-    rows = _vis_rows(conn, dataset=AGG_DATASET, replacement_key=unchanged_agg_key)
+    rows = _vis_rows(conn, dataset=AGG_DATASET, replacement_key=unchanged_agg_key,
+                     workflow_run_ids=wfids)
     assert [r[0] for r in rows] == ["Y"]
     assert rows[0][1] == day2_agg_sink
     assert rows[0][3] is None
 
-    # ---- Exactly one Y per replacement_key across the whole demo. ----
+    # ---- Exactly one Y per replacement_key across THIS demo's executions. ----
     dup_y = conn.execute(
         """
         SELECT dataset, business_date, replacement_key, count(*)
         FROM ods.target_visibility
-        WHERE status = 'Y'
+        WHERE status = 'Y' AND workflow_run_id = ANY(%s)
         GROUP BY dataset, business_date, replacement_key
         HAVING count(*) > 1
-        """
+        """,
+        (wfids,),
     ).fetchall()
     assert dup_y == [], f"more than one active Y for some key: {dup_y}"
 
     # ---- The Day-2 slice was NOT blanket-deactivated: number of N rows for
-    #      the Day-2 business_date equals the number of CHANGED keys exactly
-    #      (changed detail keys + changed aggregate keys), NOT the whole slice.
+    #      the Day-2 business_date (THIS demo's workflows) equals the number of
+    #      CHANGED keys exactly (changed detail + changed aggregate), NOT the
+    #      whole slice.
     n_count = conn.execute(
         """
         SELECT count(*) FROM ods.target_visibility
-        WHERE business_date = %s AND status = 'N'
+        WHERE business_date = %s AND status = 'N' AND workflow_run_id = ANY(%s)
         """,
-        (REFEED_DATE,),
+        (REFEED_DATE, wfids),
     ).fetchone()[0]
     changed_keys = (len(refeed["changed_detail_rows"])
                     + len(refeed["changed_aggregate_rows"]))
