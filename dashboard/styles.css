@@ -67,6 +67,29 @@ button {
   margin-top: 3px;
 }
 
+.dataset-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.dataset-picker label {
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.dataset-picker select {
+  font-size: 13px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink, #1a2330);
+}
+
 .tabs {
   display: flex;
   align-items: center;

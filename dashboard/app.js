@@ -21,6 +21,29 @@
     ["docs", "Documentation"],
   ];
 
+  // Known dashboard snapshots. Default stays the customer-demo file so the
+  // existing demo view is unchanged. Use ?data=<file> or the header dropdown
+  // to load another snapshot without hand-editing this file.
+  const KNOWN_DATA_FILES = [
+    ["demo-workflow.json", "Customer / Transaction demo"],
+    ["policy-claims-workflow.json", "Insurance Policy / Claims"],
+  ];
+  const DEFAULT_DATA_FILE = KNOWN_DATA_FILES[0][0];
+
+  function initialDataFile() {
+    try {
+      const requested = new URLSearchParams(window.location.search).get("data");
+      if (requested) {
+        // Basename only: defends against ../ path traversal in the query param.
+        const safe = requested.split("/").pop();
+        if (safe) return safe;
+      }
+    } catch (err) {
+      // window/URLSearchParams unavailable (non-browser) — fall through.
+    }
+    return DEFAULT_DATA_FILE;
+  }
+
   const TEMPLATES = [
     {
       id: "airflow-glue-raw-to-silver",
@@ -1319,9 +1342,12 @@ if sync_to_postgres:
     const [flowScope, setFlowScope] = React.useState("overview");
     const [jsonWorkflowId, setJsonWorkflowId] = React.useState("");
     const [olWorkflowId, setOlWorkflowId] = React.useState("");
+    const [dataFile, setDataFile] = React.useState(initialDataFile());
 
     React.useEffect(() => {
-      fetch("./data/demo-workflow.json", { cache: "no-store" })
+      setData(null);
+      setError(null);
+      fetch(`./data/${dataFile}`, { cache: "no-store" })
         .then((res) => {
           if (!res.ok) throw new Error("snapshot not found");
           return res.json();
@@ -1334,7 +1360,7 @@ if sync_to_postgres:
           setSelectedDate("all");
         })
         .catch((err) => setError(err.message));
-    }, []);
+    }, [dataFile]);
 
     React.useEffect(() => {
       if (!data) return;
@@ -1374,7 +1400,7 @@ if sync_to_postgres:
     };
 
     return e("div", { className: "app" },
-      e(Header, { data, tab, setTab }),
+      e(Header, { data, tab, setTab, dataFile, setDataFile }),
       e("main", { className: "content" },
         tab === "workflows" && e(WorkflowsTab, {
           data,
@@ -1528,7 +1554,7 @@ if sync_to_postgres:
     return row?._ods_output_link_id || row?._ods_lineage_link_id || "";
   }
 
-  function Header({ data, tab, setTab }) {
+  function Header({ data, tab, setTab, dataFile, setDataFile }) {
     const counts = {
       executions: data.executions?.length || 0,
       runs: data.runs?.length || 0,
@@ -1539,6 +1565,24 @@ if sync_to_postgres:
         e("h1", null, "ODS Lineage Dashboard"),
         e("span", null,
           `${counts.executions} executions · ${counts.runs} runs · ${counts.links} output links`
+        )
+      ),
+      setDataFile && e("div", { className: "dataset-picker" },
+        e("label", { htmlFor: "dataset-select" }, "snapshot"),
+        e("select", {
+          id: "dataset-select",
+          value: dataFile,
+          onChange: (event) => {
+            const next = event.target.value;
+            setDataFile(next);
+            const url = new URL(window.location.href);
+            url.searchParams.set("data", next);
+            window.history.replaceState(null, "", url.toString());
+          },
+        },
+          KNOWN_DATA_FILES.map(([file, label]) =>
+            e("option", { key: file, value: file }, label)
+          )
         )
       ),
       e("nav", { className: "tabs" },
@@ -1822,27 +1866,30 @@ if sync_to_postgres:
       .map((run) => {
         const links = data.linksByRun[run.run_id] || [];
         const inputEdges = links.flatMap((link) => link.edges || []);
+        const runFacets = {
+          ods_workflow: openLineageFacet({
+            workflow_run_id: run.workflow_run_id,
+            business_date: run.business_date,
+            execution_type: execution.execution_type || null,
+            refeed_of_workflow_run_id: execution.refeed_of_workflow_run_id || null,
+          }),
+          ods_run: openLineageFacet({
+            pipeline_type: run.pipeline_type,
+            domain: run.domain,
+            dataset: run.dataset,
+            trigger_type: run.trigger_type,
+            record_count_in: run.record_count_in,
+            record_count_out: run.record_count_out,
+          }),
+        };
+        const orchestratorFacet = openLineageOrchestratorFacet(run);
+        if (orchestratorFacet) runFacets.ods_orchestrator = orchestratorFacet;
         return {
           eventType: run.status === "failed" ? "FAIL" : "COMPLETE",
           eventTime: openLineageEventTime(run.finished_at || run.started_at),
           run: {
             runId: run.run_id,
-            facets: {
-              ods_workflow: openLineageFacet({
-                workflow_run_id: run.workflow_run_id,
-                business_date: run.business_date,
-                execution_type: execution.execution_type || null,
-                refeed_of_workflow_run_id: execution.refeed_of_workflow_run_id || null,
-              }),
-              ods_run: openLineageFacet({
-                pipeline_type: run.pipeline_type,
-                domain: run.domain,
-                dataset: run.dataset,
-                trigger_type: run.trigger_type,
-                record_count_in: run.record_count_in,
-                record_count_out: run.record_count_out,
-              }),
-            },
+            facets: runFacets,
           },
           job: {
             namespace: "ods-control-plane",
@@ -1933,6 +1980,24 @@ if sync_to_postgres:
       _producer: "ods-control-plane-dashboard",
       _schemaURL: "https://example.com/ods-control-plane/facets/1-0-0/OdsControlFacet.json",
       ...values,
+    };
+  }
+
+  // OpenLineage run facet carrying the Airflow orchestrator identity recorded on
+  // cp.run_log (migration 020). Returned only when the run actually has an
+  // orchestrator_type, so non-orchestrated runs stay unchanged.
+  function openLineageOrchestratorFacet(run) {
+    if (!run || !run.orchestrator_type) return null;
+    return {
+      _producer: "ods-control-plane-dashboard",
+      _schemaURL: "https://example.com/ods-control-plane/facets/1-0-0/OdsOrchestratorFacet.json",
+      type: run.orchestrator_type,
+      dag_id: run.orchestrator_dag_id ?? null,
+      run_id: run.orchestrator_run_id ?? null,
+      task_id: run.orchestrator_task_id ?? null,
+      try_number: run.orchestrator_try_number ?? null,
+      map_index: run.orchestrator_map_index ?? null,
+      url: run.orchestrator_url ?? null,
     };
   }
 
@@ -3133,11 +3198,33 @@ if sync_to_postgres:
   function taskCommand(run) {
     if (!run) return emptyCommand("task");
     const fileArg = run.file_id ? `,\n    file_id=${py(run.file_id)}` : "";
+    // Airflow-driven runs carry orchestrator identity (migration 020). Surface
+    // it as orchestrator={...} in the runs.start snippet when present.
+    const orchestrator = runOrchestrator(run);
+    const orchestratorArg = orchestrator
+      ? `,\n    orchestrator=${py(orchestrator)}`
+      : "";
     return {
       kind: "task",
       title: `Create task ${run.pipeline_type} / ${run.dataset}`,
       description: "Creates or identifies the run_log row for one restartable task execution.",
-      code: `from control import runs\n\nrun_id = runs.start(\n    conn,\n    workflow_run_id=${py(run.workflow_run_id)},\n    pipeline_type=${py(run.pipeline_type)},\n    domain=${py(run.domain)},\n    dataset=${py(run.dataset)},\n    business_date=${py(run.business_date)},\n    trigger_type=${py(run.trigger_type || "manual")}${fileArg},\n    commit=False,\n)\n\n# after the task succeeds\nruns.finalise(\n    conn,\n    run_id,\n    status=\"succeeded\",\n    record_count_out=${py(run.record_count_out)},\n    commit=False,\n)`,
+      code: `from control import runs\n\nrun_id = runs.start(\n    conn,\n    workflow_run_id=${py(run.workflow_run_id)},\n    pipeline_type=${py(run.pipeline_type)},\n    domain=${py(run.domain)},\n    dataset=${py(run.dataset)},\n    business_date=${py(run.business_date)},\n    trigger_type=${py(run.trigger_type || "manual")}${fileArg}${orchestratorArg},\n    commit=False,\n)\n\n# after the task succeeds\nruns.finalise(\n    conn,\n    run_id,\n    status=\"succeeded\",\n    record_count_out=${py(run.record_count_out)},\n    commit=False,\n)`,
+    };
+  }
+
+  // The orchestrator={...} dict for a run, mirroring the keys runs.start records
+  // on cp.run_log. Returns null for non-orchestrated runs so their snippet is
+  // unchanged.
+  function runOrchestrator(run) {
+    if (!run || !run.orchestrator_type) return null;
+    return {
+      type: run.orchestrator_type,
+      dag_id: run.orchestrator_dag_id ?? null,
+      run_id: run.orchestrator_run_id ?? null,
+      task_id: run.orchestrator_task_id ?? null,
+      try_number: run.orchestrator_try_number ?? null,
+      map_index: run.orchestrator_map_index ?? null,
+      url: run.orchestrator_url ?? null,
     };
   }
 

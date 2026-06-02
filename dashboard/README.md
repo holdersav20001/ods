@@ -27,10 +27,31 @@ fresh snapshot. Use `--no-reset` only when you intentionally want to append.
 
 ## Snapshot
 
-The dashboard reads:
+By default the dashboard reads:
 
 ```text
 dashboard/data/demo-workflow.json
+```
+
+### Switching snapshots
+
+The dashboard can load either known snapshot without editing JS:
+
+- Header **snapshot** dropdown (top of the page), or
+- the `?data=` query param, e.g.
+  `http://localhost:8099/index.html?data=policy-claims-workflow.json`.
+
+Known snapshots:
+
+```text
+dashboard/data/demo-workflow.json            (default; customer/transaction)
+dashboard/data/policy-claims-workflow.json   (insurance policy/claims, Airflow)
+```
+
+Regenerate the policy/claims snapshot from the repo root:
+
+```powershell
+python -m harness.policy_claims_workflow --out dashboard/data/policy-claims-workflow.json
 ```
 
 Expected sections:
@@ -62,6 +83,16 @@ The demo refeed processes the corrected transaction file, but the target upsert
 writes only rows whose payload changed. Unchanged target rows keep their
 original `_ods_output_link_id`; changed rows show a superseded output and a
 latest output in row history.
+
+## Orchestrator identity
+
+Airflow-driven runs carry orchestrator identity (`orchestrator_type/dag_id/run_id/
+task_id/try_number/map_index/url`). When present the dashboard surfaces it as:
+
+- an `orchestrator={...}` argument in the Developer Model `runs.start(...)` snippet, and
+- an `ods_orchestrator` run facet in the OpenLineage (OL) export.
+
+Non-orchestrated runs are unaffected (no extra argument, no facet).
 
 ## Naming
 
