@@ -25,6 +25,15 @@ ALTER TABLE cp.lineage_edge
 
 -- run-to-run edges MUST name the upstream output link; file/quarantine/replay
 -- edges may leave it null (file edges are pinned by source_file_id).
+--
+--     ╔══════════════════════════════════════════════════════════════════╗
+--     ║ CHECK SUPERSEDED by 021_detail_to_aggregate.sql.                  ║
+--     ║ 021 DROPs and re-adds upstream_link_required_for_run_edges with   ║
+--     ║ 'detail_to_aggregate' appended to the NOT IN list, so that        ║
+--     ║ run-to-run edge_type also requires upstream_lineage_link_id. 021  ║
+--     ║ applies last, so the 021 CHECK is live; this copy is kept only    ║
+--     ║ for migration history.                                            ║
+--     ╚══════════════════════════════════════════════════════════════════╝
 ALTER TABLE cp.lineage_edge ADD CONSTRAINT upstream_link_required_for_run_edges CHECK (
     edge_type NOT IN ('curated_to_canonical','merge_to_canonical','canonical_to_sink')
     OR upstream_lineage_link_id IS NOT NULL

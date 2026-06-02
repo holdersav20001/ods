@@ -29,11 +29,17 @@ def register_file(conn, *, s3_raw_path, file_md5, business_date, domain, dataset
 
 
 def start(conn, *, workflow_run_id, pipeline_type, domain, dataset, business_date,
-          trigger_type, file_id=None, replay_of_run_id=None, commit=True) -> str:
+          trigger_type, file_id=None, replay_of_run_id=None, orchestrator=None,
+          commit=True) -> str:
+    """Start (or restart-reuse) a run. `orchestrator` is an optional dict of the
+    EXTERNAL orchestrator's identity (Airflow: type/dag_id/run_id/task_id/
+    try_number/map_index/url/payload — see migration 020). Omitted -> {} so the
+    orchestrator_* columns stay NULL and orchestrator_payload defaults to {};
+    existing callers are unaffected."""
     run_id = conn.execute(
-        "SELECT cp.start_run(%s,%s,%s,%s,%s,%s,%s,%s)",
+        "SELECT cp.start_run(%s,%s,%s,%s,%s,%s,%s,%s,%s)",
         [workflow_run_id, pipeline_type, domain, dataset, business_date,
-         trigger_type, file_id, replay_of_run_id],
+         trigger_type, file_id, replay_of_run_id, Jsonb(orchestrator or {})],
     ).fetchone()[0]
     if commit:
         conn.commit()

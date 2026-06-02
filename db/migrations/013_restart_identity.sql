@@ -84,6 +84,16 @@ CREATE UNIQUE INDEX uq_run_identity ON cp.run_log (
 -- finished_at / error cleared so a prior succeeded/failed attempt does not leak
 -- into the re-run. trigger_type/replay_of_run_id are intentionally left as the
 -- original run's (a clear-task is the SAME logical run, not a new chain).
+--
+--     ╔══════════════════════════════════════════════════════════════════╗
+--     ║ SUPERSEDED by 020_orchestrator_identity.sql.                      ║
+--     ║ 020 adds a 9th arg (p_orchestrator jsonb) to cp.start_run, DROPs  ║
+--     ║ this 8-arg signature, and re-declares the function to also fill / ║
+--     ║ refresh the orchestrator_* columns on INSERT and on the restart   ║
+--     ║ ON CONFLICT branch. The 013 body below is otherwise reproduced    ║
+--     ║ verbatim in 020. 020 applies last, so the 020 definition is live; ║
+--     ║ this copy is kept only for migration history.                     ║
+--     ╚══════════════════════════════════════════════════════════════════╝
 -- =====================================================================
 CREATE OR REPLACE FUNCTION cp.start_run(
     p_workflow_run_id text, p_pipeline_type text, p_domain text, p_dataset text,

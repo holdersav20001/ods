@@ -15,6 +15,7 @@ from harness.customer_transaction_workflow import (
     BUSINESS_DATES,
     CORRECTED_TRANSACTION_ROWS,
     CUSTOMER_DATASET,
+    CUSTOMER_ROWS,
     DETAIL_DATASET,
     REFEED_BUSINESS_DATE,
     TRANSACTION_DATASET,
@@ -153,7 +154,7 @@ def test_05_detail_sink_rows_for_all_three_days(demo, conn):
             "WHERE _ods_workflow_run_id = %s",
             (wfid,),
         ).fetchone()[0]
-        assert n == len(TRANSACTION_ROWS) == 3
+        assert n == len(TRANSACTION_ROWS)
 
 
 # --------------------------------------------------------------------------- #
@@ -167,8 +168,49 @@ def test_06_aggregate_sink_rows_for_all_three_days(demo, conn):
             "WHERE _ods_workflow_run_id = %s",
             (wfid,),
         ).fetchone()[0]
-        # Two customers (C001, C002) => 2 aggregate rows.
-        assert n == 2
+        assert n == len(CUSTOMER_ROWS)
+
+
+# --------------------------------------------------------------------------- #
+# Test 6b: the aggregate output link uses edge_type 'detail_to_aggregate'
+#          (migration 021), NOT the overloaded 'merge_to_canonical'. The merge
+#          step still uses 'merge_to_canonical'; only the AGGREGATE link changed.
+# --------------------------------------------------------------------------- #
+def test_06b_aggregate_link_uses_detail_to_aggregate_edge_type(demo, conn):
+    for date in (DAY1, DAY2, DAY3):
+        result = demo["normals_by_date"][date]
+        agg_link = result["aggregate"]["link_id"]
+        merge_link = result["merge"]["link_id"]
+
+        # Aggregate OUTPUT link and its single consuming edge are now
+        # detail_to_aggregate.
+        link_edge_type, edge_edge_types = conn.execute(
+            """
+            SELECT l.edge_type,
+                   array_agg(e.edge_type ORDER BY e.lineage_edge_id)
+            FROM cp.lineage_link l
+            JOIN cp.lineage_edge e ON e.lineage_link_id = l.lineage_link_id
+            WHERE l.lineage_link_id = %s
+            GROUP BY l.edge_type
+            """,
+            (agg_link,),
+        ).fetchone()
+        assert link_edge_type == "detail_to_aggregate"
+        assert edge_edge_types == ["detail_to_aggregate"]
+
+        # The merge step is unchanged: still merge_to_canonical.
+        merge_edge_type = conn.execute(
+            "SELECT edge_type FROM cp.lineage_link WHERE lineage_link_id = %s",
+            (merge_link,),
+        ).fetchone()[0]
+        assert merge_edge_type == "merge_to_canonical"
+
+    # Refeed aggregate link is detail_to_aggregate too.
+    refeed_agg_link = demo["refeed"]["aggregate"]["link_id"]
+    assert conn.execute(
+        "SELECT edge_type FROM cp.lineage_link WHERE lineage_link_id = %s",
+        (refeed_agg_link,),
+    ).fetchone()[0] == "detail_to_aggregate"
 
 
 # --------------------------------------------------------------------------- #
@@ -298,6 +340,35 @@ def test_13_day2_corrected_aggregate_traces_to_corrected_transaction_raw(demo, c
 
 
 # --------------------------------------------------------------------------- #
+# Test 13b: refeed sink writes only rows whose payload changed.
+# --------------------------------------------------------------------------- #
+def test_13b_refeed_target_upsert_only_writes_changed_rows(demo, conn):
+    wfid = demo["refeed"]["workflow_run_id"]
+
+    detail_rows = conn.execute(
+        f"""
+        SELECT payload->>'transaction_id'
+        FROM ods.{DETAIL_DATASET}
+        WHERE _ods_workflow_run_id = %s
+        ORDER BY payload->>'transaction_id'
+        """,
+        (wfid,),
+    ).fetchall()
+    assert [row[0] for row in detail_rows] == ["T101", "T104"]
+
+    aggregate_rows = conn.execute(
+        f"""
+        SELECT payload->>'customer_id'
+        FROM ods.{AGG_DATASET}
+        WHERE _ods_workflow_run_id = %s
+        ORDER BY payload->>'customer_id'
+        """,
+        (wfid,),
+    ).fetchall()
+    assert [row[0] for row in aggregate_rows] == ["C001", "C003"]
+
+
+# --------------------------------------------------------------------------- #
 # Test 14: snapshot includes executions, runs, links, tables, files, traces.
 # --------------------------------------------------------------------------- #
 def test_14_snapshot_has_all_sections(demo, conn):
@@ -311,9 +382,13 @@ def test_14_snapshot_has_all_sections(demo, conn):
     # 3 normal executions * 8 runs + 1 refeed * 6 runs = 30 runs.
     assert len(snap["runs"]) == 3 * 8 + 6
     assert {DETAIL_DATASET, AGG_DATASET} <= set(snap["tables"].keys())
-    # 4 detail-sink executions => 4*3 detail rows; 4*2 aggregate rows.
-    assert len(snap["tables"][DETAIL_DATASET]) == 4 * 3
-    assert len(snap["tables"][AGG_DATASET]) == 4 * 2
+    # 3 normal detail-sink executions plus changed-only refeed upserts.
+    assert len(snap["tables"][DETAIL_DATASET]) == (
+        3 * len(TRANSACTION_ROWS) + len(demo["refeed"]["changed_detail_rows"])
+    )
+    assert len(snap["tables"][AGG_DATASET]) == (
+        3 * len(CUSTOMER_ROWS) + len(demo["refeed"]["changed_aggregate_rows"])
+    )
     # customer files: 3 (one per normal day; refeed reuses) + transaction 3
     # original + 1 corrected = 7 distinct file rows.
     assert len(snap["files"]) == 7
@@ -323,6 +398,20 @@ def test_14_snapshot_has_all_sections(demo, conn):
     assert all("stages" in r for r in snap["runs"])
     assert all("edges" in l for l in snap["links"])
     assert all(l["lineage_link_id"] in snap["traces"] for l in snap["links"])
+
+    # Orchestrator identity fields (migration 020) are PRESENT on every run row,
+    # even though this manual demo leaves them NULL / {} (no external orchestrator).
+    orchestrator_keys = {
+        "orchestrator_type", "orchestrator_dag_id", "orchestrator_run_id",
+        "orchestrator_task_id", "orchestrator_try_number",
+        "orchestrator_map_index", "orchestrator_url", "orchestrator_payload",
+    }
+    for run in snap["runs"]:
+        assert orchestrator_keys <= set(run.keys()), (
+            f"run missing orchestrator keys: {orchestrator_keys - set(run.keys())}"
+        )
+        assert run["orchestrator_type"] is None
+        assert run["orchestrator_payload"] == {}
 
 
 # --------------------------------------------------------------------------- #

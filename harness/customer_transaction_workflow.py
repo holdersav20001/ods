@@ -35,6 +35,7 @@ from typing import Any
 
 from control import lineage, recon, runs, stages
 from control.db import connect
+from harness.snapshot import export_workflow_snapshot
 
 
 DOMAIN = "sales"
@@ -50,10 +51,11 @@ BUSINESS_DATES = [
 ]
 REFEED_BUSINESS_DATE = dt.date(2026, 5, 29)
 
-# Stable customer roster per the spec (§Input Files). Same two customers each day.
+# Stable customer roster per the spec (§Input Files). Same customers each day.
 CUSTOMER_ROWS = [
     {"customer_id": "C001", "customer_name": "Ada Lovelace", "segment": "premium"},
     {"customer_id": "C002", "customer_name": "Grace Hopper", "segment": "standard"},
+    {"customer_id": "C003", "customer_name": "Katherine Johnson", "segment": "premium"},
 ]
 
 # Original transaction file per the spec (§Input Files).
@@ -61,15 +63,21 @@ TRANSACTION_ROWS = [
     {"transaction_id": "T100", "customer_id": "C001", "amount": 125.50},
     {"transaction_id": "T101", "customer_id": "C001", "amount": 74.50},
     {"transaction_id": "T102", "customer_id": "C002", "amount": 33.00},
+    {"transaction_id": "T103", "customer_id": "C002", "amount": 48.25},
+    {"transaction_id": "T104", "customer_id": "C003", "amount": 210.00},
+    {"transaction_id": "T105", "customer_id": "C003", "amount": 19.95},
 ]
 
 # Corrected Day-2 transaction refeed (§"Corrected Transaction Refeed File").
-# Same ids/structure, T101 amount corrected 74.50 -> 79.50. Distinct content =>
+# Same ids/structure, two amounts corrected. Distinct content =>
 # distinct file_md5 => distinct raw file identity.
 CORRECTED_TRANSACTION_ROWS = [
     {"transaction_id": "T100", "customer_id": "C001", "amount": 125.50},
     {"transaction_id": "T101", "customer_id": "C001", "amount": 79.50},
     {"transaction_id": "T102", "customer_id": "C002", "amount": 33.00},
+    {"transaction_id": "T103", "customer_id": "C002", "amount": 48.25},
+    {"transaction_id": "T104", "customer_id": "C003", "amount": 225.00},
+    {"transaction_id": "T105", "customer_id": "C003", "amount": 19.95},
 ]
 
 
@@ -105,10 +113,37 @@ def ensure_demo_targets(conn) -> None:
         )
 
 
+def reset_demo_state(conn) -> None:
+    """Clear generated demo/control state before writing a fresh snapshot.
+
+    The static reference tables (`cp.edge_type`, `cp.dataset_config`) are kept.
+    Generated files, runs, stages, links, edges, reconciliation rows, DLQ rows,
+    and the two demo target tables are removed.
+    """
+    ensure_demo_targets(conn)
+    conn.execute(
+        f"TRUNCATE TABLE ods.{DETAIL_DATASET}, ods.{AGG_DATASET} "
+        "RESTART IDENTITY CASCADE"
+    )
+    conn.execute(
+        """
+        TRUNCATE TABLE
+            cp.dlq,
+            cp.reconciliation_log,
+            cp.lineage_edge,
+            cp.lineage_link,
+            cp.run_stage_log,
+            cp.run_log,
+            cp.file_catalogue
+        RESTART IDENTITY CASCADE
+        """
+    )
+
+
 def _content_md5(rows: list[dict[str, Any]]) -> str:
     """Deterministic content hash of a raw file's rows.
 
-    Distinct content (e.g. the corrected T101 amount) yields a distinct md5, so
+    Distinct content (e.g. corrected transaction amounts) yields a distinct md5, so
     the corrected refeed gets a genuinely different raw file identity.
     """
     blob = json.dumps(rows, sort_keys=True, separators=(",", ":"))
@@ -287,6 +322,22 @@ def _aggregate_rows(detail_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ]
 
 
+def _changed_rows(original_rows: list[dict[str, Any]],
+                  new_rows: list[dict[str, Any]],
+                  key_fields: tuple[str, ...]) -> list[dict[str, Any]]:
+    """Return rows whose business key is new or whose payload actually changed."""
+    original_by_key = {
+        tuple(row[field] for field in key_fields): row
+        for row in original_rows
+    }
+    changed = []
+    for row in new_rows:
+        key = tuple(row[field] for field in key_fields)
+        if original_by_key.get(key) != row:
+            changed.append(row)
+    return changed
+
+
 def _merge_to_detail(conn, *, workflow_run_id: str, business_date: dt.date,
                      customer_silver: dict[str, str],
                      transaction_silver: dict[str, str],
@@ -423,9 +474,11 @@ def _aggregate_from_detail(conn, *, workflow_run_id: str, business_date: dt.date
                            commit: bool) -> dict[str, str]:
     """Aggregate the detail output as a first-class run.
 
-    The aggregate output link reuses edge_type 'merge_to_canonical' (no
-    'aggregate' edge type exists) and consumes the detail SINK link, so an
-    aggregate row traces through the detail lineage to both raw files.
+    The aggregate output link uses edge_type 'detail_to_aggregate' (a registered
+    is_provenance edge type, migration 021) and consumes the detail SINK link, so
+    an aggregate row traces aggregate -> detail -> ... -> both raw files. The
+    consuming edge names the detail sink output via upstream_lineage_link_id,
+    which the 021 CHECK (upstream_link_required_for_run_edges) requires.
     """
     run_id = runs.start(
         conn,
@@ -446,7 +499,7 @@ def _aggregate_from_detail(conn, *, workflow_run_id: str, business_date: dt.date
     link_id = lineage.write_link(
         conn,
         consumer_run_id=run_id,
-        edge_type="merge_to_canonical",
+        edge_type="detail_to_aggregate",
         target_ref={
             "path": f"s3://gold/{AGG_DATASET}/{business_date}.parquet",
             "content_hash": f"gold-{AGG_DATASET}-{content_tag}",
@@ -456,7 +509,7 @@ def _aggregate_from_detail(conn, *, workflow_run_id: str, business_date: dt.date
         edges=[{
             "upstream_run_id": detail_sink["run_id"],
             "upstream_lineage_link_id": detail_sink["link_id"],
-            "edge_type": "merge_to_canonical",
+            "edge_type": "detail_to_aggregate",
             "source_ref": {"table": f"ods.{DETAIL_DATASET}"},
             "record_count": len(detail_rows),
         }],
@@ -526,7 +579,7 @@ def normal_execution(conn, business_date: dt.date,
         conn, workflow_run_id=workflow_run_id, business_date=business_date,
         dataset=AGG_DATASET, upstream_run_id=aggregate["run_id"],
         upstream_link_id=aggregate["link_id"],
-        upstream_edge_type="merge_to_canonical", rows=aggregate_rows,
+        upstream_edge_type="detail_to_aggregate", rows=aggregate_rows,
         content_tag=content_tag, stage_name="upsert_customer_transaction_daily",
         trigger_type=trigger_type, commit=commit)
 
@@ -580,6 +633,11 @@ def refeed_execution(conn, *, original_day2_result: dict[str, Any],
     customer_silver = original_day2_result["customer_silver"]
 
     detail_rows = _merge_rows(business_date, corrected_transaction_rows)
+    changed_detail_rows = _changed_rows(
+        original_day2_result["detail_rows"],
+        detail_rows,
+        ("business_date", "transaction_id"),
+    )
     content_tag = f"{workflow_run_id}-corrected"
     merge = _merge_to_detail(
         conn, workflow_run_id=workflow_run_id, business_date=business_date,
@@ -590,11 +648,16 @@ def refeed_execution(conn, *, original_day2_result: dict[str, Any],
         conn, workflow_run_id=workflow_run_id, business_date=business_date,
         dataset=DETAIL_DATASET, upstream_run_id=merge["run_id"],
         upstream_link_id=merge["link_id"], upstream_edge_type="merge_to_canonical",
-        rows=detail_rows, content_tag=content_tag,
+        rows=changed_detail_rows, content_tag=content_tag,
         stage_name="upsert_customer_transaction", trigger_type="replay",
         commit=commit)
 
     aggregate_rows = _aggregate_rows(detail_rows)
+    changed_aggregate_rows = _changed_rows(
+        original_day2_result["aggregate_rows"],
+        aggregate_rows,
+        ("business_date", "customer_id"),
+    )
     aggregate = _aggregate_from_detail(
         conn, workflow_run_id=workflow_run_id, business_date=business_date,
         detail_sink=detail_sink, detail_rows=detail_rows,
@@ -604,7 +667,7 @@ def refeed_execution(conn, *, original_day2_result: dict[str, Any],
         conn, workflow_run_id=workflow_run_id, business_date=business_date,
         dataset=AGG_DATASET, upstream_run_id=aggregate["run_id"],
         upstream_link_id=aggregate["link_id"],
-        upstream_edge_type="merge_to_canonical", rows=aggregate_rows,
+        upstream_edge_type="detail_to_aggregate", rows=changed_aggregate_rows,
         content_tag=content_tag, stage_name="upsert_customer_transaction_daily",
         trigger_type="replay", commit=commit)
 
@@ -622,7 +685,9 @@ def refeed_execution(conn, *, original_day2_result: dict[str, Any],
         "aggregate": aggregate,
         "aggregate_sink": aggregate_sink,
         "detail_rows": detail_rows,
+        "changed_detail_rows": changed_detail_rows,
         "aggregate_rows": aggregate_rows,
+        "changed_aggregate_rows": changed_aggregate_rows,
     }
 
 
@@ -677,7 +742,7 @@ def run_demo(conn, *, commit: bool = True) -> dict[str, Any]:
             "business_date": str(refeed["business_date"]),
             "execution_type": "refeed",
             "refeed_of_workflow_run_id": refeed["refeed_of_workflow_run_id"],
-            "description": "Day 2 transaction refeed (corrected T101)",
+            "description": "Day 2 transaction refeed (corrected T101 and T104)",
         },
     ]
 
@@ -696,149 +761,35 @@ def run_demo(conn, *, commit: bool = True) -> dict[str, Any]:
 # --------------------------------------------------------------------------- #
 # Snapshot export.
 # --------------------------------------------------------------------------- #
-def _rows_as_dicts(cursor) -> list[dict[str, Any]]:
-    cols = [desc.name for desc in cursor.description]
-    return [dict(zip(cols, row)) for row in cursor.fetchall()]
-
-
-def _jsonify(value: Any) -> Any:
-    if isinstance(value, (uuid.UUID, dt.date, dt.datetime)):
-        return str(value)
-    if isinstance(value, list):
-        return [_jsonify(v) for v in value]
-    if isinstance(value, dict):
-        return {k: _jsonify(v) for k, v in value.items()}
-    return value
-
-
-_TRACE_SQL = (pathlib.Path(__file__).resolve().parents[1]
-              / "control" / "queries" / "trace_row.sql").read_text()
-
-
 def export_demo_snapshot(conn, executions_meta: list[dict[str, Any]]) -> dict[str, Any]:
-    """Export control-table + target-row state across ALL demo executions."""
+    """Export control-table + target-row state across ALL demo executions.
+
+    Thin wrapper over the shared, dataset-agnostic ``export_workflow_snapshot``:
+    binds the customer-demo scenario + detail/aggregate tables. The export shape
+    (runs/stages, links/edges, files, tables, traces, orchestrator fields) lives
+    in ``harness/snapshot.py`` so the policy/claims demo can reuse it verbatim.
+    """
     workflow_run_ids = [e["workflow_run_id"] for e in executions_meta]
-
-    runs_cur = conn.execute(
-        """
-        SELECT run_id::text, workflow_run_id, pipeline_type, domain, dataset,
-               business_date::text, trigger_type, status, record_count_in,
-               record_count_out, replay_of_run_id::text,
-               started_at::text, finished_at::text
-        FROM cp.run_log
-        WHERE workflow_run_id = ANY(%s)
-        ORDER BY workflow_run_id, started_at, pipeline_type, dataset
-        """,
-        (workflow_run_ids,),
-    )
-    run_rows = _rows_as_dicts(runs_cur)
-    run_ids = [row["run_id"] for row in run_rows]
-
-    stages_by_run = {run_id: [] for run_id in run_ids}
-    if run_ids:
-        for row in _rows_as_dicts(conn.execute(
-            """
-            SELECT run_id::text, stage, attempt, status, record_count_in,
-                   record_count_out, metrics, started_at::text, finished_at::text
-            FROM cp.run_stage_log
-            WHERE run_id = ANY(%s::uuid[])
-            ORDER BY started_at, stage_log_id
-            """,
-            (run_ids,),
-        )):
-            stages_by_run[row.pop("run_id")].append(row)
-
-    links = _rows_as_dicts(conn.execute(
-        """
-        SELECT l.lineage_link_id::text, l.consumer_run_id::text,
-               r.workflow_run_id, l.edge_type, l.sink_type, l.target_ref,
-               l.transform_version, l.record_count, l.created_at::text
-        FROM cp.lineage_link l
-        JOIN cp.run_log r ON r.run_id = l.consumer_run_id
-        WHERE r.workflow_run_id = ANY(%s)
-        ORDER BY r.workflow_run_id, l.created_at, l.edge_type
-        """,
-        (workflow_run_ids,),
-    ))
-    link_ids = [row["lineage_link_id"] for row in links]
-
-    edges_by_link = {link_id: [] for link_id in link_ids}
-    if link_ids:
-        for row in _rows_as_dicts(conn.execute(
-            """
-            SELECT lineage_link_id::text, lineage_edge_id::text,
-                   upstream_run_id::text, upstream_lineage_link_id::text,
-                   source_file_id::text, input_slot, edge_type, source_ref,
-                   record_count
-            FROM cp.lineage_edge
-            WHERE lineage_link_id = ANY(%s::uuid[])
-            ORDER BY lineage_link_id, input_slot, lineage_edge_id
-            """,
-            (link_ids,),
-        )):
-            edges_by_link[row.pop("lineage_link_id")].append(row)
-
-    traces = {}
-    for link_id in link_ids:
-        traces[link_id] = _rows_as_dicts(
-            conn.execute(_TRACE_SQL, {"link_id": link_id}))
-
-    for row in run_rows:
-        row["stages"] = stages_by_run.get(row["run_id"], [])
-    for row in links:
-        row["edges"] = edges_by_link.get(row["lineage_link_id"], [])
-
-    tables = {}
-    for table in (DETAIL_DATASET, AGG_DATASET):
-        tables[table] = _rows_as_dicts(conn.execute(
-            f"""
-            SELECT row_id, payload, _ods_workflow_run_id,
-                   _ods_lineage_link_id::text,
-                   _ods_output_link_id::text
-            FROM ods.{table}
-            WHERE _ods_workflow_run_id = ANY(%s)
-            ORDER BY row_id
-            """,
-            (workflow_run_ids,),
-        ))
-
-    files = _rows_as_dicts(conn.execute(
-        """
-        SELECT f.file_id::text, f.s3_raw_path, f.file_md5,
-               f.business_date::text, f.state, f.domain, f.dataset
-        FROM cp.file_catalogue f
-        WHERE f.file_id IN (
-            SELECT DISTINCT r.file_id FROM cp.run_log r
-            WHERE r.workflow_run_id = ANY(%s) AND r.file_id IS NOT NULL
-        )
-        ORDER BY f.dataset, f.business_date, f.s3_raw_path
-        """,
-        (workflow_run_ids,),
-    ))
-
-    return _jsonify({
-        # Back-compat single pointer = the first (Day-1 normal) execution.
-        "workflow_run_id": workflow_run_ids[0],
-        "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
-        "scenario": {
+    return export_workflow_snapshot(
+        conn,
+        workflow_run_ids=workflow_run_ids,
+        detail_tables=[DETAIL_DATASET, AGG_DATASET],
+        scenario={
             "business_dates": [str(d) for d in BUSINESS_DATES],
             "refeed_business_date": str(REFEED_BUSINESS_DATE),
         },
-        "executions": executions_meta,
-        "runs": run_rows,
-        "links": links,
-        "files": files,
-        "tables": tables,
-        "traces": traces,
-    })
+        executions=executions_meta,
+    )
 
 
-def write_dashboard_snapshot(path: str | pathlib.Path) -> dict[str, Any]:
+def write_dashboard_snapshot(path: str | pathlib.Path, *, reset: bool = True) -> dict[str, Any]:
     """Run the demo against Postgres (LEAVING data committed) and write JSON."""
     out = pathlib.Path(path)
     out.parent.mkdir(parents=True, exist_ok=True)
     with connect() as conn:
         conn.autocommit = False
+        if reset:
+            reset_demo_state(conn)
         result = run_demo(conn, commit=True)
         snapshot = export_demo_snapshot(conn, result["executions"])
         conn.commit()
@@ -853,8 +804,13 @@ def main() -> None:
         default="dashboard/data/demo-workflow.json",
         help="Path to write dashboard JSON.",
     )
+    parser.add_argument(
+        "--no-reset",
+        action="store_true",
+        help="Append demo rows instead of clearing generated control/target tables first.",
+    )
     args = parser.parse_args()
-    snapshot = write_dashboard_snapshot(args.out)
+    snapshot = write_dashboard_snapshot(args.out, reset=not args.no_reset)
     print(f"wrote {args.out}")
     print(f"executions={len(snapshot['executions'])} "
           f"runs={len(snapshot['runs'])} links={len(snapshot['links'])} "

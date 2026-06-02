@@ -1,6 +1,6 @@
 # ODS Lineage Dashboard
 
-Static dashboard for the customer/transaction lineage demo snapshot.
+Static React dashboard for the customer/transaction lineage demo snapshot.
 
 ## Run
 
@@ -11,38 +11,92 @@ python -m http.server 8099 --directory dashboard
 Open:
 
 ```text
-http://localhost:8099
+http://localhost:8099/index.html
 ```
 
-## Data
+## Regenerate Data
 
-The dashboard reads:
+From the repository root:
+
+```powershell
+python -m harness.customer_transaction_workflow --out dashboard/data/demo-workflow.json
+```
+
+The generator resets generated demo/control rows by default before writing a
+fresh snapshot. Use `--no-reset` only when you intentionally want to append.
+
+## Snapshot
+
+By default the dashboard reads:
 
 ```text
 dashboard/data/demo-workflow.json
 ```
 
-Naming (see `docs/specs/2026-05-30-output-link-input-edge-rename.md`):
+### Switching snapshots
 
-- **Output link** — what a run produced (`output_link_id`; view `cp.output_link`,
-  physical table `cp.lineage_link`).
-- **Input edge** — what that output was made from (view `cp.input_edge`, physical
-  table `cp.lineage_edge`).
-- **upstream_output_link_id** — a previous output used as input (physical column
-  `upstream_lineage_link_id`).
+The dashboard can load either known snapshot without editing JS:
 
-Expected snapshot sections:
+- Header **snapshot** dropdown (top of the page), or
+- the `?data=` query param, e.g.
+  `http://localhost:8099/index.html?data=policy-claims-workflow.json`.
 
-- `executions`: three normal loads plus the Day 2 transaction refeed
-- `runs`: control-plane run rows with nested stages
-- `links`: output links with their nested input edges (snapshot keys remain the
-  physical `lineage_link_id` / `lineage_edge_id` / `upstream_lineage_link_id`)
-- `tables`: target rows from `ods.customer_transaction` and `ods.customer_transaction_daily`,
-  each carrying both `_ods_lineage_link_id` and the new-name mirror `_ods_output_link_id`
-- `traces`: trace rows keyed by output link id
+Known snapshots:
+
+```text
+dashboard/data/demo-workflow.json            (default; customer/transaction)
+dashboard/data/policy-claims-workflow.json   (insurance policy/claims, Airflow)
+```
+
+Regenerate the policy/claims snapshot from the repo root:
+
+```powershell
+python -m harness.policy_claims_workflow --out dashboard/data/policy-claims-workflow.json
+```
+
+Expected sections:
+
+- `executions`: three normal loads plus one Day 2 transaction refeed
+- `runs`: `run_log` rows with nested stages
+- `links`: output links with nested input edges
+- `tables`: target rows from `ods.customer_transaction` and
+  `ods.customer_transaction_daily`
+- `files`: raw file catalogue rows used by the workflows
+- `traces`: raw-file trace rows keyed by output link id
 
 ## Tabs
 
-- **Control Links:** inspect one execution/run, focus an output link, and see raw-file trace.
-- **Run Flow:** React Flow graph for the whole scenario or selected execution.
-- **Target Rows:** pick a table/date, click a row, and jump back to its focused output link.
+- **Workflows:** workflow-level metrics, process links, JSON, and OL export.
+- **Metadata Map:** high-level metadata relationships.
+- **Control Links:** run/output/input inspection and raw-file trace.
+- **Run Flow:** React Flow graph of run inputs and outputs.
+- **Workflow Diagram:** top-to-bottom workflow flow.
+- **Process Model:** task, stage, input, and output cards.
+- **Developer Model:** clickable cards showing API calls/payloads.
+- **Target Rows:** row-level history and output-link traceability.
+- **Templates:** implementation examples.
+- **Documentation:** common questions from the design discussion.
+
+## Changed-Only Refeed
+
+The demo refeed processes the corrected transaction file, but the target upsert
+writes only rows whose payload changed. Unchanged target rows keep their
+original `_ods_output_link_id`; changed rows show a superseded output and a
+latest output in row history.
+
+## Orchestrator identity
+
+Airflow-driven runs carry orchestrator identity (`orchestrator_type/dag_id/run_id/
+task_id/try_number/map_index/url`). When present the dashboard surfaces it as:
+
+- an `orchestrator={...}` argument in the Developer Model `runs.start(...)` snippet, and
+- an `ods_orchestrator` run facet in the OpenLineage (OL) export.
+
+Non-orchestrated runs are unaffected (no extra argument, no facet).
+
+## Naming
+
+- **Output link:** what a run produced.
+- **Input edge:** what an output was made from.
+- **upstream_output_link_id:** a previous output consumed as an input.
+- **_ods_output_link_id:** the output id stamped on a target row.
