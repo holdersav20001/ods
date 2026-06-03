@@ -380,6 +380,37 @@ def test_12_valid_rows_pass(conn):
     assert bad == []
 
 
+def test_12a_validation_rules_reject_bad_type_enum_range_and_date(conn):
+    contract = schema.get_contract(
+        conn, domain=DOMAIN, dataset=CONTRACT_DATASET, layer=CONTRACT_LAYER,
+        schema_version=SCHEMA_VERSION)
+    rows = [
+        {**GOOD_CLAIM_ROWS[0], "claim_id": "BADTYPE", "claim_amount": "500.00"},
+        {**GOOD_CLAIM_ROWS[0], "claim_id": "BADENUM", "claim_status": "pending"},
+        {**GOOD_CLAIM_ROWS[0], "claim_id": "BADMIN", "claim_amount": -1},
+        {**GOOD_CLAIM_ROWS[0], "claim_id": "BADDATE", "claim_date": "2026/05/20"},
+    ]
+    good, bad = schema.validate_rows(rows, contract)
+    assert good == []
+    reasons = [reason for _row, reason in bad]
+    assert any("claim_amount" in r and "number" in r for r in reasons)
+    assert any("claim_status" in r and "one of" in r for r in reasons)
+    assert any("claim_amount" in r and ">=" in r for r in reasons)
+    assert any("claim_date" in r and "date" in r for r in reasons)
+
+
+def test_12b_duplicate_business_key_is_rejected(conn):
+    contract = schema.get_contract(
+        conn, domain=DOMAIN, dataset=CONTRACT_DATASET, layer=CONTRACT_LAYER,
+        schema_version=SCHEMA_VERSION)
+    dup1 = dict(GOOD_CLAIM_ROWS[0])
+    dup2 = {**GOOD_CLAIM_ROWS[0], "claim_status": "closed"}
+    good, bad = schema.validate_rows([dup1, dup2], contract)
+    assert good == []
+    assert len(bad) == 2
+    assert all("duplicate business key" in reason for _row, reason in bad)
+
+
 def test_13_good_output_records_schema_version_in_target_ref(demo, conn):
     good_link = demo["normal"]["claim_canonical"]["link_id"]
     target_ref = conn.execute(

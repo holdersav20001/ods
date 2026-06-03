@@ -17,13 +17,16 @@ def quarantine(conn, *, run_id, stage, reason, source_ref, payload_ref,
     quarantine_output_link_id. ``failed_payload`` is the actual rejected row(s),
     preserved verbatim and never overwritten.
 
-    ``source_file_id`` (F2, OPTIONAL) is the raw file the quarantined rows came
-    from. When supplied it is STAMPED on the quarantine edge's source_file_id, so
-    the quarantine output traces back to the raw file via cp.v_provenance /
-    trace_row.sql / dashboard_output_trace (the raw id is also kept in
-    source_ref). Omitting it preserves the pre-F2 behaviour exactly (a NULL
-    source_file_id, exempt by the 012 edge_must_anchor CHECK).
+    ``source_file_id`` is the raw file the quarantined rows came from. The SQL
+    function remains backward-compatible for legacy direct SQL callers, but the
+    Python SDK requires this anchor so normal application code cannot create a
+    DLQ output that dead-ends before the raw file.
     """
+    if not source_file_id:
+        raise ValueError(
+            "source_file_id is required for dlq.quarantine; pass the raw "
+            "cp.file_catalogue.file_id so quarantine lineage traces to raw")
+
     dlq_id = conn.execute(
         "SELECT cp.quarantine(%s,%s,%s,%s,%s,%s,%s,%s)",
         [run_id, stage, reason, Jsonb(source_ref), payload_ref, record_count,

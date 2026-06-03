@@ -139,6 +139,10 @@ def fake_canonicalize(conn, *, workflow_run_id, domain, dataset, business_date,
     # just the run — the input-side disambiguator for run-to-run edges (C3/009).
     up_link = runs.run_output_link(
         conn, run_id=upstream_run_id, edge_type="raw_to_curated")
+    source_file_id = conn.execute(
+        "SELECT file_id FROM cp.run_log WHERE run_id=%s",
+        (upstream_run_id,),
+    ).fetchone()[0]
 
     run_id = runs.start(
         conn,
@@ -166,9 +170,11 @@ def fake_canonicalize(conn, *, workflow_run_id, domain, dataset, business_date,
             run_id=run_id,
             stage="canonicalize",
             reason="dq: transform cast value to NULL",
-            source_ref={"note": "rows failing DQ (would cast to NULL)"},
+            source_ref={"note": "rows failing DQ (would cast to NULL)",
+                        "raw_file_id": str(source_file_id)},
             payload_ref=f"s3://dlq/{dataset}/{business_date}-dq.json",
             record_count=bad,
+            source_file_id=str(source_file_id),
             commit=commit,
         )
         dlq_link_id = str(conn.execute(
@@ -517,6 +523,15 @@ def fake_fail(conn, *, workflow_run_id, domain, dataset, business_date,
     Returns {run_id, dlq_id, link_id} where link_id is the quarantine link.
     """
     source = good_count + bad_count
+    source_file_id = runs.register_file(
+        conn,
+        s3_raw_path=f"s3://raw/{domain}/{dataset}/{business_date}-fake-fail.json",
+        file_md5=f"{domain}-{dataset}-{business_date}-fake-fail",
+        business_date=business_date,
+        domain=domain,
+        dataset=dataset,
+        commit=commit,
+    )
 
     run_id = runs.start(
         conn,
@@ -526,6 +541,7 @@ def fake_fail(conn, *, workflow_run_id, domain, dataset, business_date,
         dataset=dataset,
         business_date=business_date,
         trigger_type="manual",
+        file_id=source_file_id,
         commit=commit,
     )
 
@@ -538,9 +554,11 @@ def fake_fail(conn, *, workflow_run_id, domain, dataset, business_date,
         run_id=run_id,
         stage="canonicalize",
         reason="fake validation failure",
-        source_ref={"note": "synthetic bad rows"},
+        source_ref={"note": "synthetic bad rows",
+                    "raw_file_id": str(source_file_id)},
         payload_ref=f"s3://dlq/{dataset}/{business_date}.json",
         record_count=bad_count,
+        source_file_id=str(source_file_id),
         commit=commit,
     )
 
@@ -565,4 +583,5 @@ def fake_fail(conn, *, workflow_run_id, domain, dataset, business_date,
     runs.finalise(conn, run_id, status="succeeded", record_count_out=good_count,
                   commit=commit)
 
-    return {"run_id": run_id, "dlq_id": dlq_id, "link_id": link_id}
+    return {"run_id": run_id, "dlq_id": dlq_id, "link_id": link_id,
+            "source_file_id": source_file_id}

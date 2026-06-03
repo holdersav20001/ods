@@ -458,11 +458,13 @@ def test_resolve_dlq_under_review_then_resolved(conn):
 
 def test_python_quarantine_and_resolve_wrappers(conn):
     run_id, _ = _run(conn)
+    fid = _raw_file(conn)
     payload = {"policy_id": "P1", "claim_amount": -5}
     dlq_id = dlq.quarantine(
         conn, run_id=run_id, stage="validate", reason="bad",
-        source_ref={"src": "x"}, payload_ref="s3://dlq/e.json",
-        record_count=1, failed_payload=payload, commit=False,
+        source_ref={"src": "x", "raw_file_id": str(fid)},
+        payload_ref="s3://dlq/e.json", record_count=1,
+        failed_payload=payload, source_file_id=str(fid), commit=False,
     )
     assert conn.execute(
         "SELECT failed_payload, status FROM cp.dlq WHERE dlq_id=%s", (dlq_id,)
@@ -471,3 +473,13 @@ def test_python_quarantine_and_resolve_wrappers(conn):
     assert conn.execute(
         "SELECT status FROM cp.dlq WHERE dlq_id=%s", (dlq_id,)
     ).fetchone()[0] == "rejected"
+
+
+def test_python_quarantine_requires_source_file_id(conn):
+    run_id, _ = _run(conn)
+    with pytest.raises(ValueError, match="source_file_id is required"):
+        dlq.quarantine(
+            conn, run_id=run_id, stage="validate", reason="bad",
+            source_ref={"src": "x"}, payload_ref="s3://dlq/e.json",
+            record_count=1, failed_payload={"x": 1}, commit=False,
+        )

@@ -273,10 +273,12 @@ def test_write_check_records_discrepancy_and_status(conn):
 
 def test_quarantine_writes_dlq_and_lineage_link(conn):
     run_id, _ = _start(conn)
+    file_id = _file(conn)
     dlq_id = dlq.quarantine(
         conn, run_id=run_id, stage="curate", reason="bad_schema",
-        source_ref={"file": "x.csv"}, payload_ref="s3://dlq/x",
-        record_count=2, commit=False)
+        source_ref={"file": "x.csv", "raw_file_id": file_id},
+        payload_ref="s3://dlq/x", record_count=2, source_file_id=file_id,
+        commit=False)
     assert isinstance(dlq_id, str)
     assert conn.execute(
         "SELECT 1 FROM cp.dlq WHERE dlq_id=%s", (dlq_id,)).fetchone() is not None

@@ -148,3 +148,12 @@ def test_dashboard_functions_raise_clear_exceptions(conn):
             [workflow_run_id, "ods.no_such_table"],
         ).fetchall()
     conn.execute("ROLLBACK TO SAVEPOINT missing_table")
+
+    conn.execute("CREATE TABLE IF NOT EXISTS ods.trace_bad_target (row_id bigserial PRIMARY KEY)")
+    conn.execute("SAVEPOINT missing_trace_columns")
+    with pytest.raises(Exception, match="missing required ODS columns"):
+        conn.execute(
+            "SELECT * FROM cp.dashboard_target_row_trace('ods','trace_bad_target',1)"
+        ).fetchall()
+    conn.execute("ROLLBACK TO SAVEPOINT missing_trace_columns")
+    conn.execute("DROP TABLE ods.trace_bad_target")

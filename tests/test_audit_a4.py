@@ -529,13 +529,18 @@ def test_s6_dlq_reachable_and_recon_catches_imbalance(conn):
     wf = str(uuid.uuid4())
     # 20 source, 15 good, 3 quarantined -> good+dlq=18 < source=20: 2 rows LOST
     # without being quarantined. recon MUST breach (non-vacuous).
+    file_id = runs.register_file(conn, s3_raw_path=f["s3_raw_path"],
+                                 file_md5=f["file_md5"],
+                                 business_date=f["business_date"],
+                                 domain=dom, dataset="orders", commit=False)
     run = runs.start(conn, workflow_run_id=wf, pipeline_type="canonicalization",
                      domain=dom, dataset="orders", business_date="2026-05-01",
-                     trigger_type="manual", commit=False)
+                     trigger_type="manual", file_id=file_id, commit=False)
     dlq_id = dlq.quarantine(conn, run_id=run, stage="canonicalize",
-                            reason="dq", source_ref={"n": "bad"},
+                            reason="dq", source_ref={"n": "bad",
+                                                     "raw_file_id": str(file_id)},
                             payload_ref="s3://dlq/x", record_count=3,
-                            commit=False)
+                            source_file_id=file_id, commit=False)
     q_link = str(conn.execute("SELECT lineage_link_id FROM cp.lineage_link WHERE "
                               "consumer_run_id=%s AND edge_type='quarantine'",
                               (run,)).fetchone()[0])
