@@ -516,12 +516,20 @@ def _sink_rows(conn, *, workflow_run_id: str, dataset: str,
 
 
 def _aggregate_from_detail(conn, *, workflow_run_id: str,
-                           detail_sink: dict[str, str],
-                           detail_rows: list[dict[str, Any]],
+                           detail_inputs: list[dict[str, Any]],
                            aggregate_rows: list[dict[str, Any]],
                            content_tag: str, dag_run_id: str,
                            execution_type: str, commit: bool) -> dict[str, str]:
-    """Aggregate the detail SINK output as a first-class detail_to_aggregate run."""
+    """Aggregate detail SINK output(s) as a first-class detail_to_aggregate run.
+
+    ``detail_inputs`` is one entry per CONTRIBUTING detail output, each
+    ``{"run_id", "link_id", "record_count", optional "role"}`` -> one
+    detail_to_aggregate input edge. A recomputed aggregate (DLQ replay) consumes
+    EVERY contributing active detail output (the original normal detail sink for
+    the pre-existing rows PLUS the corrected replay detail sink), so the
+    aggregate's provenance is COMPLETE rather than only the corrected slice.
+    """
+    rows_in = sum(int(di["record_count"]) for di in detail_inputs)
     run_id = runs.start(
         conn, workflow_run_id=workflow_run_id, pipeline_type="aggregation",
         domain=DOMAIN, dataset=AGG_DATASET, business_date=BUSINESS_DATE,
@@ -532,9 +540,10 @@ def _aggregate_from_detail(conn, *, workflow_run_id: str,
         commit=commit)
     with stages.stage_scope(conn, run_id, "aggregate_policy_claim_daily",
                             commit=commit) as st:
-        st.record_in = len(detail_rows)
+        st.record_in = rows_in
         st.record_out = len(aggregate_rows)
-        st.metrics = {"group_by": ["business_date", "policy_type"]}
+        st.metrics = {"group_by": ["business_date", "policy_type"],
+                      "detail_inputs": len(detail_inputs)}
     link_id = lineage.write_output_link(
         conn, consumer_run_id=run_id, edge_type="detail_to_aggregate",
         target_ref={
@@ -542,15 +551,18 @@ def _aggregate_from_detail(conn, *, workflow_run_id: str,
             "content_hash": f"gold-{AGG_DATASET}-{content_tag}", "version": 1},
         record_count=len(aggregate_rows),
         inputs=[{
-            "upstream_run_id": detail_sink["run_id"],
-            "upstream_output_link_id": detail_sink["link_id"],
+            "upstream_run_id": di["run_id"],
+            "upstream_output_link_id": di["link_id"],
+            "input_slot": i,
             "edge_type": "detail_to_aggregate",
-            "source_ref": {"input_role": "detail", "table": DETAIL_TARGET},
-            "record_count": len(detail_rows)}],
+            "source_ref": {"input_role": di.get("role", "detail"),
+                           "table": DETAIL_TARGET},
+            "record_count": int(di["record_count"])}
+            for i, di in enumerate(detail_inputs)],
         transform_version="agg-v1", commit=commit)
     recon.write_check(
         conn, run_id=run_id, check_type="aggregate_policy_claim_daily",
-        source_count=len(detail_rows), accounted_count=len(detail_rows),
+        source_count=rows_in, accounted_count=rows_in,
         metrics={"aggregate_rows": len(aggregate_rows)}, commit=commit)
     runs.finalise(conn, run_id, status="succeeded",
                   record_count_out=len(aggregate_rows), commit=commit)
@@ -621,8 +633,11 @@ def normal_execution(conn, *, workflow_run_id: str, dag_run_id: str,
 
     aggregate_rows = _aggregate_rows(detail_rows)
     aggregate = _aggregate_from_detail(
-        conn, workflow_run_id=workflow_run_id, detail_sink=detail_sink,
-        detail_rows=detail_rows, aggregate_rows=aggregate_rows,
+        conn, workflow_run_id=workflow_run_id,
+        detail_inputs=[{"run_id": detail_sink["run_id"],
+                        "link_id": detail_sink["link_id"],
+                        "record_count": len(detail_rows)}],
+        aggregate_rows=aggregate_rows,
         content_tag=content_tag, dag_run_id=dag_run_id, execution_type="normal",
         commit=commit)
     aggregate_sink = _sink_rows(
@@ -850,10 +865,29 @@ def _recompute_affected_aggregates(
         return {"affected_policy_types": [], "aggregate": None,
                 "aggregate_sink": None, "aggregate_rows": []}
 
+    # COMPLETE provenance for the recomputed aggregate: one detail_to_aggregate
+    # input edge per CONTRIBUTING active detail output. The corrected replay sink
+    # contributed the corrected rows; the ORIGINAL normal detail sink contributed
+    # the pre-existing rows of the affected policy_type(s) (e.g. auto CL500/CL501).
+    # Without the normal-sink edge the aggregate would under-report where it came
+    # from. The normal edge is added only when it actually contributed rows of an
+    # affected type (a brand-new policy_type has no original contribution).
+    normal_affected = [r for r in normal_result["detail_rows"]
+                       if r["policy_type"] in affected_types]
+    detail_inputs: list[dict[str, Any]] = []
+    if normal_affected:
+        detail_inputs.append({
+            "run_id": normal_result["detail_sink"]["run_id"],
+            "link_id": normal_result["detail_sink"]["link_id"],
+            "record_count": len(normal_affected), "role": "detail_original"})
+    detail_inputs.append({
+        "run_id": detail_sink["run_id"], "link_id": detail_sink["link_id"],
+        "record_count": len(corrected_detail_rows), "role": "detail_corrected"})
+
     agg_content_tag = f"{content_tag}-agg-replay"
     aggregate = _aggregate_from_detail(
-        conn, workflow_run_id=workflow_run_id, detail_sink=detail_sink,
-        detail_rows=corrected_detail_rows, aggregate_rows=affected_aggregate_rows,
+        conn, workflow_run_id=workflow_run_id, detail_inputs=detail_inputs,
+        aggregate_rows=affected_aggregate_rows,
         content_tag=agg_content_tag, dag_run_id=dag_run_id,
         execution_type="replay", commit=commit)
     aggregate_sink = _sink_rows(

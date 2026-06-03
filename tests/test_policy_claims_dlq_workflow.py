@@ -462,3 +462,29 @@ def test_18_unchanged_aggregate_key_stays_active(demo, conn):
     # The replay must NOT have produced a 'home' aggregate output.
     replay_meta = demo["replay"]["aggregate_replay"]
     assert "home" not in replay_meta["affected_policy_types"]
+
+
+def test_19_recomputed_aggregate_traces_to_all_contributing_details(demo, conn):
+    """COMPLETE provenance: the recomputed 'auto' aggregate (count=3) drew from BOTH
+    the ORIGINAL normal detail output (CL500+CL501) and the CORRECTED replay detail
+    output (CL900). Its detail_to_aggregate input edges must name BOTH detail sink
+    outputs (per-upstream contributing counts 2 + 1 = 3), so tracing the aggregate's
+    provenance is complete — not just the corrected slice."""
+    agg_link = demo["replay"]["aggregate_replay"]["aggregate"]["link_id"]
+    normal_detail_link = str(demo["normal"]["detail_sink"]["link_id"])
+    replay_detail_link = str(demo["replay"]["detail_sink"]["link_id"])
+
+    edges = conn.execute(
+        "SELECT upstream_output_link_id::text, record_count FROM cp.input_edge "
+        "WHERE output_link_id = %s AND edge_type = 'detail_to_aggregate' "
+        "ORDER BY input_slot",
+        (agg_link,)).fetchall()
+    upstreams = {e[0] for e in edges}
+    assert normal_detail_link in upstreams, (
+        "recomputed aggregate must name the ORIGINAL normal detail output "
+        "(it contributed CL500+CL501)")
+    assert replay_detail_link in upstreams, (
+        "recomputed aggregate must name the CORRECTED replay detail output (CL900)")
+    counts = {e[0]: e[1] for e in edges}
+    assert counts[normal_detail_link] == 2   # original auto rows
+    assert counts[replay_detail_link] == 1   # corrected auto row

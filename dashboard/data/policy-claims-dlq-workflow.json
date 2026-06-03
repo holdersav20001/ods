@@ -1,6 +1,6 @@
 {
-  "workflow_run_id": "c6261b17-9602-47f3-9713-4bc24b7b7cad",
-  "generated_at": "2026-06-03T10:50:02+00:00",
+  "workflow_run_id": "3f5d4330-fba5-4b5e-a657-1cc480b8a088",
+  "generated_at": "2026-06-03T11:07:06+00:00",
   "scenario": {
     "domain": "insurance_dlq",
     "dag_id": "ods_policy_claims_dlq",
@@ -18,275 +18,24 @@
   },
   "executions": [
     {
-      "workflow_run_id": "c6261b17-9602-47f3-9713-4bc24b7b7cad",
+      "workflow_run_id": "3f5d4330-fba5-4b5e-a657-1cc480b8a088",
       "business_date": "2026-05-29",
       "execution_type": "normal",
       "replay_of_workflow_run_id": null,
       "description": "Validating load (4 claim rows, 1 quarantined CL900)"
     },
     {
-      "workflow_run_id": "4ec0645a-c944-4453-81ad-4add2c2da984",
+      "workflow_run_id": "c38fe384-8d44-4d06-8cbd-c9d302750264",
       "business_date": "2026-05-29",
       "execution_type": "replay",
-      "replay_of_workflow_run_id": "c6261b17-9602-47f3-9713-4bc24b7b7cad",
+      "replay_of_workflow_run_id": "3f5d4330-fba5-4b5e-a657-1cc480b8a088",
       "description": "DLQ replay/fix (corrected CL900 policy_id; resolved)"
     }
   ],
   "runs": [
     {
-      "run_id": "5191fac3-bf06-4a6c-8620-f945b3591f7d",
-      "workflow_run_id": "4ec0645a-c944-4453-81ad-4add2c2da984",
-      "pipeline_type": "canonicalization",
-      "domain": "insurance_dlq",
-      "dataset": "claim_dlq",
-      "business_date": "2026-05-29",
-      "trigger_type": "replay",
-      "status": "succeeded",
-      "record_count_in": null,
-      "record_count_out": 1,
-      "replay_of_run_id": "267d682e-6db2-4a82-9005-039d4d465754",
-      "started_at": "2026-06-03 10:50:02.190188+00",
-      "finished_at": "2026-06-03 10:50:02.202615+00",
-      "orchestrator_type": "airflow",
-      "orchestrator_dag_id": "ods_policy_claims_dlq",
-      "orchestrator_run_id": "manual__2026-05-29T12:00:00+00:00-dlq-replay",
-      "orchestrator_task_id": "replay_canonicalize_claim",
-      "orchestrator_try_number": 1,
-      "orchestrator_map_index": -1,
-      "orchestrator_url": "http://airflow/dags/ods_policy_claims_dlq/runs/manual__2026-05-29T12:00:00+00:00-dlq-replay/tasks/replay_canonicalize_claim",
-      "orchestrator_payload": {
-        "url": "http://airflow/dags/ods_policy_claims_dlq/runs/manual__2026-05-29T12:00:00+00:00-dlq-replay/tasks/replay_canonicalize_claim",
-        "type": "airflow",
-        "dag_id": "ods_policy_claims_dlq",
-        "run_id": "manual__2026-05-29T12:00:00+00:00-dlq-replay",
-        "payload": {
-          "execution_date": "2026-05-29T00:00:00+00:00",
-          "execution_type": "replay"
-        },
-        "task_id": "replay_canonicalize_claim",
-        "map_index": -1,
-        "try_number": 1
-      },
-      "stages": [
-        {
-          "stage": "replay_validate_schema",
-          "attempt": 1,
-          "status": "succeeded",
-          "record_count_in": 1,
-          "record_count_out": 1,
-          "metrics": {
-            "good": 1,
-            "quarantined": 0,
-            "schema_version": "claim.v1",
-            "replayed_dlq_id": "ebf7fe43-8a44-424b-b99e-a70879d2bfe4"
-          },
-          "started_at": "2026-06-03 10:50:02.193792+00",
-          "finished_at": "2026-06-03 10:50:02.194918+00"
-        }
-      ]
-    },
-    {
-      "run_id": "174b3155-e8a1-476a-92e0-a517c2118b22",
-      "workflow_run_id": "4ec0645a-c944-4453-81ad-4add2c2da984",
-      "pipeline_type": "merge",
-      "domain": "insurance_dlq",
-      "dataset": "policy_claim_dlq",
-      "business_date": "2026-05-29",
-      "trigger_type": "airflow",
-      "status": "succeeded",
-      "record_count_in": null,
-      "record_count_out": 1,
-      "replay_of_run_id": null,
-      "started_at": "2026-06-03 10:50:02.204687+00",
-      "finished_at": "2026-06-03 10:50:02.217126+00",
-      "orchestrator_type": "airflow",
-      "orchestrator_dag_id": "ods_policy_claims_dlq",
-      "orchestrator_run_id": "manual__2026-05-29T12:00:00+00:00-dlq-replay",
-      "orchestrator_task_id": "merge_policy_claim",
-      "orchestrator_try_number": 1,
-      "orchestrator_map_index": -1,
-      "orchestrator_url": "http://airflow/dags/ods_policy_claims_dlq/runs/manual__2026-05-29T12:00:00+00:00-dlq-replay/tasks/merge_policy_claim",
-      "orchestrator_payload": {
-        "url": "http://airflow/dags/ods_policy_claims_dlq/runs/manual__2026-05-29T12:00:00+00:00-dlq-replay/tasks/merge_policy_claim",
-        "type": "airflow",
-        "dag_id": "ods_policy_claims_dlq",
-        "run_id": "manual__2026-05-29T12:00:00+00:00-dlq-replay",
-        "payload": {
-          "execution_date": "2026-05-29T00:00:00+00:00",
-          "execution_type": "replay"
-        },
-        "task_id": "merge_policy_claim",
-        "map_index": -1,
-        "try_number": 1
-      },
-      "stages": [
-        {
-          "stage": "merge_policy_claim",
-          "attempt": 1,
-          "status": "succeeded",
-          "record_count_in": 4,
-          "record_count_out": 1,
-          "metrics": {
-            "inputs": [
-              "policy_dlq",
-              "claim_dlq"
-            ],
-            "join_key": "policy_id"
-          },
-          "started_at": "2026-06-03 10:50:02.207375+00",
-          "finished_at": "2026-06-03 10:50:02.208626+00"
-        }
-      ]
-    },
-    {
-      "run_id": "6abc72fe-e579-4911-b0c7-c56c46a083e1",
-      "workflow_run_id": "4ec0645a-c944-4453-81ad-4add2c2da984",
-      "pipeline_type": "sink",
-      "domain": "insurance_dlq",
-      "dataset": "policy_claim_dlq",
-      "business_date": "2026-05-29",
-      "trigger_type": "airflow",
-      "status": "succeeded",
-      "record_count_in": null,
-      "record_count_out": 1,
-      "replay_of_run_id": null,
-      "started_at": "2026-06-03 10:50:02.219452+00",
-      "finished_at": "2026-06-03 10:50:02.237514+00",
-      "orchestrator_type": "airflow",
-      "orchestrator_dag_id": "ods_policy_claims_dlq",
-      "orchestrator_run_id": "manual__2026-05-29T12:00:00+00:00-dlq-replay",
-      "orchestrator_task_id": "replay_sink_policy_claim",
-      "orchestrator_try_number": 1,
-      "orchestrator_map_index": -1,
-      "orchestrator_url": "http://airflow/dags/ods_policy_claims_dlq/runs/manual__2026-05-29T12:00:00+00:00-dlq-replay/tasks/replay_sink_policy_claim",
-      "orchestrator_payload": {
-        "url": "http://airflow/dags/ods_policy_claims_dlq/runs/manual__2026-05-29T12:00:00+00:00-dlq-replay/tasks/replay_sink_policy_claim",
-        "type": "airflow",
-        "dag_id": "ods_policy_claims_dlq",
-        "run_id": "manual__2026-05-29T12:00:00+00:00-dlq-replay",
-        "payload": {
-          "execution_date": "2026-05-29T00:00:00+00:00",
-          "execution_type": "replay"
-        },
-        "task_id": "replay_sink_policy_claim",
-        "map_index": -1,
-        "try_number": 1
-      },
-      "stages": [
-        {
-          "stage": "upsert_policy_claim",
-          "attempt": 1,
-          "status": "succeeded",
-          "record_count_in": 1,
-          "record_count_out": 1,
-          "metrics": null,
-          "started_at": "2026-06-03 10:50:02.222344+00",
-          "finished_at": "2026-06-03 10:50:02.22399+00"
-        }
-      ]
-    },
-    {
-      "run_id": "d48580e7-d085-47ce-8e50-640fa66fb2d8",
-      "workflow_run_id": "4ec0645a-c944-4453-81ad-4add2c2da984",
-      "pipeline_type": "aggregation",
-      "domain": "insurance_dlq",
-      "dataset": "policy_claim_daily_dlq",
-      "business_date": "2026-05-29",
-      "trigger_type": "airflow",
-      "status": "succeeded",
-      "record_count_in": null,
-      "record_count_out": 1,
-      "replay_of_run_id": null,
-      "started_at": "2026-06-03 10:50:02.246326+00",
-      "finished_at": "2026-06-03 10:50:02.258682+00",
-      "orchestrator_type": "airflow",
-      "orchestrator_dag_id": "ods_policy_claims_dlq",
-      "orchestrator_run_id": "manual__2026-05-29T12:00:00+00:00-dlq-replay",
-      "orchestrator_task_id": "aggregate_policy_claim_daily",
-      "orchestrator_try_number": 1,
-      "orchestrator_map_index": -1,
-      "orchestrator_url": "http://airflow/dags/ods_policy_claims_dlq/runs/manual__2026-05-29T12:00:00+00:00-dlq-replay/tasks/aggregate_policy_claim_daily",
-      "orchestrator_payload": {
-        "url": "http://airflow/dags/ods_policy_claims_dlq/runs/manual__2026-05-29T12:00:00+00:00-dlq-replay/tasks/aggregate_policy_claim_daily",
-        "type": "airflow",
-        "dag_id": "ods_policy_claims_dlq",
-        "run_id": "manual__2026-05-29T12:00:00+00:00-dlq-replay",
-        "payload": {
-          "execution_date": "2026-05-29T00:00:00+00:00",
-          "execution_type": "replay"
-        },
-        "task_id": "aggregate_policy_claim_daily",
-        "map_index": -1,
-        "try_number": 1
-      },
-      "stages": [
-        {
-          "stage": "aggregate_policy_claim_daily",
-          "attempt": 1,
-          "status": "succeeded",
-          "record_count_in": 1,
-          "record_count_out": 1,
-          "metrics": {
-            "group_by": [
-              "business_date",
-              "policy_type"
-            ]
-          },
-          "started_at": "2026-06-03 10:50:02.249049+00",
-          "finished_at": "2026-06-03 10:50:02.250669+00"
-        }
-      ]
-    },
-    {
-      "run_id": "890636ed-41bf-4f2f-b2b5-a0020e4e9aaa",
-      "workflow_run_id": "4ec0645a-c944-4453-81ad-4add2c2da984",
-      "pipeline_type": "sink",
-      "domain": "insurance_dlq",
-      "dataset": "policy_claim_daily_dlq",
-      "business_date": "2026-05-29",
-      "trigger_type": "airflow",
-      "status": "succeeded",
-      "record_count_in": null,
-      "record_count_out": 1,
-      "replay_of_run_id": null,
-      "started_at": "2026-06-03 10:50:02.260601+00",
-      "finished_at": "2026-06-03 10:50:02.274745+00",
-      "orchestrator_type": "airflow",
-      "orchestrator_dag_id": "ods_policy_claims_dlq",
-      "orchestrator_run_id": "manual__2026-05-29T12:00:00+00:00-dlq-replay",
-      "orchestrator_task_id": "replay_sink_policy_claim_daily",
-      "orchestrator_try_number": 1,
-      "orchestrator_map_index": -1,
-      "orchestrator_url": "http://airflow/dags/ods_policy_claims_dlq/runs/manual__2026-05-29T12:00:00+00:00-dlq-replay/tasks/replay_sink_policy_claim_daily",
-      "orchestrator_payload": {
-        "url": "http://airflow/dags/ods_policy_claims_dlq/runs/manual__2026-05-29T12:00:00+00:00-dlq-replay/tasks/replay_sink_policy_claim_daily",
-        "type": "airflow",
-        "dag_id": "ods_policy_claims_dlq",
-        "run_id": "manual__2026-05-29T12:00:00+00:00-dlq-replay",
-        "payload": {
-          "execution_date": "2026-05-29T00:00:00+00:00",
-          "execution_type": "replay"
-        },
-        "task_id": "replay_sink_policy_claim_daily",
-        "map_index": -1,
-        "try_number": 1
-      },
-      "stages": [
-        {
-          "stage": "upsert_policy_claim_daily",
-          "attempt": 1,
-          "status": "succeeded",
-          "record_count_in": 1,
-          "record_count_out": 1,
-          "metrics": null,
-          "started_at": "2026-06-03 10:50:02.263013+00",
-          "finished_at": "2026-06-03 10:50:02.264014+00"
-        }
-      ]
-    },
-    {
-      "run_id": "99ea4991-abc2-4560-8fa9-b44538cc6de0",
-      "workflow_run_id": "c6261b17-9602-47f3-9713-4bc24b7b7cad",
+      "run_id": "c39631f0-5b67-4ec9-86a0-3d034cb11809",
+      "workflow_run_id": "3f5d4330-fba5-4b5e-a657-1cc480b8a088",
       "pipeline_type": "ingestion",
       "domain": "insurance_dlq",
       "dataset": "policy_dlq",
@@ -296,8 +45,8 @@
       "record_count_in": null,
       "record_count_out": 3,
       "replay_of_run_id": null,
-      "started_at": "2026-06-03 10:50:02.032264+00",
-      "finished_at": "2026-06-03 10:50:02.047438+00",
+      "started_at": "2026-06-03 11:07:05.965059+00",
+      "finished_at": "2026-06-03 11:07:05.979119+00",
       "orchestrator_type": "airflow",
       "orchestrator_dag_id": "ods_policy_claims_dlq",
       "orchestrator_run_id": "scheduled__2026-05-29T00:00:00+00:00",
@@ -326,14 +75,14 @@
           "record_count_in": 3,
           "record_count_out": 3,
           "metrics": null,
-          "started_at": "2026-06-03 10:50:02.035884+00",
-          "finished_at": "2026-06-03 10:50:02.037922+00"
+          "started_at": "2026-06-03 11:07:05.968333+00",
+          "finished_at": "2026-06-03 11:07:05.969708+00"
         }
       ]
     },
     {
-      "run_id": "43c8ae29-1639-403e-82ab-9608ef27969c",
-      "workflow_run_id": "c6261b17-9602-47f3-9713-4bc24b7b7cad",
+      "run_id": "8ebf417c-4371-4712-af7a-6e2cb3b1c462",
+      "workflow_run_id": "3f5d4330-fba5-4b5e-a657-1cc480b8a088",
       "pipeline_type": "ingestion",
       "domain": "insurance_dlq",
       "dataset": "claim_dlq",
@@ -343,8 +92,8 @@
       "record_count_in": null,
       "record_count_out": 4,
       "replay_of_run_id": null,
-      "started_at": "2026-06-03 10:50:02.05194+00",
-      "finished_at": "2026-06-03 10:50:02.064091+00",
+      "started_at": "2026-06-03 11:07:05.983699+00",
+      "finished_at": "2026-06-03 11:07:05.995653+00",
       "orchestrator_type": "airflow",
       "orchestrator_dag_id": "ods_policy_claims_dlq",
       "orchestrator_run_id": "scheduled__2026-05-29T00:00:00+00:00",
@@ -373,14 +122,14 @@
           "record_count_in": 4,
           "record_count_out": 4,
           "metrics": null,
-          "started_at": "2026-06-03 10:50:02.054999+00",
-          "finished_at": "2026-06-03 10:50:02.056154+00"
+          "started_at": "2026-06-03 11:07:05.986297+00",
+          "finished_at": "2026-06-03 11:07:05.987392+00"
         }
       ]
     },
     {
-      "run_id": "4ff34ae0-b254-433d-b0ce-5e07ad42f07b",
-      "workflow_run_id": "c6261b17-9602-47f3-9713-4bc24b7b7cad",
+      "run_id": "fa5cc160-aa96-4f00-8fdb-11aa7035bbd6",
+      "workflow_run_id": "3f5d4330-fba5-4b5e-a657-1cc480b8a088",
       "pipeline_type": "canonicalization",
       "domain": "insurance_dlq",
       "dataset": "policy_dlq",
@@ -390,8 +139,8 @@
       "record_count_in": null,
       "record_count_out": 3,
       "replay_of_run_id": null,
-      "started_at": "2026-06-03 10:50:02.066206+00",
-      "finished_at": "2026-06-03 10:50:02.078159+00",
+      "started_at": "2026-06-03 11:07:05.997588+00",
+      "finished_at": "2026-06-03 11:07:06.009517+00",
       "orchestrator_type": "airflow",
       "orchestrator_dag_id": "ods_policy_claims_dlq",
       "orchestrator_run_id": "scheduled__2026-05-29T00:00:00+00:00",
@@ -420,14 +169,14 @@
           "record_count_in": 3,
           "record_count_out": 3,
           "metrics": null,
-          "started_at": "2026-06-03 10:50:02.068729+00",
-          "finished_at": "2026-06-03 10:50:02.069986+00"
+          "started_at": "2026-06-03 11:07:06.000105+00",
+          "finished_at": "2026-06-03 11:07:06.001147+00"
         }
       ]
     },
     {
-      "run_id": "267d682e-6db2-4a82-9005-039d4d465754",
-      "workflow_run_id": "c6261b17-9602-47f3-9713-4bc24b7b7cad",
+      "run_id": "d8ade0cf-7c2a-4efa-94d1-172b3ea0262b",
+      "workflow_run_id": "3f5d4330-fba5-4b5e-a657-1cc480b8a088",
       "pipeline_type": "canonicalization",
       "domain": "insurance_dlq",
       "dataset": "claim_dlq",
@@ -437,8 +186,8 @@
       "record_count_in": null,
       "record_count_out": 3,
       "replay_of_run_id": null,
-      "started_at": "2026-06-03 10:50:02.080037+00",
-      "finished_at": "2026-06-03 10:50:02.103134+00",
+      "started_at": "2026-06-03 11:07:06.011409+00",
+      "finished_at": "2026-06-03 11:07:06.034965+00",
       "orchestrator_type": "airflow",
       "orchestrator_dag_id": "ods_policy_claims_dlq",
       "orchestrator_run_id": "scheduled__2026-05-29T00:00:00+00:00",
@@ -475,14 +224,14 @@
             "quarantined": 1,
             "schema_version": "claim.v1"
           },
-          "started_at": "2026-06-03 10:50:02.08982+00",
-          "finished_at": "2026-06-03 10:50:02.090861+00"
+          "started_at": "2026-06-03 11:07:06.021065+00",
+          "finished_at": "2026-06-03 11:07:06.02229+00"
         }
       ]
     },
     {
-      "run_id": "d755a610-ddef-4e1f-8446-9a7bf0e972b0",
-      "workflow_run_id": "c6261b17-9602-47f3-9713-4bc24b7b7cad",
+      "run_id": "c15132f5-30e6-4ba1-b70a-dc97a4b069f5",
+      "workflow_run_id": "3f5d4330-fba5-4b5e-a657-1cc480b8a088",
       "pipeline_type": "merge",
       "domain": "insurance_dlq",
       "dataset": "policy_claim_dlq",
@@ -492,8 +241,8 @@
       "record_count_in": null,
       "record_count_out": 3,
       "replay_of_run_id": null,
-      "started_at": "2026-06-03 10:50:02.105021+00",
-      "finished_at": "2026-06-03 10:50:02.116601+00",
+      "started_at": "2026-06-03 11:07:06.036889+00",
+      "finished_at": "2026-06-03 11:07:06.049257+00",
       "orchestrator_type": "airflow",
       "orchestrator_dag_id": "ods_policy_claims_dlq",
       "orchestrator_run_id": "scheduled__2026-05-29T00:00:00+00:00",
@@ -528,14 +277,14 @@
             ],
             "join_key": "policy_id"
           },
-          "started_at": "2026-06-03 10:50:02.107516+00",
-          "finished_at": "2026-06-03 10:50:02.108613+00"
+          "started_at": "2026-06-03 11:07:06.03938+00",
+          "finished_at": "2026-06-03 11:07:06.041273+00"
         }
       ]
     },
     {
-      "run_id": "c8c7f59a-6b27-41f7-8644-263ce059ecff",
-      "workflow_run_id": "c6261b17-9602-47f3-9713-4bc24b7b7cad",
+      "run_id": "b0c37924-4ee6-4e9a-a2bf-6e7202491b00",
+      "workflow_run_id": "3f5d4330-fba5-4b5e-a657-1cc480b8a088",
       "pipeline_type": "sink",
       "domain": "insurance_dlq",
       "dataset": "policy_claim_dlq",
@@ -545,8 +294,8 @@
       "record_count_in": null,
       "record_count_out": 3,
       "replay_of_run_id": null,
-      "started_at": "2026-06-03 10:50:02.118745+00",
-      "finished_at": "2026-06-03 10:50:02.139322+00",
+      "started_at": "2026-06-03 11:07:06.051291+00",
+      "finished_at": "2026-06-03 11:07:06.071185+00",
       "orchestrator_type": "airflow",
       "orchestrator_dag_id": "ods_policy_claims_dlq",
       "orchestrator_run_id": "scheduled__2026-05-29T00:00:00+00:00",
@@ -575,14 +324,14 @@
           "record_count_in": 3,
           "record_count_out": 3,
           "metrics": null,
-          "started_at": "2026-06-03 10:50:02.121704+00",
-          "finished_at": "2026-06-03 10:50:02.12324+00"
+          "started_at": "2026-06-03 11:07:06.054578+00",
+          "finished_at": "2026-06-03 11:07:06.056392+00"
         }
       ]
     },
     {
-      "run_id": "a9729a9b-3201-4282-a08a-6b990f1cee65",
-      "workflow_run_id": "c6261b17-9602-47f3-9713-4bc24b7b7cad",
+      "run_id": "7bc62a01-89ec-4e5f-b88e-b2288e0d96ec",
+      "workflow_run_id": "3f5d4330-fba5-4b5e-a657-1cc480b8a088",
       "pipeline_type": "aggregation",
       "domain": "insurance_dlq",
       "dataset": "policy_claim_daily_dlq",
@@ -592,8 +341,8 @@
       "record_count_in": null,
       "record_count_out": 2,
       "replay_of_run_id": null,
-      "started_at": "2026-06-03 10:50:02.150092+00",
-      "finished_at": "2026-06-03 10:50:02.161004+00",
+      "started_at": "2026-06-03 11:07:06.082849+00",
+      "finished_at": "2026-06-03 11:07:06.095568+00",
       "orchestrator_type": "airflow",
       "orchestrator_dag_id": "ods_policy_claims_dlq",
       "orchestrator_run_id": "scheduled__2026-05-29T00:00:00+00:00",
@@ -625,16 +374,17 @@
             "group_by": [
               "business_date",
               "policy_type"
-            ]
+            ],
+            "detail_inputs": 1
           },
-          "started_at": "2026-06-03 10:50:02.152469+00",
-          "finished_at": "2026-06-03 10:50:02.153525+00"
+          "started_at": "2026-06-03 11:07:06.085443+00",
+          "finished_at": "2026-06-03 11:07:06.086887+00"
         }
       ]
     },
     {
-      "run_id": "a9c084e7-0fda-4922-927d-7ab6d553396a",
-      "workflow_run_id": "c6261b17-9602-47f3-9713-4bc24b7b7cad",
+      "run_id": "f43d5b7d-c288-4484-899c-e98ed108a923",
+      "workflow_run_id": "3f5d4330-fba5-4b5e-a657-1cc480b8a088",
       "pipeline_type": "sink",
       "domain": "insurance_dlq",
       "dataset": "policy_claim_daily_dlq",
@@ -644,8 +394,8 @@
       "record_count_in": null,
       "record_count_out": 2,
       "replay_of_run_id": null,
-      "started_at": "2026-06-03 10:50:02.163041+00",
-      "finished_at": "2026-06-03 10:50:02.178962+00",
+      "started_at": "2026-06-03 11:07:06.097671+00",
+      "finished_at": "2026-06-03 11:07:06.112932+00",
       "orchestrator_type": "airflow",
       "orchestrator_dag_id": "ods_policy_claims_dlq",
       "orchestrator_run_id": "scheduled__2026-05-29T00:00:00+00:00",
@@ -674,194 +424,269 @@
           "record_count_in": 2,
           "record_count_out": 2,
           "metrics": null,
-          "started_at": "2026-06-03 10:50:02.165723+00",
-          "finished_at": "2026-06-03 10:50:02.166822+00"
+          "started_at": "2026-06-03 11:07:06.10012+00",
+          "finished_at": "2026-06-03 11:07:06.101283+00"
+        }
+      ]
+    },
+    {
+      "run_id": "ac600022-0ade-47ae-80d4-f4efd671dcf5",
+      "workflow_run_id": "c38fe384-8d44-4d06-8cbd-c9d302750264",
+      "pipeline_type": "canonicalization",
+      "domain": "insurance_dlq",
+      "dataset": "claim_dlq",
+      "business_date": "2026-05-29",
+      "trigger_type": "replay",
+      "status": "succeeded",
+      "record_count_in": null,
+      "record_count_out": 1,
+      "replay_of_run_id": "d8ade0cf-7c2a-4efa-94d1-172b3ea0262b",
+      "started_at": "2026-06-03 11:07:06.124088+00",
+      "finished_at": "2026-06-03 11:07:06.136673+00",
+      "orchestrator_type": "airflow",
+      "orchestrator_dag_id": "ods_policy_claims_dlq",
+      "orchestrator_run_id": "manual__2026-05-29T12:00:00+00:00-dlq-replay",
+      "orchestrator_task_id": "replay_canonicalize_claim",
+      "orchestrator_try_number": 1,
+      "orchestrator_map_index": -1,
+      "orchestrator_url": "http://airflow/dags/ods_policy_claims_dlq/runs/manual__2026-05-29T12:00:00+00:00-dlq-replay/tasks/replay_canonicalize_claim",
+      "orchestrator_payload": {
+        "url": "http://airflow/dags/ods_policy_claims_dlq/runs/manual__2026-05-29T12:00:00+00:00-dlq-replay/tasks/replay_canonicalize_claim",
+        "type": "airflow",
+        "dag_id": "ods_policy_claims_dlq",
+        "run_id": "manual__2026-05-29T12:00:00+00:00-dlq-replay",
+        "payload": {
+          "execution_date": "2026-05-29T00:00:00+00:00",
+          "execution_type": "replay"
+        },
+        "task_id": "replay_canonicalize_claim",
+        "map_index": -1,
+        "try_number": 1
+      },
+      "stages": [
+        {
+          "stage": "replay_validate_schema",
+          "attempt": 1,
+          "status": "succeeded",
+          "record_count_in": 1,
+          "record_count_out": 1,
+          "metrics": {
+            "good": 1,
+            "quarantined": 0,
+            "schema_version": "claim.v1",
+            "replayed_dlq_id": "c0f3a195-afb9-4c4a-bd85-e6456d4982c6"
+          },
+          "started_at": "2026-06-03 11:07:06.127764+00",
+          "finished_at": "2026-06-03 11:07:06.128789+00"
+        }
+      ]
+    },
+    {
+      "run_id": "f7123150-8da9-433b-9340-250678decc9a",
+      "workflow_run_id": "c38fe384-8d44-4d06-8cbd-c9d302750264",
+      "pipeline_type": "merge",
+      "domain": "insurance_dlq",
+      "dataset": "policy_claim_dlq",
+      "business_date": "2026-05-29",
+      "trigger_type": "airflow",
+      "status": "succeeded",
+      "record_count_in": null,
+      "record_count_out": 1,
+      "replay_of_run_id": null,
+      "started_at": "2026-06-03 11:07:06.138769+00",
+      "finished_at": "2026-06-03 11:07:06.150917+00",
+      "orchestrator_type": "airflow",
+      "orchestrator_dag_id": "ods_policy_claims_dlq",
+      "orchestrator_run_id": "manual__2026-05-29T12:00:00+00:00-dlq-replay",
+      "orchestrator_task_id": "merge_policy_claim",
+      "orchestrator_try_number": 1,
+      "orchestrator_map_index": -1,
+      "orchestrator_url": "http://airflow/dags/ods_policy_claims_dlq/runs/manual__2026-05-29T12:00:00+00:00-dlq-replay/tasks/merge_policy_claim",
+      "orchestrator_payload": {
+        "url": "http://airflow/dags/ods_policy_claims_dlq/runs/manual__2026-05-29T12:00:00+00:00-dlq-replay/tasks/merge_policy_claim",
+        "type": "airflow",
+        "dag_id": "ods_policy_claims_dlq",
+        "run_id": "manual__2026-05-29T12:00:00+00:00-dlq-replay",
+        "payload": {
+          "execution_date": "2026-05-29T00:00:00+00:00",
+          "execution_type": "replay"
+        },
+        "task_id": "merge_policy_claim",
+        "map_index": -1,
+        "try_number": 1
+      },
+      "stages": [
+        {
+          "stage": "merge_policy_claim",
+          "attempt": 1,
+          "status": "succeeded",
+          "record_count_in": 4,
+          "record_count_out": 1,
+          "metrics": {
+            "inputs": [
+              "policy_dlq",
+              "claim_dlq"
+            ],
+            "join_key": "policy_id"
+          },
+          "started_at": "2026-06-03 11:07:06.141349+00",
+          "finished_at": "2026-06-03 11:07:06.142668+00"
+        }
+      ]
+    },
+    {
+      "run_id": "5f28ada2-83b4-4017-992f-add7d67ca441",
+      "workflow_run_id": "c38fe384-8d44-4d06-8cbd-c9d302750264",
+      "pipeline_type": "sink",
+      "domain": "insurance_dlq",
+      "dataset": "policy_claim_dlq",
+      "business_date": "2026-05-29",
+      "trigger_type": "airflow",
+      "status": "succeeded",
+      "record_count_in": null,
+      "record_count_out": 1,
+      "replay_of_run_id": null,
+      "started_at": "2026-06-03 11:07:06.152902+00",
+      "finished_at": "2026-06-03 11:07:06.167891+00",
+      "orchestrator_type": "airflow",
+      "orchestrator_dag_id": "ods_policy_claims_dlq",
+      "orchestrator_run_id": "manual__2026-05-29T12:00:00+00:00-dlq-replay",
+      "orchestrator_task_id": "replay_sink_policy_claim",
+      "orchestrator_try_number": 1,
+      "orchestrator_map_index": -1,
+      "orchestrator_url": "http://airflow/dags/ods_policy_claims_dlq/runs/manual__2026-05-29T12:00:00+00:00-dlq-replay/tasks/replay_sink_policy_claim",
+      "orchestrator_payload": {
+        "url": "http://airflow/dags/ods_policy_claims_dlq/runs/manual__2026-05-29T12:00:00+00:00-dlq-replay/tasks/replay_sink_policy_claim",
+        "type": "airflow",
+        "dag_id": "ods_policy_claims_dlq",
+        "run_id": "manual__2026-05-29T12:00:00+00:00-dlq-replay",
+        "payload": {
+          "execution_date": "2026-05-29T00:00:00+00:00",
+          "execution_type": "replay"
+        },
+        "task_id": "replay_sink_policy_claim",
+        "map_index": -1,
+        "try_number": 1
+      },
+      "stages": [
+        {
+          "stage": "upsert_policy_claim",
+          "attempt": 1,
+          "status": "succeeded",
+          "record_count_in": 1,
+          "record_count_out": 1,
+          "metrics": null,
+          "started_at": "2026-06-03 11:07:06.155399+00",
+          "finished_at": "2026-06-03 11:07:06.156868+00"
+        }
+      ]
+    },
+    {
+      "run_id": "7c261673-f0eb-4e53-adbd-0b36d961247e",
+      "workflow_run_id": "c38fe384-8d44-4d06-8cbd-c9d302750264",
+      "pipeline_type": "aggregation",
+      "domain": "insurance_dlq",
+      "dataset": "policy_claim_daily_dlq",
+      "business_date": "2026-05-29",
+      "trigger_type": "airflow",
+      "status": "succeeded",
+      "record_count_in": null,
+      "record_count_out": 1,
+      "replay_of_run_id": null,
+      "started_at": "2026-06-03 11:07:06.175916+00",
+      "finished_at": "2026-06-03 11:07:06.188869+00",
+      "orchestrator_type": "airflow",
+      "orchestrator_dag_id": "ods_policy_claims_dlq",
+      "orchestrator_run_id": "manual__2026-05-29T12:00:00+00:00-dlq-replay",
+      "orchestrator_task_id": "aggregate_policy_claim_daily",
+      "orchestrator_try_number": 1,
+      "orchestrator_map_index": -1,
+      "orchestrator_url": "http://airflow/dags/ods_policy_claims_dlq/runs/manual__2026-05-29T12:00:00+00:00-dlq-replay/tasks/aggregate_policy_claim_daily",
+      "orchestrator_payload": {
+        "url": "http://airflow/dags/ods_policy_claims_dlq/runs/manual__2026-05-29T12:00:00+00:00-dlq-replay/tasks/aggregate_policy_claim_daily",
+        "type": "airflow",
+        "dag_id": "ods_policy_claims_dlq",
+        "run_id": "manual__2026-05-29T12:00:00+00:00-dlq-replay",
+        "payload": {
+          "execution_date": "2026-05-29T00:00:00+00:00",
+          "execution_type": "replay"
+        },
+        "task_id": "aggregate_policy_claim_daily",
+        "map_index": -1,
+        "try_number": 1
+      },
+      "stages": [
+        {
+          "stage": "aggregate_policy_claim_daily",
+          "attempt": 1,
+          "status": "succeeded",
+          "record_count_in": 3,
+          "record_count_out": 1,
+          "metrics": {
+            "group_by": [
+              "business_date",
+              "policy_type"
+            ],
+            "detail_inputs": 2
+          },
+          "started_at": "2026-06-03 11:07:06.178374+00",
+          "finished_at": "2026-06-03 11:07:06.179995+00"
+        }
+      ]
+    },
+    {
+      "run_id": "5e08bc56-79c8-4f1a-8a47-4f4c01848e7a",
+      "workflow_run_id": "c38fe384-8d44-4d06-8cbd-c9d302750264",
+      "pipeline_type": "sink",
+      "domain": "insurance_dlq",
+      "dataset": "policy_claim_daily_dlq",
+      "business_date": "2026-05-29",
+      "trigger_type": "airflow",
+      "status": "succeeded",
+      "record_count_in": null,
+      "record_count_out": 1,
+      "replay_of_run_id": null,
+      "started_at": "2026-06-03 11:07:06.190833+00",
+      "finished_at": "2026-06-03 11:07:06.205542+00",
+      "orchestrator_type": "airflow",
+      "orchestrator_dag_id": "ods_policy_claims_dlq",
+      "orchestrator_run_id": "manual__2026-05-29T12:00:00+00:00-dlq-replay",
+      "orchestrator_task_id": "replay_sink_policy_claim_daily",
+      "orchestrator_try_number": 1,
+      "orchestrator_map_index": -1,
+      "orchestrator_url": "http://airflow/dags/ods_policy_claims_dlq/runs/manual__2026-05-29T12:00:00+00:00-dlq-replay/tasks/replay_sink_policy_claim_daily",
+      "orchestrator_payload": {
+        "url": "http://airflow/dags/ods_policy_claims_dlq/runs/manual__2026-05-29T12:00:00+00:00-dlq-replay/tasks/replay_sink_policy_claim_daily",
+        "type": "airflow",
+        "dag_id": "ods_policy_claims_dlq",
+        "run_id": "manual__2026-05-29T12:00:00+00:00-dlq-replay",
+        "payload": {
+          "execution_date": "2026-05-29T00:00:00+00:00",
+          "execution_type": "replay"
+        },
+        "task_id": "replay_sink_policy_claim_daily",
+        "map_index": -1,
+        "try_number": 1
+      },
+      "stages": [
+        {
+          "stage": "upsert_policy_claim_daily",
+          "attempt": 1,
+          "status": "succeeded",
+          "record_count_in": 1,
+          "record_count_out": 1,
+          "metrics": null,
+          "started_at": "2026-06-03 11:07:06.193663+00",
+          "finished_at": "2026-06-03 11:07:06.194731+00"
         }
       ]
     }
   ],
   "links": [
     {
-      "lineage_link_id": "1e8a620b-5b28-41f4-a61e-ad7368cc1643",
-      "consumer_run_id": "5191fac3-bf06-4a6c-8620-f945b3591f7d",
-      "workflow_run_id": "4ec0645a-c944-4453-81ad-4add2c2da984",
-      "edge_type": "curated_to_canonical",
-      "sink_type": null,
-      "target_ref": {
-        "path": "s3://silver/claim_dlq/2026-05-29-replay.parquet",
-        "version": 1,
-        "content_hash": "silver-claim_dlq-replay-ebf7fe43-8a44-424b-b99e-a70879d2bfe4",
-        "schema_version": "claim.v1"
-      },
-      "transform_version": "silver-replay-v1",
-      "record_count": 1,
-      "created_at": "2026-06-03 10:50:02.196844+00",
-      "edges": [
-        {
-          "lineage_edge_id": "0d4042d8-ec0c-4059-a9fc-6fc1631cf898",
-          "upstream_run_id": "43c8ae29-1639-403e-82ab-9608ef27969c",
-          "upstream_lineage_link_id": "50e20eb7-1b2c-4184-9558-e05a6ee90cd5",
-          "source_file_id": null,
-          "input_slot": 0,
-          "edge_type": "curated_to_canonical",
-          "source_ref": {
-            "layer": "bronze",
-            "replay": true,
-            "dataset": "claim_dlq",
-            "raw_file_id": "e6f68361-da90-480e-8678-72355ab90d03"
-          },
-          "record_count": 1
-        },
-        {
-          "lineage_edge_id": "100c6c34-84f8-49be-bf3f-495efe948292",
-          "upstream_run_id": null,
-          "upstream_lineage_link_id": "9c51eca9-9218-4dbe-b31e-016248bd3c52",
-          "source_file_id": null,
-          "input_slot": 0,
-          "edge_type": "replay",
-          "source_ref": {
-            "dlq_id": "ebf7fe43-8a44-424b-b99e-a70879d2bfe4",
-            "replays_quarantine": true
-          },
-          "record_count": 1
-        }
-      ]
-    },
-    {
-      "lineage_link_id": "835da1d8-2a91-48f1-a77e-1a73998b6bf9",
-      "consumer_run_id": "174b3155-e8a1-476a-92e0-a517c2118b22",
-      "workflow_run_id": "4ec0645a-c944-4453-81ad-4add2c2da984",
-      "edge_type": "merge_to_canonical",
-      "sink_type": null,
-      "target_ref": {
-        "path": "s3://silver/policy_claim_dlq/2026-05-29.parquet",
-        "version": 1,
-        "content_hash": "silver-policy_claim_dlq-4ec0645a-c944-4453-81ad-4add2c2da984-corrected"
-      },
-      "transform_version": "join-v1",
-      "record_count": 1,
-      "created_at": "2026-06-03 10:50:02.211003+00",
-      "edges": [
-        {
-          "lineage_edge_id": "a5e981dd-857e-41bf-a0e8-569926f36c81",
-          "upstream_run_id": "4ff34ae0-b254-433d-b0ce-5e07ad42f07b",
-          "upstream_lineage_link_id": "aa24e6ae-60a9-420e-ae54-cb9fe6b9895f",
-          "source_file_id": null,
-          "input_slot": 0,
-          "edge_type": "merge_to_canonical",
-          "source_ref": {
-            "dataset": "policy_dlq",
-            "input_role": "policy"
-          },
-          "record_count": 3
-        },
-        {
-          "lineage_edge_id": "6578827e-2ede-44ac-9e0e-e5af5697ec4c",
-          "upstream_run_id": "5191fac3-bf06-4a6c-8620-f945b3591f7d",
-          "upstream_lineage_link_id": "1e8a620b-5b28-41f4-a61e-ad7368cc1643",
-          "source_file_id": null,
-          "input_slot": 1,
-          "edge_type": "merge_to_canonical",
-          "source_ref": {
-            "dataset": "claim_dlq",
-            "input_role": "claim"
-          },
-          "record_count": 1
-        }
-      ]
-    },
-    {
-      "lineage_link_id": "2a518393-e037-461f-b837-70f5919b8e88",
-      "consumer_run_id": "6abc72fe-e579-4911-b0c7-c56c46a083e1",
-      "workflow_run_id": "4ec0645a-c944-4453-81ad-4add2c2da984",
-      "edge_type": "canonical_to_sink",
-      "sink_type": "postgres",
-      "target_ref": {
-        "path": "postgres://ods/policy_claim_dlq",
-        "version": 1,
-        "content_hash": "postgres-policy_claim_dlq-4ec0645a-c944-4453-81ad-4add2c2da984-corrected"
-      },
-      "transform_version": "postgres-upsert-v1",
-      "record_count": 1,
-      "created_at": "2026-06-03 10:50:02.226416+00",
-      "edges": [
-        {
-          "lineage_edge_id": "f9e45fea-ebac-46f8-a5ed-107f0c99f412",
-          "upstream_run_id": "174b3155-e8a1-476a-92e0-a517c2118b22",
-          "upstream_lineage_link_id": "835da1d8-2a91-48f1-a77e-1a73998b6bf9",
-          "source_file_id": null,
-          "input_slot": 0,
-          "edge_type": "canonical_to_sink",
-          "source_ref": {
-            "upstream_edge_type": "merge_to_canonical"
-          },
-          "record_count": 1
-        }
-      ]
-    },
-    {
-      "lineage_link_id": "4b210445-fd4d-478d-849c-2ed90b6fe5a5",
-      "consumer_run_id": "d48580e7-d085-47ce-8e50-640fa66fb2d8",
-      "workflow_run_id": "4ec0645a-c944-4453-81ad-4add2c2da984",
-      "edge_type": "detail_to_aggregate",
-      "sink_type": null,
-      "target_ref": {
-        "path": "s3://gold/policy_claim_daily_dlq/2026-05-29.parquet",
-        "version": 1,
-        "content_hash": "gold-policy_claim_daily_dlq-4ec0645a-c944-4453-81ad-4add2c2da984-corrected-agg-replay"
-      },
-      "transform_version": "agg-v1",
-      "record_count": 1,
-      "created_at": "2026-06-03 10:50:02.25254+00",
-      "edges": [
-        {
-          "lineage_edge_id": "488a6362-5fba-4c98-843a-e8229dd33609",
-          "upstream_run_id": "6abc72fe-e579-4911-b0c7-c56c46a083e1",
-          "upstream_lineage_link_id": "2a518393-e037-461f-b837-70f5919b8e88",
-          "source_file_id": null,
-          "input_slot": 0,
-          "edge_type": "detail_to_aggregate",
-          "source_ref": {
-            "table": "ods.policy_claim_dlq",
-            "input_role": "detail"
-          },
-          "record_count": 1
-        }
-      ]
-    },
-    {
-      "lineage_link_id": "17ffe522-c9e2-4245-988d-e4033c33b286",
-      "consumer_run_id": "890636ed-41bf-4f2f-b2b5-a0020e4e9aaa",
-      "workflow_run_id": "4ec0645a-c944-4453-81ad-4add2c2da984",
-      "edge_type": "canonical_to_sink",
-      "sink_type": "postgres",
-      "target_ref": {
-        "path": "postgres://ods/policy_claim_daily_dlq",
-        "version": 1,
-        "content_hash": "postgres-policy_claim_daily_dlq-4ec0645a-c944-4453-81ad-4add2c2da984-corrected-agg-replay"
-      },
-      "transform_version": "postgres-upsert-v1",
-      "record_count": 1,
-      "created_at": "2026-06-03 10:50:02.266079+00",
-      "edges": [
-        {
-          "lineage_edge_id": "a1734ade-ccc5-4b88-996a-354bd650d67f",
-          "upstream_run_id": "d48580e7-d085-47ce-8e50-640fa66fb2d8",
-          "upstream_lineage_link_id": "4b210445-fd4d-478d-849c-2ed90b6fe5a5",
-          "source_file_id": null,
-          "input_slot": 0,
-          "edge_type": "canonical_to_sink",
-          "source_ref": {
-            "upstream_edge_type": "detail_to_aggregate"
-          },
-          "record_count": 1
-        }
-      ]
-    },
-    {
-      "lineage_link_id": "4996bc25-1f33-4053-ae1a-9ae983381e39",
-      "consumer_run_id": "99ea4991-abc2-4560-8fa9-b44538cc6de0",
-      "workflow_run_id": "c6261b17-9602-47f3-9713-4bc24b7b7cad",
+      "lineage_link_id": "8b5a3d3d-6587-4737-a9df-00eee7bae500",
+      "consumer_run_id": "c39631f0-5b67-4ec9-86a0-3d034cb11809",
+      "workflow_run_id": "3f5d4330-fba5-4b5e-a657-1cc480b8a088",
       "edge_type": "raw_to_curated",
       "sink_type": null,
       "target_ref": {
@@ -871,13 +696,13 @@
       },
       "transform_version": "raw-v1",
       "record_count": 3,
-      "created_at": "2026-06-03 10:50:02.040163+00",
+      "created_at": "2026-06-03 11:07:05.971706+00",
       "edges": [
         {
-          "lineage_edge_id": "1a22e1d2-fec4-4779-a3cd-0f05be8a47fa",
+          "lineage_edge_id": "becab4e2-0b43-4c66-94a8-5be7e572869f",
           "upstream_run_id": null,
           "upstream_lineage_link_id": null,
-          "source_file_id": "b2fba049-69ab-497d-a5fc-d5f8ec9720cc",
+          "source_file_id": "cc8c6dc5-0cd8-4311-a0e4-dc9d37170721",
           "input_slot": 0,
           "edge_type": "raw_to_curated",
           "source_ref": {
@@ -888,9 +713,9 @@
       ]
     },
     {
-      "lineage_link_id": "50e20eb7-1b2c-4184-9558-e05a6ee90cd5",
-      "consumer_run_id": "43c8ae29-1639-403e-82ab-9608ef27969c",
-      "workflow_run_id": "c6261b17-9602-47f3-9713-4bc24b7b7cad",
+      "lineage_link_id": "5cad3e36-8d23-481b-8510-ec8829ea0674",
+      "consumer_run_id": "8ebf417c-4371-4712-af7a-6e2cb3b1c462",
+      "workflow_run_id": "3f5d4330-fba5-4b5e-a657-1cc480b8a088",
       "edge_type": "raw_to_curated",
       "sink_type": null,
       "target_ref": {
@@ -900,13 +725,13 @@
       },
       "transform_version": "raw-v1",
       "record_count": 4,
-      "created_at": "2026-06-03 10:50:02.058168+00",
+      "created_at": "2026-06-03 11:07:05.989439+00",
       "edges": [
         {
-          "lineage_edge_id": "a5f3f68f-60eb-4f0c-92d6-68f99e58b161",
+          "lineage_edge_id": "dd538aaa-d90a-42f4-ba49-93e39a6fc97b",
           "upstream_run_id": null,
           "upstream_lineage_link_id": null,
-          "source_file_id": "e6f68361-da90-480e-8678-72355ab90d03",
+          "source_file_id": "b8099101-4c37-4f3a-828e-3394385f4f2f",
           "input_slot": 0,
           "edge_type": "raw_to_curated",
           "source_ref": {
@@ -917,9 +742,9 @@
       ]
     },
     {
-      "lineage_link_id": "aa24e6ae-60a9-420e-ae54-cb9fe6b9895f",
-      "consumer_run_id": "4ff34ae0-b254-433d-b0ce-5e07ad42f07b",
-      "workflow_run_id": "c6261b17-9602-47f3-9713-4bc24b7b7cad",
+      "lineage_link_id": "8b1d83cf-b3d7-45bb-aec7-4c9ee1c10151",
+      "consumer_run_id": "fa5cc160-aa96-4f00-8fdb-11aa7035bbd6",
+      "workflow_run_id": "3f5d4330-fba5-4b5e-a657-1cc480b8a088",
       "edge_type": "curated_to_canonical",
       "sink_type": null,
       "target_ref": {
@@ -929,12 +754,12 @@
       },
       "transform_version": "silver-v1",
       "record_count": 3,
-      "created_at": "2026-06-03 10:50:02.071824+00",
+      "created_at": "2026-06-03 11:07:06.003012+00",
       "edges": [
         {
-          "lineage_edge_id": "c66955f6-52ed-424f-929c-3750b87897a5",
-          "upstream_run_id": "99ea4991-abc2-4560-8fa9-b44538cc6de0",
-          "upstream_lineage_link_id": "4996bc25-1f33-4053-ae1a-9ae983381e39",
+          "lineage_edge_id": "da18e9db-1e68-4851-91b1-84a78bdb462b",
+          "upstream_run_id": "c39631f0-5b67-4ec9-86a0-3d034cb11809",
+          "upstream_lineage_link_id": "8b5a3d3d-6587-4737-a9df-00eee7bae500",
           "source_file_id": null,
           "input_slot": 0,
           "edge_type": "curated_to_canonical",
@@ -947,9 +772,9 @@
       ]
     },
     {
-      "lineage_link_id": "8d2145cf-e418-4f01-965e-553f17b21f5d",
-      "consumer_run_id": "267d682e-6db2-4a82-9005-039d4d465754",
-      "workflow_run_id": "c6261b17-9602-47f3-9713-4bc24b7b7cad",
+      "lineage_link_id": "eb2992a4-2886-478d-b361-5fef4cba93c8",
+      "consumer_run_id": "d8ade0cf-7c2a-4efa-94d1-172b3ea0262b",
+      "workflow_run_id": "3f5d4330-fba5-4b5e-a657-1cc480b8a088",
       "edge_type": "curated_to_canonical",
       "sink_type": null,
       "target_ref": {
@@ -960,12 +785,12 @@
       },
       "transform_version": "silver-v1",
       "record_count": 3,
-      "created_at": "2026-06-03 10:50:02.092716+00",
+      "created_at": "2026-06-03 11:07:06.024403+00",
       "edges": [
         {
-          "lineage_edge_id": "491fcae2-9a08-4a7d-83e1-8677ec800a48",
-          "upstream_run_id": "43c8ae29-1639-403e-82ab-9608ef27969c",
-          "upstream_lineage_link_id": "50e20eb7-1b2c-4184-9558-e05a6ee90cd5",
+          "lineage_edge_id": "80507adf-35d6-45f1-96cd-d7bd1abf9575",
+          "upstream_run_id": "8ebf417c-4371-4712-af7a-6e2cb3b1c462",
+          "upstream_lineage_link_id": "5cad3e36-8d23-481b-8510-ec8829ea0674",
           "source_file_id": null,
           "input_slot": 0,
           "edge_type": "curated_to_canonical",
@@ -978,23 +803,23 @@
       ]
     },
     {
-      "lineage_link_id": "9c51eca9-9218-4dbe-b31e-016248bd3c52",
-      "consumer_run_id": "267d682e-6db2-4a82-9005-039d4d465754",
-      "workflow_run_id": "c6261b17-9602-47f3-9713-4bc24b7b7cad",
+      "lineage_link_id": "ef35976e-ffb7-4b4a-a375-d00dca6a2e41",
+      "consumer_run_id": "d8ade0cf-7c2a-4efa-94d1-172b3ea0262b",
+      "workflow_run_id": "3f5d4330-fba5-4b5e-a657-1cc480b8a088",
       "edge_type": "quarantine",
       "sink_type": null,
       "target_ref": {
         "path": "s3://dlq/insurance_dlq/claim/2026-05-29/claim-v1-errors.json",
-        "dlq_id": "ebf7fe43-8a44-424b-b99e-a70879d2bfe4",
+        "dlq_id": "c0f3a195-afb9-4c4a-bd85-e6456d4982c6",
         "version": 1,
-        "content_hash": "ebf7fe43-8a44-424b-b99e-a70879d2bfe4"
+        "content_hash": "c0f3a195-afb9-4c4a-bd85-e6456d4982c6"
       },
       "transform_version": null,
       "record_count": 1,
-      "created_at": "2026-06-03 10:50:02.096102+00",
+      "created_at": "2026-06-03 11:07:06.027916+00",
       "edges": [
         {
-          "lineage_edge_id": "ae49dd0c-fc0a-4f38-a165-c60ef3542cfe",
+          "lineage_edge_id": "5f093320-ce94-46e4-a750-237b96f3d246",
           "upstream_run_id": null,
           "upstream_lineage_link_id": null,
           "source_file_id": null,
@@ -1002,7 +827,7 @@
           "edge_type": "quarantine",
           "source_ref": {
             "raw_path": "s3://raw/insurance_dlq/claim_dlq/2026-05-29.json",
-            "raw_file_id": "e6f68361-da90-480e-8678-72355ab90d03",
+            "raw_file_id": "b8099101-4c37-4f3a-828e-3394385f4f2f",
             "schema_version": "claim.v1"
           },
           "record_count": 1
@@ -1010,24 +835,24 @@
       ]
     },
     {
-      "lineage_link_id": "3a7b4f6c-746c-4c42-bebb-68fc9efa1c7e",
-      "consumer_run_id": "d755a610-ddef-4e1f-8446-9a7bf0e972b0",
-      "workflow_run_id": "c6261b17-9602-47f3-9713-4bc24b7b7cad",
+      "lineage_link_id": "216fa394-536f-4bbb-af8e-00a4b6a2341a",
+      "consumer_run_id": "c15132f5-30e6-4ba1-b70a-dc97a4b069f5",
+      "workflow_run_id": "3f5d4330-fba5-4b5e-a657-1cc480b8a088",
       "edge_type": "merge_to_canonical",
       "sink_type": null,
       "target_ref": {
         "path": "s3://silver/policy_claim_dlq/2026-05-29.parquet",
         "version": 1,
-        "content_hash": "silver-policy_claim_dlq-c6261b17-9602-47f3-9713-4bc24b7b7cad-orig"
+        "content_hash": "silver-policy_claim_dlq-3f5d4330-fba5-4b5e-a657-1cc480b8a088-orig"
       },
       "transform_version": "join-v1",
       "record_count": 3,
-      "created_at": "2026-06-03 10:50:02.110782+00",
+      "created_at": "2026-06-03 11:07:06.043277+00",
       "edges": [
         {
-          "lineage_edge_id": "9324de99-a83d-4bac-8ddc-7e0f913b2665",
-          "upstream_run_id": "4ff34ae0-b254-433d-b0ce-5e07ad42f07b",
-          "upstream_lineage_link_id": "aa24e6ae-60a9-420e-ae54-cb9fe6b9895f",
+          "lineage_edge_id": "3dc57a48-783d-413b-9aa1-e815066ee30f",
+          "upstream_run_id": "fa5cc160-aa96-4f00-8fdb-11aa7035bbd6",
+          "upstream_lineage_link_id": "8b1d83cf-b3d7-45bb-aec7-4c9ee1c10151",
           "source_file_id": null,
           "input_slot": 0,
           "edge_type": "merge_to_canonical",
@@ -1038,9 +863,9 @@
           "record_count": 3
         },
         {
-          "lineage_edge_id": "9466626e-5786-4d39-8a7b-d6e2594bf994",
-          "upstream_run_id": "267d682e-6db2-4a82-9005-039d4d465754",
-          "upstream_lineage_link_id": "8d2145cf-e418-4f01-965e-553f17b21f5d",
+          "lineage_edge_id": "1cd74fcb-ff8e-4b71-999d-f0a89474ec1d",
+          "upstream_run_id": "d8ade0cf-7c2a-4efa-94d1-172b3ea0262b",
+          "upstream_lineage_link_id": "eb2992a4-2886-478d-b361-5fef4cba93c8",
           "source_file_id": null,
           "input_slot": 1,
           "edge_type": "merge_to_canonical",
@@ -1053,24 +878,24 @@
       ]
     },
     {
-      "lineage_link_id": "dad5160b-0b41-4f11-b5ef-4c12054d588e",
-      "consumer_run_id": "c8c7f59a-6b27-41f7-8644-263ce059ecff",
-      "workflow_run_id": "c6261b17-9602-47f3-9713-4bc24b7b7cad",
+      "lineage_link_id": "b3411b20-2604-434c-bbf1-cbe9f26f3df8",
+      "consumer_run_id": "b0c37924-4ee6-4e9a-a2bf-6e7202491b00",
+      "workflow_run_id": "3f5d4330-fba5-4b5e-a657-1cc480b8a088",
       "edge_type": "canonical_to_sink",
       "sink_type": "postgres",
       "target_ref": {
         "path": "postgres://ods/policy_claim_dlq",
         "version": 1,
-        "content_hash": "postgres-policy_claim_dlq-c6261b17-9602-47f3-9713-4bc24b7b7cad-orig"
+        "content_hash": "postgres-policy_claim_dlq-3f5d4330-fba5-4b5e-a657-1cc480b8a088-orig"
       },
       "transform_version": "postgres-upsert-v1",
       "record_count": 3,
-      "created_at": "2026-06-03 10:50:02.125305+00",
+      "created_at": "2026-06-03 11:07:06.058444+00",
       "edges": [
         {
-          "lineage_edge_id": "90e1e0ae-4cf7-4795-bcdc-8f87e262f243",
-          "upstream_run_id": "d755a610-ddef-4e1f-8446-9a7bf0e972b0",
-          "upstream_lineage_link_id": "3a7b4f6c-746c-4c42-bebb-68fc9efa1c7e",
+          "lineage_edge_id": "d71528e6-80f5-441d-85a6-06acdbb7a1c4",
+          "upstream_run_id": "c15132f5-30e6-4ba1-b70a-dc97a4b069f5",
+          "upstream_lineage_link_id": "216fa394-536f-4bbb-af8e-00a4b6a2341a",
           "source_file_id": null,
           "input_slot": 0,
           "edge_type": "canonical_to_sink",
@@ -1082,24 +907,24 @@
       ]
     },
     {
-      "lineage_link_id": "d6b6e4f4-c8b9-4b64-acf6-63a4bb3a54ef",
-      "consumer_run_id": "a9729a9b-3201-4282-a08a-6b990f1cee65",
-      "workflow_run_id": "c6261b17-9602-47f3-9713-4bc24b7b7cad",
+      "lineage_link_id": "42ad77f9-5592-4822-b58d-5246399e8404",
+      "consumer_run_id": "7bc62a01-89ec-4e5f-b88e-b2288e0d96ec",
+      "workflow_run_id": "3f5d4330-fba5-4b5e-a657-1cc480b8a088",
       "edge_type": "detail_to_aggregate",
       "sink_type": null,
       "target_ref": {
         "path": "s3://gold/policy_claim_daily_dlq/2026-05-29.parquet",
         "version": 1,
-        "content_hash": "gold-policy_claim_daily_dlq-c6261b17-9602-47f3-9713-4bc24b7b7cad-orig"
+        "content_hash": "gold-policy_claim_daily_dlq-3f5d4330-fba5-4b5e-a657-1cc480b8a088-orig"
       },
       "transform_version": "agg-v1",
       "record_count": 2,
-      "created_at": "2026-06-03 10:50:02.155341+00",
+      "created_at": "2026-06-03 11:07:06.088845+00",
       "edges": [
         {
-          "lineage_edge_id": "6730eefa-8a0c-41e9-8630-df61b33ea619",
-          "upstream_run_id": "c8c7f59a-6b27-41f7-8644-263ce059ecff",
-          "upstream_lineage_link_id": "dad5160b-0b41-4f11-b5ef-4c12054d588e",
+          "lineage_edge_id": "c6f3aa30-ed2b-4a8b-a3bf-85f299640cba",
+          "upstream_run_id": "b0c37924-4ee6-4e9a-a2bf-6e7202491b00",
+          "upstream_lineage_link_id": "b3411b20-2604-434c-bbf1-cbe9f26f3df8",
           "source_file_id": null,
           "input_slot": 0,
           "edge_type": "detail_to_aggregate",
@@ -1112,24 +937,24 @@
       ]
     },
     {
-      "lineage_link_id": "51bbf43e-ec02-43fe-ab23-8bf7fef1cac3",
-      "consumer_run_id": "a9c084e7-0fda-4922-927d-7ab6d553396a",
-      "workflow_run_id": "c6261b17-9602-47f3-9713-4bc24b7b7cad",
+      "lineage_link_id": "ffbf5d13-4c2e-4001-b94e-a3aa28b2ec57",
+      "consumer_run_id": "f43d5b7d-c288-4484-899c-e98ed108a923",
+      "workflow_run_id": "3f5d4330-fba5-4b5e-a657-1cc480b8a088",
       "edge_type": "canonical_to_sink",
       "sink_type": "postgres",
       "target_ref": {
         "path": "postgres://ods/policy_claim_daily_dlq",
         "version": 1,
-        "content_hash": "postgres-policy_claim_daily_dlq-c6261b17-9602-47f3-9713-4bc24b7b7cad-orig"
+        "content_hash": "postgres-policy_claim_daily_dlq-3f5d4330-fba5-4b5e-a657-1cc480b8a088-orig"
       },
       "transform_version": "postgres-upsert-v1",
       "record_count": 2,
-      "created_at": "2026-06-03 10:50:02.168744+00",
+      "created_at": "2026-06-03 11:07:06.103428+00",
       "edges": [
         {
-          "lineage_edge_id": "1697a17c-f862-49d6-ae3e-c68af12a11d9",
-          "upstream_run_id": "a9729a9b-3201-4282-a08a-6b990f1cee65",
-          "upstream_lineage_link_id": "d6b6e4f4-c8b9-4b64-acf6-63a4bb3a54ef",
+          "lineage_edge_id": "fe95090e-e354-4031-9889-0b1046aa2aa4",
+          "upstream_run_id": "7bc62a01-89ec-4e5f-b88e-b2288e0d96ec",
+          "upstream_lineage_link_id": "42ad77f9-5592-4822-b58d-5246399e8404",
           "source_file_id": null,
           "input_slot": 0,
           "edge_type": "canonical_to_sink",
@@ -1139,11 +964,201 @@
           "record_count": 2
         }
       ]
+    },
+    {
+      "lineage_link_id": "6ba25637-9e30-4d09-9044-53d66ff13232",
+      "consumer_run_id": "ac600022-0ade-47ae-80d4-f4efd671dcf5",
+      "workflow_run_id": "c38fe384-8d44-4d06-8cbd-c9d302750264",
+      "edge_type": "curated_to_canonical",
+      "sink_type": null,
+      "target_ref": {
+        "path": "s3://silver/claim_dlq/2026-05-29-replay.parquet",
+        "version": 1,
+        "content_hash": "silver-claim_dlq-replay-c0f3a195-afb9-4c4a-bd85-e6456d4982c6",
+        "schema_version": "claim.v1"
+      },
+      "transform_version": "silver-replay-v1",
+      "record_count": 1,
+      "created_at": "2026-06-03 11:07:06.130655+00",
+      "edges": [
+        {
+          "lineage_edge_id": "39886a27-1f52-41c3-870a-9d983ad6847a",
+          "upstream_run_id": "8ebf417c-4371-4712-af7a-6e2cb3b1c462",
+          "upstream_lineage_link_id": "5cad3e36-8d23-481b-8510-ec8829ea0674",
+          "source_file_id": null,
+          "input_slot": 0,
+          "edge_type": "curated_to_canonical",
+          "source_ref": {
+            "layer": "bronze",
+            "replay": true,
+            "dataset": "claim_dlq",
+            "raw_file_id": "b8099101-4c37-4f3a-828e-3394385f4f2f"
+          },
+          "record_count": 1
+        },
+        {
+          "lineage_edge_id": "fa397a7c-e9b5-4914-be66-72e297600174",
+          "upstream_run_id": null,
+          "upstream_lineage_link_id": "ef35976e-ffb7-4b4a-a375-d00dca6a2e41",
+          "source_file_id": null,
+          "input_slot": 0,
+          "edge_type": "replay",
+          "source_ref": {
+            "dlq_id": "c0f3a195-afb9-4c4a-bd85-e6456d4982c6",
+            "replays_quarantine": true
+          },
+          "record_count": 1
+        }
+      ]
+    },
+    {
+      "lineage_link_id": "77eaa31d-c8ab-401d-a8f7-969629d351b1",
+      "consumer_run_id": "f7123150-8da9-433b-9340-250678decc9a",
+      "workflow_run_id": "c38fe384-8d44-4d06-8cbd-c9d302750264",
+      "edge_type": "merge_to_canonical",
+      "sink_type": null,
+      "target_ref": {
+        "path": "s3://silver/policy_claim_dlq/2026-05-29.parquet",
+        "version": 1,
+        "content_hash": "silver-policy_claim_dlq-c38fe384-8d44-4d06-8cbd-c9d302750264-corrected"
+      },
+      "transform_version": "join-v1",
+      "record_count": 1,
+      "created_at": "2026-06-03 11:07:06.144687+00",
+      "edges": [
+        {
+          "lineage_edge_id": "b672b402-e47e-44f7-ac12-a4b5a6500973",
+          "upstream_run_id": "fa5cc160-aa96-4f00-8fdb-11aa7035bbd6",
+          "upstream_lineage_link_id": "8b1d83cf-b3d7-45bb-aec7-4c9ee1c10151",
+          "source_file_id": null,
+          "input_slot": 0,
+          "edge_type": "merge_to_canonical",
+          "source_ref": {
+            "dataset": "policy_dlq",
+            "input_role": "policy"
+          },
+          "record_count": 3
+        },
+        {
+          "lineage_edge_id": "6792b580-2f99-4d1b-8cfe-3090913c20cf",
+          "upstream_run_id": "ac600022-0ade-47ae-80d4-f4efd671dcf5",
+          "upstream_lineage_link_id": "6ba25637-9e30-4d09-9044-53d66ff13232",
+          "source_file_id": null,
+          "input_slot": 1,
+          "edge_type": "merge_to_canonical",
+          "source_ref": {
+            "dataset": "claim_dlq",
+            "input_role": "claim"
+          },
+          "record_count": 1
+        }
+      ]
+    },
+    {
+      "lineage_link_id": "775d69cc-823a-4337-9bd9-b85b709c0b65",
+      "consumer_run_id": "5f28ada2-83b4-4017-992f-add7d67ca441",
+      "workflow_run_id": "c38fe384-8d44-4d06-8cbd-c9d302750264",
+      "edge_type": "canonical_to_sink",
+      "sink_type": "postgres",
+      "target_ref": {
+        "path": "postgres://ods/policy_claim_dlq",
+        "version": 1,
+        "content_hash": "postgres-policy_claim_dlq-c38fe384-8d44-4d06-8cbd-c9d302750264-corrected"
+      },
+      "transform_version": "postgres-upsert-v1",
+      "record_count": 1,
+      "created_at": "2026-06-03 11:07:06.159397+00",
+      "edges": [
+        {
+          "lineage_edge_id": "d31e7323-f1a4-4598-9979-df43a97aa505",
+          "upstream_run_id": "f7123150-8da9-433b-9340-250678decc9a",
+          "upstream_lineage_link_id": "77eaa31d-c8ab-401d-a8f7-969629d351b1",
+          "source_file_id": null,
+          "input_slot": 0,
+          "edge_type": "canonical_to_sink",
+          "source_ref": {
+            "upstream_edge_type": "merge_to_canonical"
+          },
+          "record_count": 1
+        }
+      ]
+    },
+    {
+      "lineage_link_id": "5ca06c01-dac5-4943-b141-5284a2b71631",
+      "consumer_run_id": "7c261673-f0eb-4e53-adbd-0b36d961247e",
+      "workflow_run_id": "c38fe384-8d44-4d06-8cbd-c9d302750264",
+      "edge_type": "detail_to_aggregate",
+      "sink_type": null,
+      "target_ref": {
+        "path": "s3://gold/policy_claim_daily_dlq/2026-05-29.parquet",
+        "version": 1,
+        "content_hash": "gold-policy_claim_daily_dlq-c38fe384-8d44-4d06-8cbd-c9d302750264-corrected-agg-replay"
+      },
+      "transform_version": "agg-v1",
+      "record_count": 1,
+      "created_at": "2026-06-03 11:07:06.182255+00",
+      "edges": [
+        {
+          "lineage_edge_id": "3e16cbc3-732b-4e09-9a74-c610ba4d134b",
+          "upstream_run_id": "b0c37924-4ee6-4e9a-a2bf-6e7202491b00",
+          "upstream_lineage_link_id": "b3411b20-2604-434c-bbf1-cbe9f26f3df8",
+          "source_file_id": null,
+          "input_slot": 0,
+          "edge_type": "detail_to_aggregate",
+          "source_ref": {
+            "table": "ods.policy_claim_dlq",
+            "input_role": "detail_original"
+          },
+          "record_count": 2
+        },
+        {
+          "lineage_edge_id": "63162c45-25a4-426a-9de1-15c9aabe68e0",
+          "upstream_run_id": "5f28ada2-83b4-4017-992f-add7d67ca441",
+          "upstream_lineage_link_id": "775d69cc-823a-4337-9bd9-b85b709c0b65",
+          "source_file_id": null,
+          "input_slot": 1,
+          "edge_type": "detail_to_aggregate",
+          "source_ref": {
+            "table": "ods.policy_claim_dlq",
+            "input_role": "detail_corrected"
+          },
+          "record_count": 1
+        }
+      ]
+    },
+    {
+      "lineage_link_id": "5cbef139-bfbd-43c2-97f6-a350ec94d8d8",
+      "consumer_run_id": "5e08bc56-79c8-4f1a-8a47-4f4c01848e7a",
+      "workflow_run_id": "c38fe384-8d44-4d06-8cbd-c9d302750264",
+      "edge_type": "canonical_to_sink",
+      "sink_type": "postgres",
+      "target_ref": {
+        "path": "postgres://ods/policy_claim_daily_dlq",
+        "version": 1,
+        "content_hash": "postgres-policy_claim_daily_dlq-c38fe384-8d44-4d06-8cbd-c9d302750264-corrected-agg-replay"
+      },
+      "transform_version": "postgres-upsert-v1",
+      "record_count": 1,
+      "created_at": "2026-06-03 11:07:06.196822+00",
+      "edges": [
+        {
+          "lineage_edge_id": "c92c3275-f2e1-4495-9517-22d6d0d6c537",
+          "upstream_run_id": "7c261673-f0eb-4e53-adbd-0b36d961247e",
+          "upstream_lineage_link_id": "5ca06c01-dac5-4943-b141-5284a2b71631",
+          "source_file_id": null,
+          "input_slot": 0,
+          "edge_type": "canonical_to_sink",
+          "source_ref": {
+            "upstream_edge_type": "detail_to_aggregate"
+          },
+          "record_count": 1
+        }
+      ]
     }
   ],
   "files": [
     {
-      "file_id": "e6f68361-da90-480e-8678-72355ab90d03",
+      "file_id": "b8099101-4c37-4f3a-828e-3394385f4f2f",
       "s3_raw_path": "s3://raw/insurance_dlq/claim_dlq/2026-05-29.json",
       "file_md5": "0083642508bf97c95d9df04f24c612bd",
       "business_date": "2026-05-29",
@@ -1152,7 +1167,7 @@
       "dataset": "claim_dlq"
     },
     {
-      "file_id": "b2fba049-69ab-497d-a5fc-d5f8ec9720cc",
+      "file_id": "cc8c6dc5-0cd8-4311-a0e4-dc9d37170721",
       "s3_raw_path": "s3://raw/insurance_dlq/policy_dlq/2026-05-29.json",
       "file_md5": "050fc8d0fb49e263c88d09ed8225a1a7",
       "business_date": "2026-05-29",
@@ -1164,7 +1179,7 @@
   "tables": {
     "policy_claim_dlq": [
       {
-        "row_id": 1,
+        "row_id": 5,
         "payload": {
           "claim_id": "CL500",
           "policy_id": "P001",
@@ -1176,12 +1191,12 @@
           "business_date": "2026-05-29",
           "premium_amount": 1200.0
         },
-        "_ods_workflow_run_id": "c6261b17-9602-47f3-9713-4bc24b7b7cad",
-        "_ods_lineage_link_id": "dad5160b-0b41-4f11-b5ef-4c12054d588e",
-        "_ods_output_link_id": "dad5160b-0b41-4f11-b5ef-4c12054d588e"
+        "_ods_workflow_run_id": "3f5d4330-fba5-4b5e-a657-1cc480b8a088",
+        "_ods_lineage_link_id": "b3411b20-2604-434c-bbf1-cbe9f26f3df8",
+        "_ods_output_link_id": "b3411b20-2604-434c-bbf1-cbe9f26f3df8"
       },
       {
-        "row_id": 2,
+        "row_id": 6,
         "payload": {
           "claim_id": "CL501",
           "policy_id": "P002",
@@ -1193,12 +1208,12 @@
           "business_date": "2026-05-29",
           "premium_amount": 900.0
         },
-        "_ods_workflow_run_id": "c6261b17-9602-47f3-9713-4bc24b7b7cad",
-        "_ods_lineage_link_id": "dad5160b-0b41-4f11-b5ef-4c12054d588e",
-        "_ods_output_link_id": "dad5160b-0b41-4f11-b5ef-4c12054d588e"
+        "_ods_workflow_run_id": "3f5d4330-fba5-4b5e-a657-1cc480b8a088",
+        "_ods_lineage_link_id": "b3411b20-2604-434c-bbf1-cbe9f26f3df8",
+        "_ods_output_link_id": "b3411b20-2604-434c-bbf1-cbe9f26f3df8"
       },
       {
-        "row_id": 3,
+        "row_id": 7,
         "payload": {
           "claim_id": "CL502",
           "policy_id": "P003",
@@ -1210,12 +1225,12 @@
           "business_date": "2026-05-29",
           "premium_amount": 1500.0
         },
-        "_ods_workflow_run_id": "c6261b17-9602-47f3-9713-4bc24b7b7cad",
-        "_ods_lineage_link_id": "dad5160b-0b41-4f11-b5ef-4c12054d588e",
-        "_ods_output_link_id": "dad5160b-0b41-4f11-b5ef-4c12054d588e"
+        "_ods_workflow_run_id": "3f5d4330-fba5-4b5e-a657-1cc480b8a088",
+        "_ods_lineage_link_id": "b3411b20-2604-434c-bbf1-cbe9f26f3df8",
+        "_ods_output_link_id": "b3411b20-2604-434c-bbf1-cbe9f26f3df8"
       },
       {
-        "row_id": 4,
+        "row_id": 8,
         "payload": {
           "claim_id": "CL900",
           "policy_id": "P002",
@@ -1227,14 +1242,14 @@
           "business_date": "2026-05-29",
           "premium_amount": 900.0
         },
-        "_ods_workflow_run_id": "4ec0645a-c944-4453-81ad-4add2c2da984",
-        "_ods_lineage_link_id": "2a518393-e037-461f-b837-70f5919b8e88",
-        "_ods_output_link_id": "2a518393-e037-461f-b837-70f5919b8e88"
+        "_ods_workflow_run_id": "c38fe384-8d44-4d06-8cbd-c9d302750264",
+        "_ods_lineage_link_id": "775d69cc-823a-4337-9bd9-b85b709c0b65",
+        "_ods_output_link_id": "775d69cc-823a-4337-9bd9-b85b709c0b65"
       }
     ],
     "policy_claim_daily_dlq": [
       {
-        "row_id": 1,
+        "row_id": 4,
         "payload": {
           "claim_count": 2,
           "policy_type": "auto",
@@ -1243,12 +1258,12 @@
           "closed_claim_count": 1,
           "total_claim_amount": 750.0
         },
-        "_ods_workflow_run_id": "c6261b17-9602-47f3-9713-4bc24b7b7cad",
-        "_ods_lineage_link_id": "51bbf43e-ec02-43fe-ab23-8bf7fef1cac3",
-        "_ods_output_link_id": "51bbf43e-ec02-43fe-ab23-8bf7fef1cac3"
+        "_ods_workflow_run_id": "3f5d4330-fba5-4b5e-a657-1cc480b8a088",
+        "_ods_lineage_link_id": "ffbf5d13-4c2e-4001-b94e-a3aa28b2ec57",
+        "_ods_output_link_id": "ffbf5d13-4c2e-4001-b94e-a3aa28b2ec57"
       },
       {
-        "row_id": 2,
+        "row_id": 5,
         "payload": {
           "claim_count": 1,
           "policy_type": "home",
@@ -1257,12 +1272,12 @@
           "closed_claim_count": 1,
           "total_claim_amount": 750.0
         },
-        "_ods_workflow_run_id": "c6261b17-9602-47f3-9713-4bc24b7b7cad",
-        "_ods_lineage_link_id": "51bbf43e-ec02-43fe-ab23-8bf7fef1cac3",
-        "_ods_output_link_id": "51bbf43e-ec02-43fe-ab23-8bf7fef1cac3"
+        "_ods_workflow_run_id": "3f5d4330-fba5-4b5e-a657-1cc480b8a088",
+        "_ods_lineage_link_id": "ffbf5d13-4c2e-4001-b94e-a3aa28b2ec57",
+        "_ods_output_link_id": "ffbf5d13-4c2e-4001-b94e-a3aa28b2ec57"
       },
       {
-        "row_id": 3,
+        "row_id": 6,
         "payload": {
           "claim_count": 3,
           "policy_type": "auto",
@@ -1271,330 +1286,724 @@
           "closed_claim_count": 1,
           "total_claim_amount": 1050.0
         },
-        "_ods_workflow_run_id": "4ec0645a-c944-4453-81ad-4add2c2da984",
-        "_ods_lineage_link_id": "17ffe522-c9e2-4245-988d-e4033c33b286",
-        "_ods_output_link_id": "17ffe522-c9e2-4245-988d-e4033c33b286"
+        "_ods_workflow_run_id": "c38fe384-8d44-4d06-8cbd-c9d302750264",
+        "_ods_lineage_link_id": "5cbef139-bfbd-43c2-97f6-a350ec94d8d8",
+        "_ods_output_link_id": "5cbef139-bfbd-43c2-97f6-a350ec94d8d8"
       }
     ]
   },
   "traces": {
-    "1e8a620b-5b28-41f4-a61e-ad7368cc1643": [
+    "8b5a3d3d-6587-4737-a9df-00eee7bae500": [
       {
         "hop": 1,
-        "edge_type": "curated_to_canonical",
-        "consumer_run_id": "5191fac3-bf06-4a6c-8620-f945b3591f7d",
-        "upstream_run_id": "43c8ae29-1639-403e-82ab-9608ef27969c",
-        "source_file_id": null,
-        "raw_s3_path": null
-      },
-      {
-        "hop": 1,
-        "edge_type": "replay",
-        "consumer_run_id": "5191fac3-bf06-4a6c-8620-f945b3591f7d",
-        "upstream_run_id": null,
-        "source_file_id": null,
-        "raw_s3_path": null
-      },
-      {
-        "hop": 2,
-        "edge_type": "quarantine",
-        "consumer_run_id": "267d682e-6db2-4a82-9005-039d4d465754",
-        "upstream_run_id": null,
-        "source_file_id": null,
-        "raw_s3_path": null
-      },
-      {
-        "hop": 2,
         "edge_type": "raw_to_curated",
-        "consumer_run_id": "43c8ae29-1639-403e-82ab-9608ef27969c",
+        "consumer_run_id": "c39631f0-5b67-4ec9-86a0-3d034cb11809",
         "upstream_run_id": null,
-        "source_file_id": "e6f68361-da90-480e-8678-72355ab90d03",
-        "raw_s3_path": "s3://raw/insurance_dlq/claim_dlq/2026-05-29.json"
-      }
-    ],
-    "835da1d8-2a91-48f1-a77e-1a73998b6bf9": [
-      {
-        "hop": 1,
-        "edge_type": "merge_to_canonical",
-        "consumer_run_id": "174b3155-e8a1-476a-92e0-a517c2118b22",
-        "upstream_run_id": "4ff34ae0-b254-433d-b0ce-5e07ad42f07b",
-        "source_file_id": null,
-        "raw_s3_path": null
-      },
-      {
-        "hop": 1,
-        "edge_type": "merge_to_canonical",
-        "consumer_run_id": "174b3155-e8a1-476a-92e0-a517c2118b22",
-        "upstream_run_id": "5191fac3-bf06-4a6c-8620-f945b3591f7d",
-        "source_file_id": null,
-        "raw_s3_path": null
-      },
-      {
-        "hop": 2,
-        "edge_type": "curated_to_canonical",
-        "consumer_run_id": "4ff34ae0-b254-433d-b0ce-5e07ad42f07b",
-        "upstream_run_id": "99ea4991-abc2-4560-8fa9-b44538cc6de0",
-        "source_file_id": null,
-        "raw_s3_path": null
-      },
-      {
-        "hop": 2,
-        "edge_type": "curated_to_canonical",
-        "consumer_run_id": "5191fac3-bf06-4a6c-8620-f945b3591f7d",
-        "upstream_run_id": "43c8ae29-1639-403e-82ab-9608ef27969c",
-        "source_file_id": null,
-        "raw_s3_path": null
-      },
-      {
-        "hop": 2,
-        "edge_type": "replay",
-        "consumer_run_id": "5191fac3-bf06-4a6c-8620-f945b3591f7d",
-        "upstream_run_id": null,
-        "source_file_id": null,
-        "raw_s3_path": null
-      },
-      {
-        "hop": 3,
-        "edge_type": "quarantine",
-        "consumer_run_id": "267d682e-6db2-4a82-9005-039d4d465754",
-        "upstream_run_id": null,
-        "source_file_id": null,
-        "raw_s3_path": null
-      },
-      {
-        "hop": 3,
-        "edge_type": "raw_to_curated",
-        "consumer_run_id": "43c8ae29-1639-403e-82ab-9608ef27969c",
-        "upstream_run_id": null,
-        "source_file_id": "e6f68361-da90-480e-8678-72355ab90d03",
-        "raw_s3_path": "s3://raw/insurance_dlq/claim_dlq/2026-05-29.json"
-      },
-      {
-        "hop": 3,
-        "edge_type": "raw_to_curated",
-        "consumer_run_id": "99ea4991-abc2-4560-8fa9-b44538cc6de0",
-        "upstream_run_id": null,
-        "source_file_id": "b2fba049-69ab-497d-a5fc-d5f8ec9720cc",
+        "source_file_id": "cc8c6dc5-0cd8-4311-a0e4-dc9d37170721",
         "raw_s3_path": "s3://raw/insurance_dlq/policy_dlq/2026-05-29.json"
       }
     ],
-    "2a518393-e037-461f-b837-70f5919b8e88": [
+    "5cad3e36-8d23-481b-8510-ec8829ea0674": [
+      {
+        "hop": 1,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "8ebf417c-4371-4712-af7a-6e2cb3b1c462",
+        "upstream_run_id": null,
+        "source_file_id": "b8099101-4c37-4f3a-828e-3394385f4f2f",
+        "raw_s3_path": "s3://raw/insurance_dlq/claim_dlq/2026-05-29.json"
+      }
+    ],
+    "8b1d83cf-b3d7-45bb-aec7-4c9ee1c10151": [
+      {
+        "hop": 1,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "fa5cc160-aa96-4f00-8fdb-11aa7035bbd6",
+        "upstream_run_id": "c39631f0-5b67-4ec9-86a0-3d034cb11809",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 2,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "c39631f0-5b67-4ec9-86a0-3d034cb11809",
+        "upstream_run_id": null,
+        "source_file_id": "cc8c6dc5-0cd8-4311-a0e4-dc9d37170721",
+        "raw_s3_path": "s3://raw/insurance_dlq/policy_dlq/2026-05-29.json"
+      }
+    ],
+    "eb2992a4-2886-478d-b361-5fef4cba93c8": [
+      {
+        "hop": 1,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "d8ade0cf-7c2a-4efa-94d1-172b3ea0262b",
+        "upstream_run_id": "8ebf417c-4371-4712-af7a-6e2cb3b1c462",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 2,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "8ebf417c-4371-4712-af7a-6e2cb3b1c462",
+        "upstream_run_id": null,
+        "source_file_id": "b8099101-4c37-4f3a-828e-3394385f4f2f",
+        "raw_s3_path": "s3://raw/insurance_dlq/claim_dlq/2026-05-29.json"
+      }
+    ],
+    "ef35976e-ffb7-4b4a-a375-d00dca6a2e41": [
+      {
+        "hop": 1,
+        "edge_type": "quarantine",
+        "consumer_run_id": "d8ade0cf-7c2a-4efa-94d1-172b3ea0262b",
+        "upstream_run_id": null,
+        "source_file_id": null,
+        "raw_s3_path": null
+      }
+    ],
+    "216fa394-536f-4bbb-af8e-00a4b6a2341a": [
+      {
+        "hop": 1,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "c15132f5-30e6-4ba1-b70a-dc97a4b069f5",
+        "upstream_run_id": "d8ade0cf-7c2a-4efa-94d1-172b3ea0262b",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 1,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "c15132f5-30e6-4ba1-b70a-dc97a4b069f5",
+        "upstream_run_id": "fa5cc160-aa96-4f00-8fdb-11aa7035bbd6",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 2,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "d8ade0cf-7c2a-4efa-94d1-172b3ea0262b",
+        "upstream_run_id": "8ebf417c-4371-4712-af7a-6e2cb3b1c462",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 2,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "fa5cc160-aa96-4f00-8fdb-11aa7035bbd6",
+        "upstream_run_id": "c39631f0-5b67-4ec9-86a0-3d034cb11809",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 3,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "8ebf417c-4371-4712-af7a-6e2cb3b1c462",
+        "upstream_run_id": null,
+        "source_file_id": "b8099101-4c37-4f3a-828e-3394385f4f2f",
+        "raw_s3_path": "s3://raw/insurance_dlq/claim_dlq/2026-05-29.json"
+      },
+      {
+        "hop": 3,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "c39631f0-5b67-4ec9-86a0-3d034cb11809",
+        "upstream_run_id": null,
+        "source_file_id": "cc8c6dc5-0cd8-4311-a0e4-dc9d37170721",
+        "raw_s3_path": "s3://raw/insurance_dlq/policy_dlq/2026-05-29.json"
+      }
+    ],
+    "b3411b20-2604-434c-bbf1-cbe9f26f3df8": [
       {
         "hop": 1,
         "edge_type": "canonical_to_sink",
-        "consumer_run_id": "6abc72fe-e579-4911-b0c7-c56c46a083e1",
-        "upstream_run_id": "174b3155-e8a1-476a-92e0-a517c2118b22",
+        "consumer_run_id": "b0c37924-4ee6-4e9a-a2bf-6e7202491b00",
+        "upstream_run_id": "c15132f5-30e6-4ba1-b70a-dc97a4b069f5",
         "source_file_id": null,
         "raw_s3_path": null
       },
       {
         "hop": 2,
         "edge_type": "merge_to_canonical",
-        "consumer_run_id": "174b3155-e8a1-476a-92e0-a517c2118b22",
-        "upstream_run_id": "4ff34ae0-b254-433d-b0ce-5e07ad42f07b",
+        "consumer_run_id": "c15132f5-30e6-4ba1-b70a-dc97a4b069f5",
+        "upstream_run_id": "d8ade0cf-7c2a-4efa-94d1-172b3ea0262b",
         "source_file_id": null,
         "raw_s3_path": null
       },
       {
         "hop": 2,
         "edge_type": "merge_to_canonical",
-        "consumer_run_id": "174b3155-e8a1-476a-92e0-a517c2118b22",
-        "upstream_run_id": "5191fac3-bf06-4a6c-8620-f945b3591f7d",
+        "consumer_run_id": "c15132f5-30e6-4ba1-b70a-dc97a4b069f5",
+        "upstream_run_id": "fa5cc160-aa96-4f00-8fdb-11aa7035bbd6",
         "source_file_id": null,
         "raw_s3_path": null
       },
       {
         "hop": 3,
         "edge_type": "curated_to_canonical",
-        "consumer_run_id": "4ff34ae0-b254-433d-b0ce-5e07ad42f07b",
-        "upstream_run_id": "99ea4991-abc2-4560-8fa9-b44538cc6de0",
+        "consumer_run_id": "d8ade0cf-7c2a-4efa-94d1-172b3ea0262b",
+        "upstream_run_id": "8ebf417c-4371-4712-af7a-6e2cb3b1c462",
         "source_file_id": null,
         "raw_s3_path": null
       },
       {
         "hop": 3,
         "edge_type": "curated_to_canonical",
-        "consumer_run_id": "5191fac3-bf06-4a6c-8620-f945b3591f7d",
-        "upstream_run_id": "43c8ae29-1639-403e-82ab-9608ef27969c",
-        "source_file_id": null,
-        "raw_s3_path": null
-      },
-      {
-        "hop": 3,
-        "edge_type": "replay",
-        "consumer_run_id": "5191fac3-bf06-4a6c-8620-f945b3591f7d",
-        "upstream_run_id": null,
-        "source_file_id": null,
-        "raw_s3_path": null
-      },
-      {
-        "hop": 4,
-        "edge_type": "quarantine",
-        "consumer_run_id": "267d682e-6db2-4a82-9005-039d4d465754",
-        "upstream_run_id": null,
+        "consumer_run_id": "fa5cc160-aa96-4f00-8fdb-11aa7035bbd6",
+        "upstream_run_id": "c39631f0-5b67-4ec9-86a0-3d034cb11809",
         "source_file_id": null,
         "raw_s3_path": null
       },
       {
         "hop": 4,
         "edge_type": "raw_to_curated",
-        "consumer_run_id": "43c8ae29-1639-403e-82ab-9608ef27969c",
+        "consumer_run_id": "8ebf417c-4371-4712-af7a-6e2cb3b1c462",
         "upstream_run_id": null,
-        "source_file_id": "e6f68361-da90-480e-8678-72355ab90d03",
+        "source_file_id": "b8099101-4c37-4f3a-828e-3394385f4f2f",
         "raw_s3_path": "s3://raw/insurance_dlq/claim_dlq/2026-05-29.json"
       },
       {
         "hop": 4,
         "edge_type": "raw_to_curated",
-        "consumer_run_id": "99ea4991-abc2-4560-8fa9-b44538cc6de0",
+        "consumer_run_id": "c39631f0-5b67-4ec9-86a0-3d034cb11809",
         "upstream_run_id": null,
-        "source_file_id": "b2fba049-69ab-497d-a5fc-d5f8ec9720cc",
+        "source_file_id": "cc8c6dc5-0cd8-4311-a0e4-dc9d37170721",
         "raw_s3_path": "s3://raw/insurance_dlq/policy_dlq/2026-05-29.json"
       }
     ],
-    "4b210445-fd4d-478d-849c-2ed90b6fe5a5": [
+    "42ad77f9-5592-4822-b58d-5246399e8404": [
       {
         "hop": 1,
         "edge_type": "detail_to_aggregate",
-        "consumer_run_id": "d48580e7-d085-47ce-8e50-640fa66fb2d8",
-        "upstream_run_id": "6abc72fe-e579-4911-b0c7-c56c46a083e1",
+        "consumer_run_id": "7bc62a01-89ec-4e5f-b88e-b2288e0d96ec",
+        "upstream_run_id": "b0c37924-4ee6-4e9a-a2bf-6e7202491b00",
         "source_file_id": null,
         "raw_s3_path": null
       },
       {
         "hop": 2,
         "edge_type": "canonical_to_sink",
-        "consumer_run_id": "6abc72fe-e579-4911-b0c7-c56c46a083e1",
-        "upstream_run_id": "174b3155-e8a1-476a-92e0-a517c2118b22",
+        "consumer_run_id": "b0c37924-4ee6-4e9a-a2bf-6e7202491b00",
+        "upstream_run_id": "c15132f5-30e6-4ba1-b70a-dc97a4b069f5",
         "source_file_id": null,
         "raw_s3_path": null
       },
       {
         "hop": 3,
         "edge_type": "merge_to_canonical",
-        "consumer_run_id": "174b3155-e8a1-476a-92e0-a517c2118b22",
-        "upstream_run_id": "4ff34ae0-b254-433d-b0ce-5e07ad42f07b",
+        "consumer_run_id": "c15132f5-30e6-4ba1-b70a-dc97a4b069f5",
+        "upstream_run_id": "d8ade0cf-7c2a-4efa-94d1-172b3ea0262b",
         "source_file_id": null,
         "raw_s3_path": null
       },
       {
         "hop": 3,
         "edge_type": "merge_to_canonical",
-        "consumer_run_id": "174b3155-e8a1-476a-92e0-a517c2118b22",
-        "upstream_run_id": "5191fac3-bf06-4a6c-8620-f945b3591f7d",
+        "consumer_run_id": "c15132f5-30e6-4ba1-b70a-dc97a4b069f5",
+        "upstream_run_id": "fa5cc160-aa96-4f00-8fdb-11aa7035bbd6",
         "source_file_id": null,
         "raw_s3_path": null
       },
       {
         "hop": 4,
         "edge_type": "curated_to_canonical",
-        "consumer_run_id": "4ff34ae0-b254-433d-b0ce-5e07ad42f07b",
-        "upstream_run_id": "99ea4991-abc2-4560-8fa9-b44538cc6de0",
+        "consumer_run_id": "d8ade0cf-7c2a-4efa-94d1-172b3ea0262b",
+        "upstream_run_id": "8ebf417c-4371-4712-af7a-6e2cb3b1c462",
         "source_file_id": null,
         "raw_s3_path": null
       },
       {
         "hop": 4,
         "edge_type": "curated_to_canonical",
-        "consumer_run_id": "5191fac3-bf06-4a6c-8620-f945b3591f7d",
-        "upstream_run_id": "43c8ae29-1639-403e-82ab-9608ef27969c",
-        "source_file_id": null,
-        "raw_s3_path": null
-      },
-      {
-        "hop": 4,
-        "edge_type": "replay",
-        "consumer_run_id": "5191fac3-bf06-4a6c-8620-f945b3591f7d",
-        "upstream_run_id": null,
-        "source_file_id": null,
-        "raw_s3_path": null
-      },
-      {
-        "hop": 5,
-        "edge_type": "quarantine",
-        "consumer_run_id": "267d682e-6db2-4a82-9005-039d4d465754",
-        "upstream_run_id": null,
+        "consumer_run_id": "fa5cc160-aa96-4f00-8fdb-11aa7035bbd6",
+        "upstream_run_id": "c39631f0-5b67-4ec9-86a0-3d034cb11809",
         "source_file_id": null,
         "raw_s3_path": null
       },
       {
         "hop": 5,
         "edge_type": "raw_to_curated",
-        "consumer_run_id": "43c8ae29-1639-403e-82ab-9608ef27969c",
+        "consumer_run_id": "8ebf417c-4371-4712-af7a-6e2cb3b1c462",
         "upstream_run_id": null,
-        "source_file_id": "e6f68361-da90-480e-8678-72355ab90d03",
+        "source_file_id": "b8099101-4c37-4f3a-828e-3394385f4f2f",
         "raw_s3_path": "s3://raw/insurance_dlq/claim_dlq/2026-05-29.json"
       },
       {
         "hop": 5,
         "edge_type": "raw_to_curated",
-        "consumer_run_id": "99ea4991-abc2-4560-8fa9-b44538cc6de0",
+        "consumer_run_id": "c39631f0-5b67-4ec9-86a0-3d034cb11809",
         "upstream_run_id": null,
-        "source_file_id": "b2fba049-69ab-497d-a5fc-d5f8ec9720cc",
+        "source_file_id": "cc8c6dc5-0cd8-4311-a0e4-dc9d37170721",
         "raw_s3_path": "s3://raw/insurance_dlq/policy_dlq/2026-05-29.json"
       }
     ],
-    "17ffe522-c9e2-4245-988d-e4033c33b286": [
+    "ffbf5d13-4c2e-4001-b94e-a3aa28b2ec57": [
       {
         "hop": 1,
         "edge_type": "canonical_to_sink",
-        "consumer_run_id": "890636ed-41bf-4f2f-b2b5-a0020e4e9aaa",
-        "upstream_run_id": "d48580e7-d085-47ce-8e50-640fa66fb2d8",
+        "consumer_run_id": "f43d5b7d-c288-4484-899c-e98ed108a923",
+        "upstream_run_id": "7bc62a01-89ec-4e5f-b88e-b2288e0d96ec",
         "source_file_id": null,
         "raw_s3_path": null
       },
       {
         "hop": 2,
         "edge_type": "detail_to_aggregate",
-        "consumer_run_id": "d48580e7-d085-47ce-8e50-640fa66fb2d8",
-        "upstream_run_id": "6abc72fe-e579-4911-b0c7-c56c46a083e1",
+        "consumer_run_id": "7bc62a01-89ec-4e5f-b88e-b2288e0d96ec",
+        "upstream_run_id": "b0c37924-4ee6-4e9a-a2bf-6e7202491b00",
         "source_file_id": null,
         "raw_s3_path": null
       },
       {
         "hop": 3,
         "edge_type": "canonical_to_sink",
-        "consumer_run_id": "6abc72fe-e579-4911-b0c7-c56c46a083e1",
-        "upstream_run_id": "174b3155-e8a1-476a-92e0-a517c2118b22",
+        "consumer_run_id": "b0c37924-4ee6-4e9a-a2bf-6e7202491b00",
+        "upstream_run_id": "c15132f5-30e6-4ba1-b70a-dc97a4b069f5",
         "source_file_id": null,
         "raw_s3_path": null
       },
       {
         "hop": 4,
         "edge_type": "merge_to_canonical",
-        "consumer_run_id": "174b3155-e8a1-476a-92e0-a517c2118b22",
-        "upstream_run_id": "4ff34ae0-b254-433d-b0ce-5e07ad42f07b",
+        "consumer_run_id": "c15132f5-30e6-4ba1-b70a-dc97a4b069f5",
+        "upstream_run_id": "d8ade0cf-7c2a-4efa-94d1-172b3ea0262b",
         "source_file_id": null,
         "raw_s3_path": null
       },
       {
         "hop": 4,
         "edge_type": "merge_to_canonical",
-        "consumer_run_id": "174b3155-e8a1-476a-92e0-a517c2118b22",
-        "upstream_run_id": "5191fac3-bf06-4a6c-8620-f945b3591f7d",
+        "consumer_run_id": "c15132f5-30e6-4ba1-b70a-dc97a4b069f5",
+        "upstream_run_id": "fa5cc160-aa96-4f00-8fdb-11aa7035bbd6",
         "source_file_id": null,
         "raw_s3_path": null
       },
       {
         "hop": 5,
         "edge_type": "curated_to_canonical",
-        "consumer_run_id": "4ff34ae0-b254-433d-b0ce-5e07ad42f07b",
-        "upstream_run_id": "99ea4991-abc2-4560-8fa9-b44538cc6de0",
+        "consumer_run_id": "d8ade0cf-7c2a-4efa-94d1-172b3ea0262b",
+        "upstream_run_id": "8ebf417c-4371-4712-af7a-6e2cb3b1c462",
         "source_file_id": null,
         "raw_s3_path": null
       },
       {
         "hop": 5,
         "edge_type": "curated_to_canonical",
-        "consumer_run_id": "5191fac3-bf06-4a6c-8620-f945b3591f7d",
-        "upstream_run_id": "43c8ae29-1639-403e-82ab-9608ef27969c",
+        "consumer_run_id": "fa5cc160-aa96-4f00-8fdb-11aa7035bbd6",
+        "upstream_run_id": "c39631f0-5b67-4ec9-86a0-3d034cb11809",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 6,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "8ebf417c-4371-4712-af7a-6e2cb3b1c462",
+        "upstream_run_id": null,
+        "source_file_id": "b8099101-4c37-4f3a-828e-3394385f4f2f",
+        "raw_s3_path": "s3://raw/insurance_dlq/claim_dlq/2026-05-29.json"
+      },
+      {
+        "hop": 6,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "c39631f0-5b67-4ec9-86a0-3d034cb11809",
+        "upstream_run_id": null,
+        "source_file_id": "cc8c6dc5-0cd8-4311-a0e4-dc9d37170721",
+        "raw_s3_path": "s3://raw/insurance_dlq/policy_dlq/2026-05-29.json"
+      }
+    ],
+    "6ba25637-9e30-4d09-9044-53d66ff13232": [
+      {
+        "hop": 1,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "ac600022-0ade-47ae-80d4-f4efd671dcf5",
+        "upstream_run_id": "8ebf417c-4371-4712-af7a-6e2cb3b1c462",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 1,
+        "edge_type": "replay",
+        "consumer_run_id": "ac600022-0ade-47ae-80d4-f4efd671dcf5",
+        "upstream_run_id": null,
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 2,
+        "edge_type": "quarantine",
+        "consumer_run_id": "d8ade0cf-7c2a-4efa-94d1-172b3ea0262b",
+        "upstream_run_id": null,
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 2,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "8ebf417c-4371-4712-af7a-6e2cb3b1c462",
+        "upstream_run_id": null,
+        "source_file_id": "b8099101-4c37-4f3a-828e-3394385f4f2f",
+        "raw_s3_path": "s3://raw/insurance_dlq/claim_dlq/2026-05-29.json"
+      }
+    ],
+    "77eaa31d-c8ab-401d-a8f7-969629d351b1": [
+      {
+        "hop": 1,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "f7123150-8da9-433b-9340-250678decc9a",
+        "upstream_run_id": "ac600022-0ade-47ae-80d4-f4efd671dcf5",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 1,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "f7123150-8da9-433b-9340-250678decc9a",
+        "upstream_run_id": "fa5cc160-aa96-4f00-8fdb-11aa7035bbd6",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 2,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "ac600022-0ade-47ae-80d4-f4efd671dcf5",
+        "upstream_run_id": "8ebf417c-4371-4712-af7a-6e2cb3b1c462",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 2,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "fa5cc160-aa96-4f00-8fdb-11aa7035bbd6",
+        "upstream_run_id": "c39631f0-5b67-4ec9-86a0-3d034cb11809",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 2,
+        "edge_type": "replay",
+        "consumer_run_id": "ac600022-0ade-47ae-80d4-f4efd671dcf5",
+        "upstream_run_id": null,
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 3,
+        "edge_type": "quarantine",
+        "consumer_run_id": "d8ade0cf-7c2a-4efa-94d1-172b3ea0262b",
+        "upstream_run_id": null,
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 3,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "8ebf417c-4371-4712-af7a-6e2cb3b1c462",
+        "upstream_run_id": null,
+        "source_file_id": "b8099101-4c37-4f3a-828e-3394385f4f2f",
+        "raw_s3_path": "s3://raw/insurance_dlq/claim_dlq/2026-05-29.json"
+      },
+      {
+        "hop": 3,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "c39631f0-5b67-4ec9-86a0-3d034cb11809",
+        "upstream_run_id": null,
+        "source_file_id": "cc8c6dc5-0cd8-4311-a0e4-dc9d37170721",
+        "raw_s3_path": "s3://raw/insurance_dlq/policy_dlq/2026-05-29.json"
+      }
+    ],
+    "775d69cc-823a-4337-9bd9-b85b709c0b65": [
+      {
+        "hop": 1,
+        "edge_type": "canonical_to_sink",
+        "consumer_run_id": "5f28ada2-83b4-4017-992f-add7d67ca441",
+        "upstream_run_id": "f7123150-8da9-433b-9340-250678decc9a",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 2,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "f7123150-8da9-433b-9340-250678decc9a",
+        "upstream_run_id": "ac600022-0ade-47ae-80d4-f4efd671dcf5",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 2,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "f7123150-8da9-433b-9340-250678decc9a",
+        "upstream_run_id": "fa5cc160-aa96-4f00-8fdb-11aa7035bbd6",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 3,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "ac600022-0ade-47ae-80d4-f4efd671dcf5",
+        "upstream_run_id": "8ebf417c-4371-4712-af7a-6e2cb3b1c462",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 3,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "fa5cc160-aa96-4f00-8fdb-11aa7035bbd6",
+        "upstream_run_id": "c39631f0-5b67-4ec9-86a0-3d034cb11809",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 3,
+        "edge_type": "replay",
+        "consumer_run_id": "ac600022-0ade-47ae-80d4-f4efd671dcf5",
+        "upstream_run_id": null,
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 4,
+        "edge_type": "quarantine",
+        "consumer_run_id": "d8ade0cf-7c2a-4efa-94d1-172b3ea0262b",
+        "upstream_run_id": null,
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 4,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "8ebf417c-4371-4712-af7a-6e2cb3b1c462",
+        "upstream_run_id": null,
+        "source_file_id": "b8099101-4c37-4f3a-828e-3394385f4f2f",
+        "raw_s3_path": "s3://raw/insurance_dlq/claim_dlq/2026-05-29.json"
+      },
+      {
+        "hop": 4,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "c39631f0-5b67-4ec9-86a0-3d034cb11809",
+        "upstream_run_id": null,
+        "source_file_id": "cc8c6dc5-0cd8-4311-a0e4-dc9d37170721",
+        "raw_s3_path": "s3://raw/insurance_dlq/policy_dlq/2026-05-29.json"
+      }
+    ],
+    "5ca06c01-dac5-4943-b141-5284a2b71631": [
+      {
+        "hop": 1,
+        "edge_type": "detail_to_aggregate",
+        "consumer_run_id": "7c261673-f0eb-4e53-adbd-0b36d961247e",
+        "upstream_run_id": "5f28ada2-83b4-4017-992f-add7d67ca441",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 1,
+        "edge_type": "detail_to_aggregate",
+        "consumer_run_id": "7c261673-f0eb-4e53-adbd-0b36d961247e",
+        "upstream_run_id": "b0c37924-4ee6-4e9a-a2bf-6e7202491b00",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 2,
+        "edge_type": "canonical_to_sink",
+        "consumer_run_id": "5f28ada2-83b4-4017-992f-add7d67ca441",
+        "upstream_run_id": "f7123150-8da9-433b-9340-250678decc9a",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 2,
+        "edge_type": "canonical_to_sink",
+        "consumer_run_id": "b0c37924-4ee6-4e9a-a2bf-6e7202491b00",
+        "upstream_run_id": "c15132f5-30e6-4ba1-b70a-dc97a4b069f5",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 3,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "c15132f5-30e6-4ba1-b70a-dc97a4b069f5",
+        "upstream_run_id": "d8ade0cf-7c2a-4efa-94d1-172b3ea0262b",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 3,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "c15132f5-30e6-4ba1-b70a-dc97a4b069f5",
+        "upstream_run_id": "fa5cc160-aa96-4f00-8fdb-11aa7035bbd6",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 3,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "f7123150-8da9-433b-9340-250678decc9a",
+        "upstream_run_id": "ac600022-0ade-47ae-80d4-f4efd671dcf5",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 3,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "f7123150-8da9-433b-9340-250678decc9a",
+        "upstream_run_id": "fa5cc160-aa96-4f00-8fdb-11aa7035bbd6",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 4,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "ac600022-0ade-47ae-80d4-f4efd671dcf5",
+        "upstream_run_id": "8ebf417c-4371-4712-af7a-6e2cb3b1c462",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 4,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "d8ade0cf-7c2a-4efa-94d1-172b3ea0262b",
+        "upstream_run_id": "8ebf417c-4371-4712-af7a-6e2cb3b1c462",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 4,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "fa5cc160-aa96-4f00-8fdb-11aa7035bbd6",
+        "upstream_run_id": "c39631f0-5b67-4ec9-86a0-3d034cb11809",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 4,
+        "edge_type": "replay",
+        "consumer_run_id": "ac600022-0ade-47ae-80d4-f4efd671dcf5",
+        "upstream_run_id": null,
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 5,
+        "edge_type": "quarantine",
+        "consumer_run_id": "d8ade0cf-7c2a-4efa-94d1-172b3ea0262b",
+        "upstream_run_id": null,
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 5,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "8ebf417c-4371-4712-af7a-6e2cb3b1c462",
+        "upstream_run_id": null,
+        "source_file_id": "b8099101-4c37-4f3a-828e-3394385f4f2f",
+        "raw_s3_path": "s3://raw/insurance_dlq/claim_dlq/2026-05-29.json"
+      },
+      {
+        "hop": 5,
+        "edge_type": "raw_to_curated",
+        "consumer_run_id": "c39631f0-5b67-4ec9-86a0-3d034cb11809",
+        "upstream_run_id": null,
+        "source_file_id": "cc8c6dc5-0cd8-4311-a0e4-dc9d37170721",
+        "raw_s3_path": "s3://raw/insurance_dlq/policy_dlq/2026-05-29.json"
+      }
+    ],
+    "5cbef139-bfbd-43c2-97f6-a350ec94d8d8": [
+      {
+        "hop": 1,
+        "edge_type": "canonical_to_sink",
+        "consumer_run_id": "5e08bc56-79c8-4f1a-8a47-4f4c01848e7a",
+        "upstream_run_id": "7c261673-f0eb-4e53-adbd-0b36d961247e",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 2,
+        "edge_type": "detail_to_aggregate",
+        "consumer_run_id": "7c261673-f0eb-4e53-adbd-0b36d961247e",
+        "upstream_run_id": "5f28ada2-83b4-4017-992f-add7d67ca441",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 2,
+        "edge_type": "detail_to_aggregate",
+        "consumer_run_id": "7c261673-f0eb-4e53-adbd-0b36d961247e",
+        "upstream_run_id": "b0c37924-4ee6-4e9a-a2bf-6e7202491b00",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 3,
+        "edge_type": "canonical_to_sink",
+        "consumer_run_id": "5f28ada2-83b4-4017-992f-add7d67ca441",
+        "upstream_run_id": "f7123150-8da9-433b-9340-250678decc9a",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 3,
+        "edge_type": "canonical_to_sink",
+        "consumer_run_id": "b0c37924-4ee6-4e9a-a2bf-6e7202491b00",
+        "upstream_run_id": "c15132f5-30e6-4ba1-b70a-dc97a4b069f5",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 4,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "c15132f5-30e6-4ba1-b70a-dc97a4b069f5",
+        "upstream_run_id": "d8ade0cf-7c2a-4efa-94d1-172b3ea0262b",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 4,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "c15132f5-30e6-4ba1-b70a-dc97a4b069f5",
+        "upstream_run_id": "fa5cc160-aa96-4f00-8fdb-11aa7035bbd6",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 4,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "f7123150-8da9-433b-9340-250678decc9a",
+        "upstream_run_id": "ac600022-0ade-47ae-80d4-f4efd671dcf5",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 4,
+        "edge_type": "merge_to_canonical",
+        "consumer_run_id": "f7123150-8da9-433b-9340-250678decc9a",
+        "upstream_run_id": "fa5cc160-aa96-4f00-8fdb-11aa7035bbd6",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 5,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "ac600022-0ade-47ae-80d4-f4efd671dcf5",
+        "upstream_run_id": "8ebf417c-4371-4712-af7a-6e2cb3b1c462",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 5,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "d8ade0cf-7c2a-4efa-94d1-172b3ea0262b",
+        "upstream_run_id": "8ebf417c-4371-4712-af7a-6e2cb3b1c462",
+        "source_file_id": null,
+        "raw_s3_path": null
+      },
+      {
+        "hop": 5,
+        "edge_type": "curated_to_canonical",
+        "consumer_run_id": "fa5cc160-aa96-4f00-8fdb-11aa7035bbd6",
+        "upstream_run_id": "c39631f0-5b67-4ec9-86a0-3d034cb11809",
         "source_file_id": null,
         "raw_s3_path": null
       },
       {
         "hop": 5,
         "edge_type": "replay",
-        "consumer_run_id": "5191fac3-bf06-4a6c-8620-f945b3591f7d",
+        "consumer_run_id": "ac600022-0ade-47ae-80d4-f4efd671dcf5",
         "upstream_run_id": null,
         "source_file_id": null,
         "raw_s3_path": null
@@ -1602,7 +2011,7 @@
       {
         "hop": 6,
         "edge_type": "quarantine",
-        "consumer_run_id": "267d682e-6db2-4a82-9005-039d4d465754",
+        "consumer_run_id": "d8ade0cf-7c2a-4efa-94d1-172b3ea0262b",
         "upstream_run_id": null,
         "source_file_id": null,
         "raw_s3_path": null
@@ -1610,331 +2019,17 @@
       {
         "hop": 6,
         "edge_type": "raw_to_curated",
-        "consumer_run_id": "43c8ae29-1639-403e-82ab-9608ef27969c",
+        "consumer_run_id": "8ebf417c-4371-4712-af7a-6e2cb3b1c462",
         "upstream_run_id": null,
-        "source_file_id": "e6f68361-da90-480e-8678-72355ab90d03",
+        "source_file_id": "b8099101-4c37-4f3a-828e-3394385f4f2f",
         "raw_s3_path": "s3://raw/insurance_dlq/claim_dlq/2026-05-29.json"
       },
       {
         "hop": 6,
         "edge_type": "raw_to_curated",
-        "consumer_run_id": "99ea4991-abc2-4560-8fa9-b44538cc6de0",
+        "consumer_run_id": "c39631f0-5b67-4ec9-86a0-3d034cb11809",
         "upstream_run_id": null,
-        "source_file_id": "b2fba049-69ab-497d-a5fc-d5f8ec9720cc",
-        "raw_s3_path": "s3://raw/insurance_dlq/policy_dlq/2026-05-29.json"
-      }
-    ],
-    "4996bc25-1f33-4053-ae1a-9ae983381e39": [
-      {
-        "hop": 1,
-        "edge_type": "raw_to_curated",
-        "consumer_run_id": "99ea4991-abc2-4560-8fa9-b44538cc6de0",
-        "upstream_run_id": null,
-        "source_file_id": "b2fba049-69ab-497d-a5fc-d5f8ec9720cc",
-        "raw_s3_path": "s3://raw/insurance_dlq/policy_dlq/2026-05-29.json"
-      }
-    ],
-    "50e20eb7-1b2c-4184-9558-e05a6ee90cd5": [
-      {
-        "hop": 1,
-        "edge_type": "raw_to_curated",
-        "consumer_run_id": "43c8ae29-1639-403e-82ab-9608ef27969c",
-        "upstream_run_id": null,
-        "source_file_id": "e6f68361-da90-480e-8678-72355ab90d03",
-        "raw_s3_path": "s3://raw/insurance_dlq/claim_dlq/2026-05-29.json"
-      }
-    ],
-    "aa24e6ae-60a9-420e-ae54-cb9fe6b9895f": [
-      {
-        "hop": 1,
-        "edge_type": "curated_to_canonical",
-        "consumer_run_id": "4ff34ae0-b254-433d-b0ce-5e07ad42f07b",
-        "upstream_run_id": "99ea4991-abc2-4560-8fa9-b44538cc6de0",
-        "source_file_id": null,
-        "raw_s3_path": null
-      },
-      {
-        "hop": 2,
-        "edge_type": "raw_to_curated",
-        "consumer_run_id": "99ea4991-abc2-4560-8fa9-b44538cc6de0",
-        "upstream_run_id": null,
-        "source_file_id": "b2fba049-69ab-497d-a5fc-d5f8ec9720cc",
-        "raw_s3_path": "s3://raw/insurance_dlq/policy_dlq/2026-05-29.json"
-      }
-    ],
-    "8d2145cf-e418-4f01-965e-553f17b21f5d": [
-      {
-        "hop": 1,
-        "edge_type": "curated_to_canonical",
-        "consumer_run_id": "267d682e-6db2-4a82-9005-039d4d465754",
-        "upstream_run_id": "43c8ae29-1639-403e-82ab-9608ef27969c",
-        "source_file_id": null,
-        "raw_s3_path": null
-      },
-      {
-        "hop": 2,
-        "edge_type": "raw_to_curated",
-        "consumer_run_id": "43c8ae29-1639-403e-82ab-9608ef27969c",
-        "upstream_run_id": null,
-        "source_file_id": "e6f68361-da90-480e-8678-72355ab90d03",
-        "raw_s3_path": "s3://raw/insurance_dlq/claim_dlq/2026-05-29.json"
-      }
-    ],
-    "9c51eca9-9218-4dbe-b31e-016248bd3c52": [
-      {
-        "hop": 1,
-        "edge_type": "quarantine",
-        "consumer_run_id": "267d682e-6db2-4a82-9005-039d4d465754",
-        "upstream_run_id": null,
-        "source_file_id": null,
-        "raw_s3_path": null
-      }
-    ],
-    "3a7b4f6c-746c-4c42-bebb-68fc9efa1c7e": [
-      {
-        "hop": 1,
-        "edge_type": "merge_to_canonical",
-        "consumer_run_id": "d755a610-ddef-4e1f-8446-9a7bf0e972b0",
-        "upstream_run_id": "267d682e-6db2-4a82-9005-039d4d465754",
-        "source_file_id": null,
-        "raw_s3_path": null
-      },
-      {
-        "hop": 1,
-        "edge_type": "merge_to_canonical",
-        "consumer_run_id": "d755a610-ddef-4e1f-8446-9a7bf0e972b0",
-        "upstream_run_id": "4ff34ae0-b254-433d-b0ce-5e07ad42f07b",
-        "source_file_id": null,
-        "raw_s3_path": null
-      },
-      {
-        "hop": 2,
-        "edge_type": "curated_to_canonical",
-        "consumer_run_id": "267d682e-6db2-4a82-9005-039d4d465754",
-        "upstream_run_id": "43c8ae29-1639-403e-82ab-9608ef27969c",
-        "source_file_id": null,
-        "raw_s3_path": null
-      },
-      {
-        "hop": 2,
-        "edge_type": "curated_to_canonical",
-        "consumer_run_id": "4ff34ae0-b254-433d-b0ce-5e07ad42f07b",
-        "upstream_run_id": "99ea4991-abc2-4560-8fa9-b44538cc6de0",
-        "source_file_id": null,
-        "raw_s3_path": null
-      },
-      {
-        "hop": 3,
-        "edge_type": "raw_to_curated",
-        "consumer_run_id": "43c8ae29-1639-403e-82ab-9608ef27969c",
-        "upstream_run_id": null,
-        "source_file_id": "e6f68361-da90-480e-8678-72355ab90d03",
-        "raw_s3_path": "s3://raw/insurance_dlq/claim_dlq/2026-05-29.json"
-      },
-      {
-        "hop": 3,
-        "edge_type": "raw_to_curated",
-        "consumer_run_id": "99ea4991-abc2-4560-8fa9-b44538cc6de0",
-        "upstream_run_id": null,
-        "source_file_id": "b2fba049-69ab-497d-a5fc-d5f8ec9720cc",
-        "raw_s3_path": "s3://raw/insurance_dlq/policy_dlq/2026-05-29.json"
-      }
-    ],
-    "dad5160b-0b41-4f11-b5ef-4c12054d588e": [
-      {
-        "hop": 1,
-        "edge_type": "canonical_to_sink",
-        "consumer_run_id": "c8c7f59a-6b27-41f7-8644-263ce059ecff",
-        "upstream_run_id": "d755a610-ddef-4e1f-8446-9a7bf0e972b0",
-        "source_file_id": null,
-        "raw_s3_path": null
-      },
-      {
-        "hop": 2,
-        "edge_type": "merge_to_canonical",
-        "consumer_run_id": "d755a610-ddef-4e1f-8446-9a7bf0e972b0",
-        "upstream_run_id": "267d682e-6db2-4a82-9005-039d4d465754",
-        "source_file_id": null,
-        "raw_s3_path": null
-      },
-      {
-        "hop": 2,
-        "edge_type": "merge_to_canonical",
-        "consumer_run_id": "d755a610-ddef-4e1f-8446-9a7bf0e972b0",
-        "upstream_run_id": "4ff34ae0-b254-433d-b0ce-5e07ad42f07b",
-        "source_file_id": null,
-        "raw_s3_path": null
-      },
-      {
-        "hop": 3,
-        "edge_type": "curated_to_canonical",
-        "consumer_run_id": "267d682e-6db2-4a82-9005-039d4d465754",
-        "upstream_run_id": "43c8ae29-1639-403e-82ab-9608ef27969c",
-        "source_file_id": null,
-        "raw_s3_path": null
-      },
-      {
-        "hop": 3,
-        "edge_type": "curated_to_canonical",
-        "consumer_run_id": "4ff34ae0-b254-433d-b0ce-5e07ad42f07b",
-        "upstream_run_id": "99ea4991-abc2-4560-8fa9-b44538cc6de0",
-        "source_file_id": null,
-        "raw_s3_path": null
-      },
-      {
-        "hop": 4,
-        "edge_type": "raw_to_curated",
-        "consumer_run_id": "43c8ae29-1639-403e-82ab-9608ef27969c",
-        "upstream_run_id": null,
-        "source_file_id": "e6f68361-da90-480e-8678-72355ab90d03",
-        "raw_s3_path": "s3://raw/insurance_dlq/claim_dlq/2026-05-29.json"
-      },
-      {
-        "hop": 4,
-        "edge_type": "raw_to_curated",
-        "consumer_run_id": "99ea4991-abc2-4560-8fa9-b44538cc6de0",
-        "upstream_run_id": null,
-        "source_file_id": "b2fba049-69ab-497d-a5fc-d5f8ec9720cc",
-        "raw_s3_path": "s3://raw/insurance_dlq/policy_dlq/2026-05-29.json"
-      }
-    ],
-    "d6b6e4f4-c8b9-4b64-acf6-63a4bb3a54ef": [
-      {
-        "hop": 1,
-        "edge_type": "detail_to_aggregate",
-        "consumer_run_id": "a9729a9b-3201-4282-a08a-6b990f1cee65",
-        "upstream_run_id": "c8c7f59a-6b27-41f7-8644-263ce059ecff",
-        "source_file_id": null,
-        "raw_s3_path": null
-      },
-      {
-        "hop": 2,
-        "edge_type": "canonical_to_sink",
-        "consumer_run_id": "c8c7f59a-6b27-41f7-8644-263ce059ecff",
-        "upstream_run_id": "d755a610-ddef-4e1f-8446-9a7bf0e972b0",
-        "source_file_id": null,
-        "raw_s3_path": null
-      },
-      {
-        "hop": 3,
-        "edge_type": "merge_to_canonical",
-        "consumer_run_id": "d755a610-ddef-4e1f-8446-9a7bf0e972b0",
-        "upstream_run_id": "267d682e-6db2-4a82-9005-039d4d465754",
-        "source_file_id": null,
-        "raw_s3_path": null
-      },
-      {
-        "hop": 3,
-        "edge_type": "merge_to_canonical",
-        "consumer_run_id": "d755a610-ddef-4e1f-8446-9a7bf0e972b0",
-        "upstream_run_id": "4ff34ae0-b254-433d-b0ce-5e07ad42f07b",
-        "source_file_id": null,
-        "raw_s3_path": null
-      },
-      {
-        "hop": 4,
-        "edge_type": "curated_to_canonical",
-        "consumer_run_id": "267d682e-6db2-4a82-9005-039d4d465754",
-        "upstream_run_id": "43c8ae29-1639-403e-82ab-9608ef27969c",
-        "source_file_id": null,
-        "raw_s3_path": null
-      },
-      {
-        "hop": 4,
-        "edge_type": "curated_to_canonical",
-        "consumer_run_id": "4ff34ae0-b254-433d-b0ce-5e07ad42f07b",
-        "upstream_run_id": "99ea4991-abc2-4560-8fa9-b44538cc6de0",
-        "source_file_id": null,
-        "raw_s3_path": null
-      },
-      {
-        "hop": 5,
-        "edge_type": "raw_to_curated",
-        "consumer_run_id": "43c8ae29-1639-403e-82ab-9608ef27969c",
-        "upstream_run_id": null,
-        "source_file_id": "e6f68361-da90-480e-8678-72355ab90d03",
-        "raw_s3_path": "s3://raw/insurance_dlq/claim_dlq/2026-05-29.json"
-      },
-      {
-        "hop": 5,
-        "edge_type": "raw_to_curated",
-        "consumer_run_id": "99ea4991-abc2-4560-8fa9-b44538cc6de0",
-        "upstream_run_id": null,
-        "source_file_id": "b2fba049-69ab-497d-a5fc-d5f8ec9720cc",
-        "raw_s3_path": "s3://raw/insurance_dlq/policy_dlq/2026-05-29.json"
-      }
-    ],
-    "51bbf43e-ec02-43fe-ab23-8bf7fef1cac3": [
-      {
-        "hop": 1,
-        "edge_type": "canonical_to_sink",
-        "consumer_run_id": "a9c084e7-0fda-4922-927d-7ab6d553396a",
-        "upstream_run_id": "a9729a9b-3201-4282-a08a-6b990f1cee65",
-        "source_file_id": null,
-        "raw_s3_path": null
-      },
-      {
-        "hop": 2,
-        "edge_type": "detail_to_aggregate",
-        "consumer_run_id": "a9729a9b-3201-4282-a08a-6b990f1cee65",
-        "upstream_run_id": "c8c7f59a-6b27-41f7-8644-263ce059ecff",
-        "source_file_id": null,
-        "raw_s3_path": null
-      },
-      {
-        "hop": 3,
-        "edge_type": "canonical_to_sink",
-        "consumer_run_id": "c8c7f59a-6b27-41f7-8644-263ce059ecff",
-        "upstream_run_id": "d755a610-ddef-4e1f-8446-9a7bf0e972b0",
-        "source_file_id": null,
-        "raw_s3_path": null
-      },
-      {
-        "hop": 4,
-        "edge_type": "merge_to_canonical",
-        "consumer_run_id": "d755a610-ddef-4e1f-8446-9a7bf0e972b0",
-        "upstream_run_id": "267d682e-6db2-4a82-9005-039d4d465754",
-        "source_file_id": null,
-        "raw_s3_path": null
-      },
-      {
-        "hop": 4,
-        "edge_type": "merge_to_canonical",
-        "consumer_run_id": "d755a610-ddef-4e1f-8446-9a7bf0e972b0",
-        "upstream_run_id": "4ff34ae0-b254-433d-b0ce-5e07ad42f07b",
-        "source_file_id": null,
-        "raw_s3_path": null
-      },
-      {
-        "hop": 5,
-        "edge_type": "curated_to_canonical",
-        "consumer_run_id": "267d682e-6db2-4a82-9005-039d4d465754",
-        "upstream_run_id": "43c8ae29-1639-403e-82ab-9608ef27969c",
-        "source_file_id": null,
-        "raw_s3_path": null
-      },
-      {
-        "hop": 5,
-        "edge_type": "curated_to_canonical",
-        "consumer_run_id": "4ff34ae0-b254-433d-b0ce-5e07ad42f07b",
-        "upstream_run_id": "99ea4991-abc2-4560-8fa9-b44538cc6de0",
-        "source_file_id": null,
-        "raw_s3_path": null
-      },
-      {
-        "hop": 6,
-        "edge_type": "raw_to_curated",
-        "consumer_run_id": "43c8ae29-1639-403e-82ab-9608ef27969c",
-        "upstream_run_id": null,
-        "source_file_id": "e6f68361-da90-480e-8678-72355ab90d03",
-        "raw_s3_path": "s3://raw/insurance_dlq/claim_dlq/2026-05-29.json"
-      },
-      {
-        "hop": 6,
-        "edge_type": "raw_to_curated",
-        "consumer_run_id": "99ea4991-abc2-4560-8fa9-b44538cc6de0",
-        "upstream_run_id": null,
-        "source_file_id": "b2fba049-69ab-497d-a5fc-d5f8ec9720cc",
+        "source_file_id": "cc8c6dc5-0cd8-4311-a0e4-dc9d37170721",
         "raw_s3_path": "s3://raw/insurance_dlq/policy_dlq/2026-05-29.json"
       }
     ]
