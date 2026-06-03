@@ -314,15 +314,21 @@ def test_s2_refeed_no_cross_contamination(cc):
         orig_raws_after, rep_raws))
 
 
-def test_s2_refeed_discovery_ordering_fragility_NOTE(cc):
-    """The no-contamination guarantee above relies on the corrected ingest
-    committing with a STRICTLY-NEWER finished_at. latest_succeeded_run /
-    run_output_link order by finished_at DESC then a RANDOM run_id/uuid; if two
-    ingests in the slice share finished_at (clock_timestamp ties, or an
-    out-of-order/backfilled finished_at), a refeed re-canonicalize discovers a
-    NON-DETERMINISTIC upstream. This probe documents the ordering dependency by
-    forcing two succeeded ingests in one slice with EQUAL finished_at and
-    showing discovery is decided by uuid, not recency."""
+def test_s2_refeed_discovery_ordering_tiebreak_FIXED(cc):
+    """The no-contamination guarantee above relies on the corrected ingest being
+    discovered as the latest. latest_succeeded_run / run_output_link order by
+    finished_at DESC; if two ingests in the slice share finished_at
+    (clock_timestamp ties, or an out-of-order/backfilled finished_at), the
+    secondary key decides.
+
+    HISTORY: this probe USED to document a fragility — the secondary key was a
+    RANDOM run_id (uuid) DESC, so on a finished_at tie discovery was a coin-flip
+    and a refeed could re-canonicalize a STALE ingest.
+
+    FIXED (migration 028): the secondary key is now `seq DESC` (a monotonic
+    BIGSERIAL insert-order key). On a finished_at tie the run CREATED LATER
+    (higher seq) wins DETERMINISTICALLY — i.e. the corrected/newer ingest, not a
+    uuid coin-flip. This probe now ASSERTS that fixed, deterministic behaviour."""
     dom = A4 + "_s2b"
     f1 = _file(10, domain=dom, tag="one")
     f2 = _file(20, domain=dom, tag="two")
@@ -334,18 +340,24 @@ def test_s2_refeed_discovery_ordering_fragility_NOTE(cc):
     # Force an EXACT finished_at tie (the hazard the clock normally hides).
     cc.execute("UPDATE cp.run_log SET finished_at = (SELECT finished_at FROM "
                "cp.run_log WHERE run_id=%s) WHERE run_id=%s", (i1["run_id"], i2["run_id"]))
+    # The deterministic winner is the LATER-created run (higher seq) — i2, the
+    # corrected/newer ingest — regardless of how the random uuids compare.
+    seq1, seq2 = cc.execute(
+        "SELECT (SELECT seq FROM cp.run_log WHERE run_id=%s),"
+        "       (SELECT seq FROM cp.run_log WHERE run_id=%s)",
+        (i1["run_id"], i2["run_id"]),
+    ).fetchone()
+    assert seq2 > seq1, "i2 (created later) must have the higher seq"
     disc = runs.latest_succeeded_run(cc, domain=dom, dataset="orders",
                                      business_date="2026-05-01",
                                      pipeline_type="ingestion")
-    # The winner is purely the run_id DESC tiebreak, NOT "the corrected/newer".
-    expected = max(i1["run_id"], i2["run_id"])
-    assert str(disc) == expected, (
-        "ORDERING FRAGILITY CONFIRMED: on a finished_at tie, discovery is a "
-        "random run_id DESC tiebreak. A refeed whose corrected ingest ties the "
-        "old one can re-canonicalize the WRONG (stale) ingest — silent "
-        "cross-contamination.")
-    print("\n[S2b NOTE] finished_at tie -> discovery picked", str(disc)[:8],
-          "by uuid DESC, not by recency")
+    assert str(disc) == i2["run_id"], (
+        "ORDERING FRAGILITY FIXED (028): on a finished_at tie, discovery now picks "
+        "the higher-seq (later-created) run deterministically — the corrected/newer "
+        "ingest — NOT a random run_id DESC coin-flip. Stale-ingest re-canonicalize "
+        "is closed at the source.")
+    print("\n[S2b FIXED] finished_at tie -> discovery picked", str(disc)[:8],
+          "by seq DESC (deterministic, = later-created ingest)")
 
 
 # ========================================================================= #

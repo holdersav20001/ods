@@ -196,6 +196,10 @@ BEGIN
 END $$;
 
 -- cp.latest_succeeded_run: newest succeeded run for the slice, null if none.
+-- SUPERSEDED by 028_discovery_tiebreak.sql: the ORDER BY tie-break changes from
+-- `run_id DESC` (random uuid) to `seq DESC` (monotonic insert order). 028 applies
+-- last (CREATE OR REPLACE, same 4-arg signature), so the 028 body is live; this
+-- copy is kept only for migration history. Edit the body in 028, NOT here.
 CREATE OR REPLACE FUNCTION cp.latest_succeeded_run(
     p_domain text, p_dataset text, p_business_date date, p_pipeline_type text
 ) RETURNS uuid LANGUAGE plpgsql AS $$
