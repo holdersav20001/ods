@@ -105,11 +105,11 @@ $env:ODS_CP_PASSWORD="ods"
 ## Apply Migrations
 
 `db/apply.py` connects over TCP and applies the ordered migrations in
-`db/migrations/` (001 through 031). Because `docker exec` is unavailable, this is
+`db/migrations/` (001 through 033). Because `docker exec` is unavailable, this is
 **the** way to (re)create the schema:
 
 ```powershell
-# Drop and recreate ods_cp from scratch, then apply 001-031.
+# Drop and recreate ods_cp from scratch, then apply 001-033.
 python -m db.apply --drop
 ```
 
@@ -118,7 +118,9 @@ run-grain discovery; **029** fixes the DLQ diagnostics (input-edge exemption +
 null-workflow attribution); **030** corrects audit SQL (quarantine→raw trace,
 schema-version sort, visibility-conflict group-by, `validate_rows`/dual-ODS
 guard); **031** rebuilds `reconcile_workflow` on a fact-spine (raw-in vs
-sink+dlq-out across the whole workflow).
+sink+dlq-out across the whole workflow); **032** fixes schema-contract latest
+selection and rejects vacuous workflow reconciliation; **033** adds schema
+`validation_rules` and clearer target-row trace exceptions.
 
 Run `python -m db.apply --drop` for a reliably-clean database before running the
 full test suite or regenerating snapshots.
@@ -129,7 +131,7 @@ full test suite or regenerating snapshots.
 python -m pytest -q
 ```
 
-Expected: **385 passed, 1 skipped, 1 xfailed**. Run `python -m db.apply --drop`
+Expected: **389 passed, 1 skipped, 1 xfailed**. Run `python -m db.apply --drop`
 first for a deterministic, clean database.
 
 Useful focused suites:
@@ -278,7 +280,7 @@ registered raw file the row ultimately came from.
 ```text
 control/        thin Python wrappers + SDK over the cp.* write functions
 control/queries/ reusable SQL (e.g. trace_row.sql — provenance walk to raw)
-db/migrations/  001-031 ordered Postgres migrations (schema + functions)
+db/migrations/  001-033 ordered Postgres migrations (schema + functions)
 db/apply.py     migration applier (TCP; python -m db.apply --drop)
 harness/        the three demo workflows + shared snapshot exporter
 dashboard/      static React dashboard + committed snapshots in dashboard/data/
@@ -287,6 +289,13 @@ docs/           specs, reviews, and reference docs (below)
 ```
 
 ## Documentation
+
+- `docs/reference/developer-quickstart.md` - clean setup, demos, diagnostics,
+  and release-check commands.
+- `docs/reference/dashboard-db-functions.md` - read-only SQL function contract
+  used by dashboard/support consumers.
+- `docs/reference/api-driven-application-contract.md` - handoff contract for the
+  future API-driven repository.
 
 - `docs/reference/control-plane-write-contract.md` — the authoritative 10-step
   write contract and its exact wrapper mapping.

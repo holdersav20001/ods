@@ -137,6 +137,6 @@ acceptance tests in `tests/test_write_contract.py`:
 - every run-to-run (downstream) `input_edge` carries a non-null
   `upstream_output_link_id`; file-leaf edges instead carry `source_file_id`;
 - target rows are stamped with `_ods_output_link_id`;
-- business-visible rows have a corresponding `ods.target_visibility` row (only
-  for workflows that perform step 9 — e.g. the policy/claims demo; the
-  customer/transaction demo intentionally does not activate visibility).
+- business-visible rows have a corresponding `ods.target_visibility` row when
+  the workflow performs step 9; the customer/transaction, policy/claims, and DLQ
+  demos all activate visibility for their business-visible target rows.
