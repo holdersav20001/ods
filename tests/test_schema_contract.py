@@ -49,50 +49,74 @@ def test_get_contract_none_when_missing(conn):
                                layer="silver") is None
 
 
-# ---- F4: latest-version sort is correct for multi-part versions --------------
+# ---- Re-audit #1/#2: latest is version-aware + effective-aware --------------
 
 def test_get_schema_contract_latest_multipart_versions(conn):
-    """F4 (migration 030): the OLD 'latest' sort stripped+concatenated digits
-    (regexp_replace ... '\\D' ... ''), so 'claim.v1.10'->110 wrongly beat
-    'claim.v2'->2 and 'claim.v1.0'->10 tied 'claim.v10'->10. The fix orders by
-    effective_from DESC NULLS LAST, created_at DESC, so the most-recently-
-    registered (= last inserted; created_at is clock_timestamp(), strictly
-    increasing even within one INSERT) wins. Register v1.0, v1.10, v2 in an order
-    where the digit-concat bug WOULD pick the wrong one, and assert the fix picks
-    the genuinely-latest registered."""
+    """Re-audit #1/#2 (migration 032): 'latest' must be the highest NUMERIC
+    version VECTOR (int[]), INDEPENDENT of insert order, and must EXCLUDE
+    future-dated contracts.
+
+    The 030 "fix" ordered by effective_from DESC NULLS LAST, created_at DESC. That
+    is (#2) NOT version-aware — with NULL effective_from it falls back to created_at
+    (insert order), returning the LAST-inserted version — and (#1) NOT
+    effective-aware — a future effective_from sorts FIRST and is returned as latest.
+
+    PROOF this catches the 030 bug: each block inserts in an order where the 030
+    body would return the WRONG row; the 032 version vector + future-exclusion
+    returns the right one, so each assertion FAILS against the 030 ordering."""
     dom, ds, layer = "insurance", "claim_f4", "silver"
-    # Insert in registration order; v2 registered LAST is the current contract.
-    # Under the OLD bug v1.10 (digit-concat 110) would have won over v2 (2).
+    # Non-monotonic insert (created_at order != version order). NULL effective_from
+    # => 030 falls back to created_at DESC and returns the last-inserted (v1.2).
+    # The 032 version vector ranks v1.10 {1,10} > v1.0 {1,0} and v2 {2} > both.
     conn.execute(
         "INSERT INTO cp.schema_contract (domain,dataset,layer,schema_version) "
-        "VALUES (%s,%s,%s,'claim.v1.0'),(%s,%s,%s,'claim.v1.10'),"
-        "(%s,%s,%s,'claim.v2')",
-        (dom, ds, layer, dom, ds, layer, dom, ds, layer),
+        "VALUES (%s,%s,%s,'claim.v2'),(%s,%s,%s,'claim.v1.10'),"
+        "(%s,%s,%s,'claim.v1.0'),(%s,%s,%s,'claim.v1.2')",
+        (dom, ds, layer, dom, ds, layer, dom, ds, layer, dom, ds, layer),
     )
     latest = conn.execute(
         "SELECT (c).schema_version FROM cp.get_schema_contract(%s,%s,%s) c",
         (dom, ds, layer),
     ).fetchone()[0]
-    # The genuinely-latest registered is claim.v2; the digit-concat bug would
-    # have returned claim.v1.10 (110 > 2). Assert the bug's failure case is fixed.
+    # Genuine numeric latest is claim.v2 ({2} beats every {1,*}). The 030 body
+    # (created_at DESC) would have returned claim.v1.2 (last inserted).
     assert latest == "claim.v2", f"latest picked {latest}, expected claim.v2"
-    assert latest != "claim.v1.10", "digit-concatenation bug is still present"
+    assert latest != "claim.v1.2", "030 created_at-only ordering is still present"
 
-    # effective_from dominates created_at: a contract marked effective later wins
-    # even if registered earlier.
-    dom2, ds2 = "insurance", "claim_f4b"
+    # v1.10 > v1.2 numerically (a text/digit-concat order would mis-rank): isolate
+    # the two so v2 does not dominate, insert v1.10 first so created_at disagrees.
+    dom1, ds1 = "insurance", "claim_f4_mp"
+    conn.execute(
+        "INSERT INTO cp.schema_contract (domain,dataset,layer,schema_version) "
+        "VALUES (%s,%s,%s,'claim.v1.10'),(%s,%s,%s,'claim.v1.2')",
+        (dom1, ds1, layer, dom1, ds1, layer),
+    )
+    mp = conn.execute(
+        "SELECT (c).schema_version FROM cp.get_schema_contract(%s,%s,%s) c",
+        (dom1, ds1, layer),
+    ).fetchone()[0]
+    assert mp == "claim.v1.10", f"multipart latest picked {mp}, expected claim.v1.10"
+
+    # #1 FUTURE-dated exclusion: v2 effective 2099 is NOT the latest (not yet in
+    # force); v1 effective 2020 is. Under the 030 body v2 (effective_from DESC)
+    # sorts first and IS returned -> this asserts the opposite.
+    dom2, ds2 = "insurance", "claim_f4_future"
     conn.execute(
         "INSERT INTO cp.schema_contract "
         "(domain,dataset,layer,schema_version,effective_from) "
-        "VALUES (%s,%s,%s,'claim.v9','2026-01-01'),"
-        "(%s,%s,%s,'claim.v3','2026-06-01')",
+        "VALUES (%s,%s,%s,'claim.v1','2020-01-01'),"
+        "(%s,%s,%s,'claim.v2','2099-01-01')",
         (dom2, ds2, layer, dom2, ds2, layer),
     )
-    eff = conn.execute(
+    fut = conn.execute(
         "SELECT (c).schema_version FROM cp.get_schema_contract(%s,%s,%s) c",
         (dom2, ds2, layer),
     ).fetchone()[0]
-    assert eff == "claim.v3", f"effective_from-latest picked {eff}, expected claim.v3"
+    assert fut == "claim.v1", f"future-dated v2 leaked into latest: {fut}"
+    # but exact-version still returns the future-dated contract on request.
+    fut_exact = schema.get_contract(conn, domain=dom2, dataset=ds2, layer=layer,
+                                    schema_version="claim.v2")
+    assert fut_exact is not None and fut_exact["schema_version"] == "claim.v2"
 
     # exact-version path is UNCHANGED (still honours the request verbatim).
     exact = conn.execute(

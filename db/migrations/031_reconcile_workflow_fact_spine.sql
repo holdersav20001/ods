@@ -36,6 +36,17 @@
 -- cp.reconcile_workflow — FACT-SPINE conservation.
 --
 --   ╔══════════════════════════════════════════════════════════════════════╗
+--   ║ ***SUPERSEDED by migration 032*** (032_schema_contract_version_order).  ║
+--   ║ The 031 body below reports a vacuous false `ok` when raw_in=0 AND        ║
+--   ║ sink_out=0 AND dlq_out=0 (e.g. a typo'd/empty p_source_datasets or a     ║
+--   ║ p_leaf_target that matches no rows): 0 == 0 + 0 -> status 'ok'. 032      ║
+--   ║ re-declares reconcile_workflow with the SAME signature + body PLUS a     ║
+--   ║ guard that RAISES when all three are zero (a genuine workflow always     ║
+--   ║ has >=1 fact row), and applies LAST so the 032 definition wins. See      ║
+--   ║ migration 032 + the re-audit regression #4.                             ║
+--   ╚══════════════════════════════════════════════════════════════════════╝
+--
+--   ╔══════════════════════════════════════════════════════════════════════╗
 --   ║ Re-declares cp.reconcile_workflow as a SOUND fact-spine conservation.  ║
 --   ║ The 030 body (itself the 015 lineage) is SUPERSEDED; 031 applies last  ║
 --   ║ so THIS definition wins.                                               ║

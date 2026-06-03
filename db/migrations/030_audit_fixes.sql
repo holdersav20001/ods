@@ -111,6 +111,19 @@ END $function$;
 -- F4 — cp.get_schema_contract: correct, deterministic "latest" order.
 --
 --   ╔══════════════════════════════════════════════════════════════════════╗
+--   ║ ***SUPERSEDED by migration 032*** (032_schema_contract_version_order).  ║
+--   ║ The 030 "fix" below replaced the digit-concat bug with                 ║
+--   ║   ORDER BY effective_from DESC NULLS LAST, created_at DESC             ║
+--   ║ which is BOTH (#1) NOT effective-aware — a FUTURE-dated contract is     ║
+--   ║ returned as "latest/active" — AND (#2) NOT version-aware — "latest" is  ║
+--   ║ decided purely by created_at (insert order), so registering v10 then    ║
+--   ║ later v9 returns v9. 032 re-declares get_schema_contract with a real     ║
+--   ║ numeric VERSION VECTOR (int[]) order + a future-dated exclusion on the   ║
+--   ║ latest path, and applies LAST so the 032 definition wins. See migration  ║
+--   ║ 032 + the re-audit regression #1/#2.                                    ║
+--   ╚══════════════════════════════════════════════════════════════════════╝
+--
+--   ╔══════════════════════════════════════════════════════════════════════╗
 --   ║ The 024-seeded / 029-era copy of cp.get_schema_contract is SUPERSEDED  ║
 --   ║ by this 030 body. 030 applies last so THIS definition wins. Signature  ║
 --   ║ is UNCHANGED (4 args) -> CREATE OR REPLACE suffices.                   ║

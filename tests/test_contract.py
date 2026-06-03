@@ -374,21 +374,77 @@ def test_get_schema_contract_roundtrip(conn):
 
 
 def test_get_schema_contract_latest_is_numeric_not_text(conn):
-    """P3 (migration 029): 'latest' must be the highest NUMERIC semver suffix, not
-    text order. Insert claim.v9 and claim.v10 — text DESC wrongly picks v9
-    ('claim.v9' > 'claim.v10' lexically); the fix must pick v10."""
+    """Re-audit #2 (migration 032): 'latest' must be the highest NUMERIC version
+    vector, INDEPENDENT of insert order. The 030 "fix" ordered purely by
+    effective_from DESC NULLS LAST, created_at DESC — i.e. by INSERT ORDER when
+    effective_from is NULL — so registering v10 then later v9 returned v9 (the
+    last-inserted), silently dropping the intended numeric-semver latest.
+
+    PROOF this catches the 030 bug: versions are inserted in NON-monotonic order
+    (v2, then v10, then v9 — created_at order != version order). Under the 030
+    body the latest path returns the LAST-inserted row -> v9. The 032 version
+    vector returns the highest NUMERIC version -> v10. So this assertion FAILS
+    against the 030 ordering and passes only with the version-aware 032 fix."""
     dom, ds, layer = "insurance", "claim_p3", "silver"
+    # Non-monotonic insert order: created_at(v2) < created_at(v10) < created_at(v9).
+    # 030 (effective_from NULL -> created_at DESC) would return v9 (last inserted).
     conn.execute(
         "INSERT INTO cp.schema_contract (domain,dataset,layer,schema_version) "
-        "VALUES (%s,%s,%s,'claim.v9'),(%s,%s,%s,'claim.v10')",
-        (dom, ds, layer, dom, ds, layer),
+        "VALUES (%s,%s,%s,'claim.v2'),(%s,%s,%s,'claim.v10'),(%s,%s,%s,'claim.v9')",
+        (dom, ds, layer, dom, ds, layer, dom, ds, layer),
     )
     latest = conn.execute(
         "SELECT (c).schema_version FROM cp.get_schema_contract(%s,%s,%s) c",
         (dom, ds, layer),
     ).fetchone()[0]
+    # The genuine numeric latest is v10; the 030 body would have returned v9
+    # (the last-inserted row). Assert BOTH the right answer and the bug's signature.
     assert latest == "claim.v10", f"latest picked {latest}, expected claim.v10"
-    # exact-version path still honours the request verbatim.
+    assert latest != "claim.v9", "030 created_at-only ordering is still present"
+
+    # Multi-part semver: v1.10 > v1.2 numerically (text/digit-concat would mis-rank).
+    # Insert v1.10 BEFORE v1.2 so created_at order again disagrees with version order.
+    dom2, ds2 = "insurance", "claim_p3_multipart"
+    conn.execute(
+        "INSERT INTO cp.schema_contract (domain,dataset,layer,schema_version) "
+        "VALUES (%s,%s,%s,'claim.v1.10'),(%s,%s,%s,'claim.v1.2')",
+        (dom2, ds2, layer, dom2, ds2, layer),
+    )
+    multipart = conn.execute(
+        "SELECT (c).schema_version FROM cp.get_schema_contract(%s,%s,%s) c",
+        (dom2, ds2, layer),
+    ).fetchone()[0]
+    assert multipart == "claim.v1.10", (
+        f"multi-part latest picked {multipart}, expected claim.v1.10 (v1.10 > v1.2)")
+
+    # FUTURE-dated exclusion: a contract whose effective_from is in the future is
+    # NOT returned by the latest path, but IS returned when its exact version is
+    # requested. Under the 030 body the future-dated row sorts FIRST (effective_from
+    # DESC NULLS LAST) and IS returned as latest -> this asserts the opposite.
+    dom3, ds3 = "insurance", "claim_p3_future"
+    conn.execute(
+        "INSERT INTO cp.schema_contract "
+        "(domain,dataset,layer,schema_version,effective_from) "
+        "VALUES (%s,%s,%s,'claim.v1','2020-01-01'),"
+        "(%s,%s,%s,'claim.v2','2099-01-01')",
+        (dom3, ds3, layer, dom3, ds3, layer),
+    )
+    fut_latest = conn.execute(
+        "SELECT (c).schema_version FROM cp.get_schema_contract(%s,%s,%s) c",
+        (dom3, ds3, layer),
+    ).fetchone()[0]
+    assert fut_latest == "claim.v1", (
+        f"future-dated v2 leaked into latest: {fut_latest} (expected claim.v1)")
+    # but the exact-version path returns the future-dated contract on request.
+    fut_exact = conn.execute(
+        "SELECT (c).schema_version, (c).effective_from "
+        "FROM cp.get_schema_contract(%s,%s,%s,'claim.v2') c",
+        (dom3, ds3, layer),
+    ).fetchone()
+    assert fut_exact[0] == "claim.v2"
+    assert str(fut_exact[1]) == "2099-01-01"
+
+    # exact-version path still honours the request verbatim (numeric-suffix case).
     exact = conn.execute(
         "SELECT (c).schema_version FROM cp.get_schema_contract(%s,%s,%s,'claim.v9') c",
         (dom, ds, layer),

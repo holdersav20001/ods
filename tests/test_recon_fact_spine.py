@@ -254,6 +254,40 @@ def test_single_source_fallback_no_params_still_works(conn):
     assert m["aggregates_excluded"] is True
 
 
+def test_reconcile_workflow_rejects_vacuous_all_zero(conn):
+    """Re-audit #4 (migration 032): a reconcile that selects NOTHING on either
+    side (raw_in=0, sink_out=0, dlq_out=0) must RAISE, not report a vacuous false
+    'ok'. The 031 body computed 0 == 0 + 0 -> status 'ok' and inserted a green
+    reconciliation_log row, so a typo'd/empty p_source_datasets (or a p_leaf_target
+    matching no rows) silently passed.
+
+    PROOF this catches the 031 bug: the same call against the 031 body inserts an
+    'ok' workflow row (no exception); against 032 it RAISES and inserts nothing."""
+    wf = str(uuid4())
+    fid = _file(conn, "transaction")
+    fr = _run(conn, wf, "ingestion", "transaction", file_id=fid)
+    fact_link = _raw_to_curated(conn, fr, fid, 6)
+    sr = _run(conn, wf, "sink", "cust_tx")
+    _sink(conn, sr, "cust_tx", fr, fact_link, 6, "raw_to_curated")
+
+    # A typo'd source dataset matches no raw_to_curated link AND the leaf matches
+    # no canonical_to_sink rows -> raw_in=0, sink_out=0, dlq_out=0 -> RAISE.
+    with pytest.raises(Exception) as exc:
+        recon.reconcile_workflow(conn, workflow_run_id=wf,
+                                 source_datasets=["NONEXISTENT_DS"],
+                                 leaf_target="customer_transaction", commit=False)
+    assert "nothing to reconcile" in str(exc.value)
+    # the transaction is now aborted; roll back to a clean savepoint-free state so
+    # the fixture teardown rollback is the only cleanup.
+    conn.rollback()
+    # And NO vacuous 'ok' workflow row was written (the RAISE aborted the INSERT).
+    n = conn.execute(
+        "SELECT count(*) FROM cp.reconciliation_log "
+        "WHERE check_type='workflow' AND metrics->>'workflow_run_id'=%s", (wf,)
+    ).fetchone()[0]
+    assert n == 0
+
+
 def test_missing_leaf_table_raises(conn):
     """When p_leaf_target names a dataset whose ods.<leaf> table is absent, the
     loop's dynamic %I + to_regclass guard RAISES. We write a real sink (so the
