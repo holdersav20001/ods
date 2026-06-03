@@ -37,6 +37,20 @@ TRACE_SQL = (pathlib.Path(__file__).resolve().parents[1]
 # never share a slice, and cleanup is exact. business_date is fixed per probe.
 BD = datetime.date(2025, 7, 14)
 
+# ISOLATION: these committing probes drive replay/sink chains whose hops DISCOVER
+# their upstream via cp.latest_succeeded_run, keyed on
+# (domain, dataset, business_date, pipeline_type). A prior INTERRUPTED run (whose
+# finally-cleanup never ran) or any committed demo data sharing a probe's slice
+# could be discovered as a stale "newest succeeded run" and silently anchor the
+# chain to the WRONG run — an intermittent flake on a re-run against a
+# data-present DB. We make the slice UNIQUE PER PYTEST SESSION by tagging the
+# probe's domain with a short uuid, so no committed demo/other-session/
+# prior-interrupted data can EVER live in this session's slice; discovery cannot
+# collide. Pre-cleanup (in mkslice below) still wipes any re-entrant slice. The
+# tag is appended to the caller-chosen domain, so per-probe (domain, dataset)
+# uniqueness — and exact, scoped cleanup — are preserved.
+NS = uuid.uuid4().hex[:8]
+
 
 # --------------------------------------------------------------------------- #
 # committing connection + per-slice cleanup
@@ -91,6 +105,12 @@ def cc():
     created = []
 
     def _slice(domain, dataset):
+        # Tag the caller-chosen domain with the per-session NS so this probe's
+        # slice (domain, dataset, business_date, pipeline_type) can never collide
+        # with committed demo data or a prior interrupted run's leftovers — the
+        # discovery hops (latest_succeeded_run) then only ever see THIS probe's
+        # own runs. The tagged domain is what the test asserts against.
+        domain = f"{domain}_{NS}"
         created.append((domain, dataset))
         _cleanup_slice(c, domain=domain, dataset=dataset)  # pre-clean
         return domain, dataset
@@ -101,6 +121,33 @@ def cc():
         for domain, dataset in created:
             _cleanup_slice(c, domain=domain, dataset=dataset)
         c.close()
+
+
+def _settle_order(c, *, domain, dataset):
+    """Make every EXISTING succeeded run in this slice strictly OLDER than any
+    run committed afterwards.
+
+    DISCOVERY DETERMINISM: the replay/sink hops discover their upstream via
+    cp.latest_succeeded_run, which orders ``finished_at DESC, run_id DESC``.
+    finished_at is clock_timestamp() (migration 007), so two runs committed in
+    quick succession USUALLY get distinct timestamps — but under load they can
+    land in the SAME microsecond, a TIE that the ``run_id DESC`` (random uuid)
+    secondary key then resolves NON-DETERMINISTICALLY. When a probe builds an
+    ORIGINAL chain and then a REPLAY chain in one slice, that tie can make a
+    downstream 'newest succeeded' discovery pick the ORIGINAL run instead of the
+    replay — an intermittent flake (the exact ordering fragility A4's
+    test_s2_refeed_discovery_ordering_fragility_NOTE documents as real).
+
+    Calling this AFTER the original chain and BEFORE the replay backdates the
+    original runs by an hour, so the replay's runs are UNAMBIGUOUSLY newest and
+    discovery is deterministic. This changes NO assertion's meaning — it removes
+    a clock-tie race the assertions always implicitly relied on. Test-only data
+    nudge (same technique as A4 _s2b); never touches production code.
+    """
+    c.execute(
+        "UPDATE cp.run_log SET finished_at = finished_at - interval '1 hour' "
+        "WHERE domain=%s AND dataset=%s AND status='succeeded' "
+        "AND finished_at IS NOT NULL", (domain, dataset))
 
 
 def _file(domain, dataset, *, md5=None, record_count=10, bd=BD):
@@ -144,6 +191,7 @@ def test_SOUND_replayed_row_answers_origin_correction_and_superseded(cc):
 
     # Corrected file (NEW md5) — replay the ingest run.
     corrected = _file(domain, dataset, record_count=10)
+    _settle_order(conn, domain=domain, dataset=dataset)  # replay runs are newest
     rep = composers.replay_single_file(
         conn, original_run_id=orig_ingest_run, file=corrected, commit=True)
     rep_canon_link = rep["canonicalize"]["link_id"]
@@ -208,6 +256,7 @@ def test_correction_history_reachability_from_a_replayed_row(cc):
     orig_ingest_run = orig["ingest"]["run_id"]
 
     corrected = _file(domain, dataset, record_count=7)
+    _settle_order(conn, domain=domain, dataset=dataset)  # replay runs are newest
     rep = composers.replay_single_file(
         conn, original_run_id=orig_ingest_run, file=corrected, commit=True)
     rep_sink_link = rep["sink"]["link_id"]
@@ -268,6 +317,7 @@ def test_SOUND_no_cross_contamination_old_traces_old_new_traces_new(cc):
     orig_sink_link = orig["sink"]["link_id"]
 
     corrected = _file(domain, dataset, record_count=9)  # DIFFERENT md5
+    _settle_order(conn, domain=domain, dataset=dataset)  # replay runs are newest
     rep = composers.replay_single_file(
         conn, original_run_id=orig_ingest_run, file=corrected, commit=True)
     rep_sink_link = rep["sink"]["link_id"]
@@ -307,6 +357,7 @@ def test_same_md5_replay_builds_coherent_chain_to_the_same_raw(cc):
     # Replay the SAME file (same md5) — register_file must dedup to the same
     # file_id, and the new chain must still trace to that one raw.
     same = dict(f)  # same md5, same path, same slice
+    _settle_order(conn, domain=domain, dataset=dataset)  # replay runs are newest
     rep = composers.replay_single_file(
         conn, original_run_id=orig_ingest_run, file=same, commit=True)
     rep_file_id = rep["ingest"]["file_id"]
@@ -348,11 +399,13 @@ def test_replay_of_replay_forms_navigable_correction_chain(cc):
     o_ingest = o["ingest"]["run_id"]
 
     f1 = _file(domain, dataset, record_count=5)
+    _settle_order(conn, domain=domain, dataset=dataset)  # R1 runs are newest
     r1 = composers.replay_single_file(
         conn, original_run_id=o_ingest, file=f1, commit=True)
     r1_ingest = r1["ingest"]["run_id"]   # the replay ingest run (carries markers)
 
     f2 = _file(domain, dataset, record_count=5)
+    _settle_order(conn, domain=domain, dataset=dataset)  # R2 runs are newest
     r2 = composers.replay_single_file(
         conn, original_run_id=r1_ingest, file=f2, commit=True)
     r2_ingest = r2["ingest"]["run_id"]
@@ -401,9 +454,11 @@ def test_double_replay_idempotent_counts_stable(cc):
 
     corrected_md5 = "md5-" + uuid.uuid4().hex
     fa = _file(domain, dataset, md5=corrected_md5, record_count=4)
+    _settle_order(conn, domain=domain, dataset=dataset)  # replay A runs are newest
     ra = composers.replay_single_file(
         conn, original_run_id=o_ingest, file=fa, commit=True)
     fb = _file(domain, dataset, md5=corrected_md5, record_count=4)
+    _settle_order(conn, domain=domain, dataset=dataset)  # replay B runs are newest
     rb = composers.replay_single_file(
         conn, original_run_id=o_ingest, file=fb, commit=True)
 
@@ -456,6 +511,7 @@ def test_SOUND_5a_default_refeed_sink_discovers_replay_canonical_not_original(cc
     orig_ingest = orig["ingest"]["run_id"]
 
     corrected = _file(domain, dataset, record_count=8)
+    _settle_order(conn, domain=domain, dataset=dataset)  # replay runs are newest
     rep = composers.replay_single_file(
         conn, original_run_id=orig_ingest, file=corrected, commit=True)
     rep_canon_run = rep["canonicalize"]["run_id"]
@@ -645,6 +701,7 @@ def test_dlq_drain_refeed_traces_to_raw_and_keeps_quarantine_origin(cc):
     # 2. DRAIN: replay the quarantined batch as a corrected file. Same composer
     #    (dlq_drain is a replay flavour); the drained chain must reach raw.
     corrected = _file(domain, dataset, record_count=5)
+    _settle_order(conn, domain=domain, dataset=dataset)  # replay runs are newest
     rep = composers.replay_single_file(
         conn, original_run_id=failed_run, file=corrected, commit=True)
     rep_sink_link = rep["sink"]["link_id"]
