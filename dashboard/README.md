@@ -44,15 +44,32 @@ The dashboard can load either known snapshot without editing JS:
 Known snapshots:
 
 ```text
-dashboard/data/demo-workflow.json            (default; customer/transaction)
-dashboard/data/policy-claims-workflow.json   (insurance policy/claims, Airflow)
+dashboard/data/demo-workflow.json               (default; customer/transaction)
+dashboard/data/policy-claims-workflow.json      (insurance policy/claims, Airflow)
+dashboard/data/policy-claims-dlq-workflow.json  (insurance DLQ quarantine + replay)
 ```
 
-Regenerate the policy/claims snapshot from the repo root:
+Regenerate the policy/claims snapshots from the repo root:
 
 ```powershell
 python -m harness.policy_claims_workflow --out dashboard/data/policy-claims-workflow.json
+python -m harness.policy_claims_dlq_workflow --out dashboard/data/policy-claims-dlq-workflow.json
 ```
+
+### DLQ / quarantine + replay
+
+The DLQ snapshot demonstrates the quarantine path. When it is loaded, the
+**Workflow Diagram** tab shows:
+
+- a red **DLQ / quarantine** banner summarising the quarantined records
+  (`scenario.quarantined_claim_id`), the stage that failed
+  (`scenario.dlq_stage`), the `dlq_id` / DLQ S3 target, and whether a
+  `trigger_type='replay'` execution resolved it (open → resolved), and
+- the `edge_type='quarantine'` output link rendered as a red **DLQ** card in
+  the producing run's column.
+
+The status (open vs resolved) is derived entirely from the snapshot — a
+quarantine output link plus a succeeded replay run — with no live query.
 
 Expected sections:
 
@@ -75,7 +92,12 @@ Expected sections:
 - **Developer Model:** clickable cards showing API calls/payloads.
 - **Target Rows:** row-level history and output-link traceability.
 - **Templates:** implementation examples.
-- **Documentation:** common questions from the design discussion.
+- **Documentation:** common questions from the design discussion, plus a
+  read-side **Diagnostics & docs** panel listing the support SQL functions
+  (`cp.dashboard_workflows`, `cp.developer_diagnostics`,
+  `cp.dashboard_output_trace`, `cp.dashboard_file_usage`,
+  `cp.dashboard_target_row_trace`, `cp.dashboard_airflow_lookup`) and pointers
+  to the write-contract and runbook docs. Static text only — no live query.
 
 ## Changed-Only Refeed
 
