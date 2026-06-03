@@ -22,6 +22,7 @@ from uuid import uuid4
 import pytest
 
 from harness.policy_claims_workflow import run_demo
+from harness.policy_claims_dlq_workflow import run_demo as run_dlq_demo
 
 BD = dt.date(2026, 6, 2)
 
@@ -171,10 +172,35 @@ def test_output_link_without_input_edge(conn):
 def test_input_edge_missing_input_identity(conn):
     run_id, wf = _new_run(conn, status="succeeded", finished=True)
     link = _output_link(conn, run_id)
-    # 'replay' is allowed to anchor to nothing by the table CHECK, so use it to
-    # materialise an edge with neither source_file_id nor upstream_output_link_id.
-    _input_edge(conn, link, edge_type="replay")
+    # P1a (migration 029): the diagnostic now exempts the SAME set the 012
+    # edge_must_anchor CHECK exempts — ('orchestrates','quarantine','replay') —
+    # because those legitimately carry context in source_ref. To materialise the
+    # genuine anomaly (a NON-exempt provenance edge with neither source_file_id
+    # nor upstream_output_link_id), we must inject data that bypasses the table
+    # CHECK + the 014 edge_type-matches-link trigger — exactly the kind of dirty
+    # state the diagnostic exists to catch. Drop the guards within this rolled-back
+    # txn, insert the dirty edge, and assert it IS flagged.
+    conn.execute("ALTER TABLE cp.lineage_edge DROP CONSTRAINT edge_must_anchor")
+    # curated_to_canonical is a run-edge type, so the 009
+    # upstream_link_required_for_run_edges CHECK also demands an upstream link;
+    # drop it too so the genuinely-dirty unanchored edge can be injected. The edge
+    # type matches the link's, so the 014 edge_type_matches_link trigger is silent.
+    conn.execute(
+        "ALTER TABLE cp.lineage_edge DROP CONSTRAINT upstream_link_required_for_run_edges")
+    _input_edge(conn, link, edge_type="curated_to_canonical")  # no anchors
     assert "input_edge_without_input_identifier" in _checks(_diagnose(conn, wf))
+
+
+def test_exempt_unanchored_edges_not_flagged(conn):
+    """P1a: a quarantine or replay edge with neither anchor (legitimate per the
+    012 CHECK) must NOT be flagged input_edge_without_input_identifier."""
+    run_id, wf = _new_run(conn, status="succeeded", finished=True)
+    for et in ("quarantine", "replay"):
+        link = _output_link(conn, run_id, edge_type=et,
+                            target_ref={"path": f"s3://{et}/x", "content_hash": et,
+                                        "version": 1})
+        _input_edge(conn, link, edge_type=et)  # anchors to nothing — allowed
+    assert "input_edge_without_input_identifier" not in _checks(_diagnose(conn, wf))
 
 
 def test_downstream_input_missing_upstream_output_link(conn):
@@ -398,3 +424,142 @@ def test_dashboard_airflow_lookup_round_trip(conn):
         "SELECT * FROM cp.dashboard_airflow_lookup(%s,%s)", [dag_id, dag_run_id]
     ).fetchall()
     assert any(r[0] == wf for r in rows), "airflow lookup did not return the demo workflow"
+
+
+# --------------------------------------------------------------------------- #
+# P1a — a SANCTIONED quarantine edge is NOT flagged
+# input_edge_without_input_identifier.
+# --------------------------------------------------------------------------- #
+def test_p1a_quarantine_edge_not_flagged(conn):
+    """The DLQ workflow's quarantine edge anchors to nothing (it carries context
+    in source_ref, exempt by the 012 edge_must_anchor CHECK) — it must NOT be
+    reported as input_edge_without_input_identifier (the 027 copy exempted only
+    'orchestrates', falsely flagging it). Scope to the canonicalization wfid whose
+    quarantine edge exists."""
+    demo = run_dlq_demo(conn, commit=False)
+    normal_wf = demo["normal"]["workflow_run_id"]
+    # The quarantine edge belongs to the normal canonicalization run.
+    qlink = conn.execute(
+        "SELECT quarantine_output_link_id FROM cp.dlq d JOIN cp.run_log r "
+        "ON r.run_id = d.run_id WHERE r.workflow_run_id = %s",
+        [normal_wf]).fetchone()[0]
+    assert qlink is not None
+    # The quarantine edge anchors to neither file nor upstream output.
+    anchors = conn.execute(
+        "SELECT source_file_id, upstream_lineage_link_id FROM cp.lineage_edge "
+        "WHERE lineage_link_id = %s AND edge_type = 'quarantine'", [qlink]
+    ).fetchone()
+    assert anchors == (None, None)
+    # ... yet developer_diagnostics must NOT flag it.
+    flagged = conn.execute(
+        "SELECT object_id FROM cp.developer_diagnostics(%s) "
+        "WHERE check_name = 'input_edge_without_input_identifier'",
+        [normal_wf]).fetchall()
+    qedge_id = conn.execute(
+        "SELECT input_edge_id FROM cp.input_edge "
+        "WHERE output_link_id = %s AND edge_type = 'quarantine'", [qlink]
+    ).fetchone()[0]
+    assert str(qedge_id) not in {str(r[0]) for r in flagged}
+    assert flagged == [], "no edge of the clean DLQ workflow should be flagged"
+
+
+def test_p1a_replay_edge_not_flagged(conn):
+    """A 'replay'-annotated edge (also exempt by edge_must_anchor) must not be
+    flagged for the replay workflow either."""
+    demo = run_dlq_demo(conn, commit=False)
+    replay_wf = demo["replay"]["workflow_run_id"]
+    flagged = _checks(_diagnose(conn, replay_wf))
+    assert "input_edge_without_input_identifier" not in flagged
+
+
+# --------------------------------------------------------------------------- #
+# P2a — a target row that LOST its _ods_workflow_run_id (but keeps a valid link
+# for this workflow) IS detected; a TOTAL orphan is detected table-wide.
+# --------------------------------------------------------------------------- #
+def test_p2a_target_row_null_workflow_id_is_detected(conn):
+    """A row with NULL _ods_workflow_run_id but a valid _ods_output_link_id
+    belonging to THIS workflow must be flagged target_row_missing_ods_ids (the
+    027 predicate `_ods_workflow_run_id = $1 AND _ods_workflow_run_id IS NULL`
+    made this impossible)."""
+    demo = run_demo(conn, commit=False)
+    wf = demo["day1"]["workflow_run_id"]
+    row_id = conn.execute(
+        "SELECT min(row_id) FROM ods.policy_claim WHERE _ods_workflow_run_id = %s",
+        [wf]).fetchone()[0]
+    # NULL the workflow id but keep the (valid) output link -> still attributable
+    # to this workflow via the link, but missing its workflow stamp.
+    conn.execute(
+        "UPDATE ods.policy_claim SET _ods_workflow_run_id = NULL WHERE row_id = %s",
+        [row_id])
+    rows = _diagnose(conn, wf, "ods.policy_claim")
+    flagged_ids = {str(r[3]) for r in rows
+                   if r[0] == "target_row_missing_ods_ids"}
+    assert str(row_id) in flagged_ids, (
+        "a row that lost _ods_workflow_run_id but keeps a valid link must be "
+        "detected")
+
+
+def test_p2a_total_orphan_row_detected_table_wide(conn):
+    """A row with ALL ODS ids null (total orphan, unattributable to any workflow)
+    must be detected by the table-wide target_row_orphan_no_ods_ids check."""
+    demo = run_demo(conn, commit=False)
+    wf = demo["day1"]["workflow_run_id"]
+    # Insert a total-orphan row directly (no ODS stamps at all). The target's
+    # _ods_lineage_link_id is NOT NULL in the schema, so insert via a temporary
+    # relaxation: the other demo's target requires it, so we null all three on an
+    # EXISTING row instead, mirroring a corruption a stamp-loss would produce.
+    row_id = conn.execute(
+        "SELECT min(row_id) FROM ods.policy_claim WHERE _ods_workflow_run_id = %s",
+        [wf]).fetchone()[0]
+    conn.execute(
+        "ALTER TABLE ods.policy_claim ALTER COLUMN _ods_lineage_link_id "
+        "DROP NOT NULL")
+    conn.execute(
+        "UPDATE ods.policy_claim SET _ods_workflow_run_id = NULL, "
+        "_ods_output_link_id = NULL, _ods_lineage_link_id = NULL WHERE row_id = %s",
+        [row_id])
+    # Table-wide check: not scoped to $1, so pass ANY existing workflow id.
+    rows = _diagnose(conn, wf, "ods.policy_claim")
+    orphan_ids = {str(r[3]) for r in rows
+                  if r[0] == "target_row_orphan_no_ods_ids"}
+    assert str(row_id) in orphan_ids, "total-orphan row must be detected table-wide"
+
+
+# --------------------------------------------------------------------------- #
+# P2b — dashboard_file_impact returns the downstream outputs derived from a file.
+# --------------------------------------------------------------------------- #
+def test_p2b_dashboard_file_impact_returns_downstream(conn):
+    """dashboard_file_impact(raw_file_id) returns ALL downstream outputs derived
+    from the file via provenance (canonical, merge, sink, aggregate), unlike
+    dashboard_file_usage which returns only the direct ingest edge."""
+    demo = run_dlq_demo(conn, commit=False)
+    normal = demo["normal"]
+    raw_claim_file_id = normal["claim_ingest"]["file_id"]
+
+    impact = conn.execute(
+        "SELECT output_link_id, edge_type FROM cp.dashboard_file_impact(%s)",
+        [raw_claim_file_id]).fetchall()
+    edge_types = {r[1] for r in impact}
+    impact_links = {str(r[0]) for r in impact}
+
+    # The downstream chain from the raw claim file reaches the canonical (good)
+    # output, the merge detail, the sink, and the aggregate.
+    assert "curated_to_canonical" in edge_types
+    assert "merge_to_canonical" in edge_types
+    assert "canonical_to_sink" in edge_types
+    assert "detail_to_aggregate" in edge_types
+
+    # The good canonical output IS in the impact set.
+    good_link = normal["claim_canonical"]["link_id"]
+    assert str(good_link) in impact_links
+
+    # dashboard_file_impact is STRICTLY broader than the direct-edge view: the
+    # direct ingest output (raw_to_curated) is in the impact set too, but the
+    # impact set also has downstream outputs the usage view does not.
+    usage_links = {
+        str(r[0]) for r in conn.execute(
+            "SELECT output_link_id FROM cp.dashboard_file_usage(%s)",
+            [raw_claim_file_id]).fetchall()}
+    assert impact_links - usage_links, (
+        "dashboard_file_impact should surface downstream outputs beyond the "
+        "direct ingest edges")

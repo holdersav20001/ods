@@ -218,15 +218,20 @@ def test_resolve_dlq_under_review_then_resolved(conn):
         "SELECT cp.quarantine(%s,'validate','bad',%s,%s,%s,%s)",
         (run_id, json.dumps({}), "s3://dlq/e.json", 1, json.dumps({"x": 1})),
     ).fetchone()[0]
+    # under_review is a non-terminal state -> lenient, no ref required.
     conn.execute("SELECT cp.resolve_dlq(%s,'under_review')", (dlq_id,))
     assert conn.execute(
         "SELECT status, replayed_at FROM cp.dlq WHERE dlq_id=%s", (dlq_id,)
     ).fetchone() == ("under_review", None)
-    conn.execute("SELECT cp.resolve_dlq(%s,'resolved')", (dlq_id,))
+    # P2c (migration 029): a TERMINAL 'resolved' must be traceable to a run/output;
+    # supply the resolving run id so the closed DLQ is traceable.
+    conn.execute("SELECT cp.resolve_dlq(%s,'resolved',%s)", (dlq_id, run_id))
     row = conn.execute(
-        "SELECT status, replayed_at FROM cp.dlq WHERE dlq_id=%s", (dlq_id,)
+        "SELECT status, replayed_at, resolved_by_run_id FROM cp.dlq WHERE dlq_id=%s",
+        (dlq_id,)
     ).fetchone()
     assert row[0] == "resolved" and row[1] is not None
+    assert str(row[2]) == str(run_id)
 
 
 # ---- Python wrappers ----------------------------------------------------------

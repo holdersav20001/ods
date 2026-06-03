@@ -275,6 +275,62 @@ def test_resolve_dlq_roundtrip(conn):
     assert str(row[2]) == str(run_id)
 
 
+def test_resolve_dlq_terminal_requires_traceable_ref(conn):
+    """P2c (migration 029): a TERMINAL resolution ('resolved'/'replayed') with NO
+    effective resolved_by_run_id AND NO resolved_by_output_link_id is untraceable
+    and must RAISE. With a ref it succeeds. 'rejected' stays lenient. The fix never
+    touches failed_payload/reason."""
+    run_id, _ = _start_run(conn)
+    dlq_id = conn.execute(
+        "SELECT cp.quarantine(%s,'validate','bad',%s,%s,%s,%s)",
+        (run_id, json.dumps({}), "s3://dlq/p2c.json", 1, json.dumps({"x": 1})),
+    ).fetchone()[0]
+
+    # resolved with NO refs -> RAISES (untraceable terminal resolution).
+    conn.execute("SAVEPOINT c_noref")
+    with pytest.raises(psycopg.errors.RaiseException, match="traceable"):
+        conn.execute("SELECT cp.resolve_dlq(%s,'resolved')", (dlq_id,))
+    conn.execute("ROLLBACK TO SAVEPOINT c_noref")
+
+    # replayed with NO refs -> also RAISES (the other terminal state).
+    conn.execute("SAVEPOINT c_noref2")
+    with pytest.raises(psycopg.errors.RaiseException, match="traceable"):
+        conn.execute("SELECT cp.resolve_dlq(%s,'replayed')", (dlq_id,))
+    conn.execute("ROLLBACK TO SAVEPOINT c_noref2")
+
+    # 'rejected' stays lenient (no ref required) and preserves history.
+    conn.execute("SELECT cp.resolve_dlq(%s,'rejected')", (dlq_id,))
+    rej = conn.execute(
+        "SELECT status, failed_payload FROM cp.dlq WHERE dlq_id=%s", (dlq_id,)
+    ).fetchone()
+    assert rej == ("rejected", {"x": 1})
+
+    # With a ref, a terminal resolution succeeds.
+    conn.execute("SELECT cp.resolve_dlq(%s,'resolved',%s)", (dlq_id, run_id))
+    ok = conn.execute(
+        "SELECT status, failed_payload, resolved_by_run_id FROM cp.dlq WHERE dlq_id=%s",
+        (dlq_id,)
+    ).fetchone()
+    assert ok[0] == "resolved"
+    assert ok[1] == {"x": 1}                  # history never touched
+    assert str(ok[2]) == str(run_id)
+
+    # An effective ref ALREADY on the row (from a prior corrected step) lets a
+    # later terminal resolution with no NEW ref succeed (uses the existing ref).
+    run2, _ = _start_run(conn)
+    dlq2 = conn.execute(
+        "SELECT cp.quarantine(%s,'validate','bad2',%s,%s,%s,%s)",
+        (run2, json.dumps({}), "s3://dlq/p2c2.json", 1, json.dumps({"y": 2})),
+    ).fetchone()[0]
+    # set a ref via a (lenient) corrected step first
+    conn.execute("SELECT cp.resolve_dlq(%s,'corrected',%s)", (dlq2, run2))
+    # now resolve with NO new ref -> the existing ref makes it traceable -> ok.
+    conn.execute("SELECT cp.resolve_dlq(%s,'resolved')", (dlq2,))
+    assert conn.execute(
+        "SELECT status FROM cp.dlq WHERE dlq_id=%s", (dlq2,)
+    ).fetchone()[0] == "resolved"
+
+
 # ---- get_schema_contract (024) ----------------------------------------------
 
 def test_get_schema_contract_roundtrip(conn):
@@ -309,6 +365,29 @@ def test_get_schema_contract_roundtrip(conn):
         "SELECT (c).schema_contract_id FROM cp.get_schema_contract('x','y','z') c"
     ).fetchone()[0]
     assert none_row is None
+
+
+def test_get_schema_contract_latest_is_numeric_not_text(conn):
+    """P3 (migration 029): 'latest' must be the highest NUMERIC semver suffix, not
+    text order. Insert claim.v9 and claim.v10 — text DESC wrongly picks v9
+    ('claim.v9' > 'claim.v10' lexically); the fix must pick v10."""
+    dom, ds, layer = "insurance", "claim_p3", "silver"
+    conn.execute(
+        "INSERT INTO cp.schema_contract (domain,dataset,layer,schema_version) "
+        "VALUES (%s,%s,%s,'claim.v9'),(%s,%s,%s,'claim.v10')",
+        (dom, ds, layer, dom, ds, layer),
+    )
+    latest = conn.execute(
+        "SELECT (c).schema_version FROM cp.get_schema_contract(%s,%s,%s) c",
+        (dom, ds, layer),
+    ).fetchone()[0]
+    assert latest == "claim.v10", f"latest picked {latest}, expected claim.v10"
+    # exact-version path still honours the request verbatim.
+    exact = conn.execute(
+        "SELECT (c).schema_version FROM cp.get_schema_contract(%s,%s,%s,'claim.v9') c",
+        (dom, ds, layer),
+    ).fetchone()[0]
+    assert exact == "claim.v9"
 
 
 # ---- latest_succeeded_run ---------------------------------------------------
@@ -653,6 +732,10 @@ def test_every_cp_function_is_asserted(conn):
         # asserted above) and is anomaly-covered in tests/test_diagnostics.py.
         "dashboard_file_usage", "dashboard_target_row_trace",
         "dashboard_airflow_lookup",
+        # 029: downstream-impact view (every output derived from a raw file via
+        # provenance) — round-trip in tests/test_diagnostics.py
+        # (test_p2b_dashboard_file_impact_returns_downstream).
+        "dashboard_file_impact",
     }
     missing = fns - ASSERTED
     assert not missing, f"cp functions with no contract assertion: {missing}"

@@ -108,6 +108,13 @@ END $$;
 --   NEVER touches failed_payload or reason: failure history is preserved
 --   (spec line 246). p_status is validated by the dlq_status_enum CHECK on UPDATE.
 --   Raises if the dlq_id does not exist so callers cannot silently no-op.
+--
+--   *** SUPERSEDED by 029_dlq_diagnostics_fixes.sql (P2c). ***
+--   This body coalesces refs but lets resolve_dlq(id,'resolved') with NO refs
+--   close a DLQ untraceably. 029 re-declares cp.resolve_dlq (same signature) to
+--   RAISE when a TERMINAL resolution ('resolved'/'replayed') would leave BOTH the
+--   effective resolved_by_run_id and resolved_by_output_link_id null. 029 applies
+--   last so its definition wins; this body is kept as-applied.
 -- =====================================================================
 CREATE OR REPLACE FUNCTION cp.resolve_dlq(
     p_dlq_id uuid, p_status text,
