@@ -206,6 +206,19 @@ def ensure_targets(conn) -> None:
             f"ALTER TABLE ods.{table} "
             f"ADD COLUMN IF NOT EXISTS _ods_output_link_id UUID"
         )
+        # FIX-A (F8) demo-table guard: mirror the ods.orders CHECK so the dual
+        # _ods_* mirror columns stay consistent (rename shelved). A null on
+        # either side is tolerated. DROP+ADD keeps it idempotent.
+        conn.execute(
+            f"ALTER TABLE ods.{table} "
+            f"DROP CONSTRAINT IF EXISTS ods_{table}_link_mirror_consistent"
+        )
+        conn.execute(
+            f"ALTER TABLE ods.{table} "
+            f"ADD CONSTRAINT ods_{table}_link_mirror_consistent CHECK ("
+            f"_ods_output_link_id IS NULL OR _ods_lineage_link_id IS NULL "
+            f"OR _ods_output_link_id = _ods_lineage_link_id)"
+        )
 
 
 def reset_demo_state(conn) -> None:
@@ -607,18 +620,22 @@ def _sink_rows(conn, *, workflow_run_id: str, business_date: dt.date, dataset: s
 
 
 def _aggregate_from_detail(conn, *, workflow_run_id: str, business_date: dt.date,
-                           detail_sink: dict[str, str],
-                           detail_rows: list[dict[str, Any]],
+                           detail_inputs: list[dict[str, Any]],
                            aggregate_rows: list[dict[str, Any]],
                            content_tag: str, dag_run_id: str,
                            execution_type: str, commit: bool) -> dict[str, str]:
-    """Aggregate the detail output as a first-class run.
+    """Aggregate detail SINK output(s) as a first-class detail_to_aggregate run.
 
-    The aggregate output link uses edge_type 'detail_to_aggregate' (the
-    is_provenance edge type from migration 021) and consumes the detail SINK
-    link via ONE edge whose upstream_output_link_id = the detail sink link, so an
-    aggregate row traces aggregate -> detail -> ... -> both raw files.
+    ``detail_inputs`` is one entry per CONTRIBUTING detail output, each
+    ``{"run_id", "link_id", "record_count", optional "role"}`` -> one
+    detail_to_aggregate input edge. A NORMAL aggregate passes its single detail
+    sink. A recomputed REFEED aggregate consumes EVERY contributing active detail
+    output (the ORIGINAL normal detail sink for the unchanged contributing rows
+    of the affected key PLUS the corrected refeed detail sink), so the
+    aggregate's provenance is COMPLETE rather than only the corrected slice
+    (mirrors policy_claims_dlq_workflow._aggregate_from_detail / F1).
     """
+    rows_in = sum(int(di["record_count"]) for di in detail_inputs)
     run_id = runs.start(
         conn,
         workflow_run_id=workflow_run_id,
@@ -634,9 +651,10 @@ def _aggregate_from_detail(conn, *, workflow_run_id: str, business_date: dt.date
     )
     with stages.stage_scope(conn, run_id, "aggregate_policy_claim_daily",
                             commit=commit) as st:
-        st.record_in = len(detail_rows)
+        st.record_in = rows_in
         st.record_out = len(aggregate_rows)
-        st.metrics = {"group_by": ["business_date", "policy_type"]}
+        st.metrics = {"group_by": ["business_date", "policy_type"],
+                      "detail_inputs": len(detail_inputs)}
 
     link_id = lineage.write_output_link(
         conn,
@@ -649,18 +667,20 @@ def _aggregate_from_detail(conn, *, workflow_run_id: str, business_date: dt.date
         },
         record_count=len(aggregate_rows),
         inputs=[{
-            "upstream_run_id": detail_sink["run_id"],
-            "upstream_output_link_id": detail_sink["link_id"],
+            "upstream_run_id": di["run_id"],
+            "upstream_output_link_id": di["link_id"],
+            "input_slot": i,
             "edge_type": "detail_to_aggregate",
-            "source_ref": {"input_role": "detail", "table": DETAIL_TARGET},
-            "record_count": len(detail_rows),
-        }],
+            "source_ref": {"input_role": di.get("role", "detail"),
+                           "table": DETAIL_TARGET},
+            "record_count": int(di["record_count"]),
+        } for i, di in enumerate(detail_inputs)],
         transform_version="agg-v1",
         commit=commit,
     )
     recon.write_check(
         conn, run_id=run_id, check_type="aggregate_policy_claim_daily",
-        source_count=len(detail_rows), accounted_count=len(detail_rows),
+        source_count=rows_in, accounted_count=rows_in,
         metrics={"aggregate_rows": len(aggregate_rows)}, commit=commit)
     runs.finalise(conn, run_id, status="succeeded",
                   record_count_out=len(aggregate_rows), commit=commit)
@@ -764,7 +784,9 @@ def normal_execution(conn, business_date: dt.date,
     aggregate_rows = _aggregate_rows(detail_rows)
     aggregate = _aggregate_from_detail(
         conn, workflow_run_id=workflow_run_id, business_date=business_date,
-        detail_sink=detail_sink, detail_rows=detail_rows,
+        detail_inputs=[{"run_id": detail_sink["run_id"],
+                        "link_id": detail_sink["link_id"],
+                        "record_count": len(detail_rows)}],
         aggregate_rows=aggregate_rows, content_tag=content_tag,
         dag_run_id=dag_run_id, execution_type="normal", commit=commit)
     aggregate_sink = _sink_rows(
@@ -780,6 +802,16 @@ def normal_execution(conn, business_date: dt.date,
         business_date=business_date, sink=aggregate_sink, file_id=None,
         workflow_run_id=workflow_run_id, rows=aggregate_rows,
         key_fn=aggregate_business_key, reason="normal load", commit=commit)
+
+    # NOTE on F6: this is a STAR-SCHEMA workflow (policy DIMENSION joined to the
+    # claim FACT, then a row-REDUCING daily aggregate). reconcile_workflow's model
+    # is raw_in == sink_out + dlq_out, where raw_in SUMS every raw_to_curated edge
+    # (policy AND claim) but sink_out is the claims detail + the (fewer) aggregate
+    # rows; the policy dimension rows do NOT flow 1:1 to the sink, so it CANNOT
+    # reconcile 'ok'. Wiring it would record a breach that cp.developer_diagnostics
+    # then flags on the terminal sink run. Per-output reconcile_sink_link (which
+    # gates visibility.activate) is the operative recon here. See the F6 blocker
+    # note in the audit report.
 
     return {
         "workflow_run_id": workflow_run_id,
@@ -864,11 +896,45 @@ def refeed_execution(conn, *, original_day2_result: dict[str, Any],
     changed_aggregate_rows = _changed_rows(
         original_day2_result["aggregate_rows"], aggregate_rows,
         ("business_date", "policy_type"))
+
+    # F1 — COMPLETE provenance for the recomputed (changed-only) aggregate. The
+    # recomputed aggregate for an affected policy_type is computed from the FULL
+    # current detail set of that policy_type: the CHANGED rows (now in the refeed
+    # detail sink) PLUS the UNCHANGED rows of the same policy_type (still in the
+    # ORIGINAL Day-2 detail sink). Each contributing active detail output gets one
+    # detail_to_aggregate input edge with its per-upstream contributing
+    # record_count, so tracing the refed aggregate reaches ALL its contributing
+    # detail outputs -> raw (mirrors policy_claims_dlq_workflow / its test_19).
+    affected_types = {row["policy_type"] for row in changed_aggregate_rows}
+    changed_keys = {(r["policy_id"], r["claim_id"]) for r in changed_detail_rows}
+    # Unchanged contributing rows of the affected policy_type(s): they were
+    # written by the ORIGINAL Day-2 detail sink (the refeed sink only carried the
+    # changed rows). Count them from the original detail set.
+    original_affected_unchanged = [
+        r for r in original_day2_result["detail_rows"]
+        if r["policy_type"] in affected_types
+        and (r["policy_id"], r["claim_id"]) not in changed_keys
+    ]
+    # Changed contributing rows of the affected policy_type(s): the refeed sink.
+    refeed_affected_changed = [
+        r for r in changed_detail_rows if r["policy_type"] in affected_types
+    ]
+    detail_inputs: list[dict[str, Any]] = []
+    if original_affected_unchanged:
+        detail_inputs.append({
+            "run_id": original_day2_result["detail_sink"]["run_id"],
+            "link_id": original_day2_result["detail_sink"]["link_id"],
+            "record_count": len(original_affected_unchanged),
+            "role": "detail_original"})
+    detail_inputs.append({
+        "run_id": detail_sink["run_id"], "link_id": detail_sink["link_id"],
+        "record_count": len(refeed_affected_changed), "role": "detail_corrected"})
+
     aggregate = _aggregate_from_detail(
         conn, workflow_run_id=workflow_run_id, business_date=business_date,
-        detail_sink=detail_sink, detail_rows=detail_rows,
-        aggregate_rows=aggregate_rows, content_tag=content_tag,
-        dag_run_id=dag_run_id, execution_type="refeed", commit=commit)
+        detail_inputs=detail_inputs, aggregate_rows=changed_aggregate_rows,
+        content_tag=content_tag, dag_run_id=dag_run_id, execution_type="refeed",
+        commit=commit)
     aggregate_sink = _sink_rows(
         conn, workflow_run_id=workflow_run_id, business_date=business_date,
         dataset=AGG_DATASET, upstream_run_id=aggregate["run_id"],
@@ -884,6 +950,11 @@ def refeed_execution(conn, *, original_day2_result: dict[str, Any],
         workflow_run_id=workflow_run_id, rows=changed_aggregate_rows,
         key_fn=aggregate_business_key, reason="claim refeed (changed only)",
         commit=commit)
+
+    # NOTE on F6: a changed-only refeed (and the star-schema shape) cannot balance
+    # raw_in vs sink_out — see the note in normal_execution. reconcile_workflow is
+    # not wired here for the same reason. Per-output reconcile_sink_link gates
+    # visibility. See the F6 blocker note in the audit report.
 
     return {
         "workflow_run_id": workflow_run_id,

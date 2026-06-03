@@ -488,3 +488,33 @@ def test_19_recomputed_aggregate_traces_to_all_contributing_details(demo, conn):
     counts = {e[0]: e[1] for e in edges}
     assert counts[normal_detail_link] == 2   # original auto rows
     assert counts[replay_detail_link] == 1   # corrected auto row
+
+
+# --------------------------------------------------------------------------- #
+# (F2 end-to-end) The quarantine OUTPUT now traces to the raw claim file.
+#
+# FIX-A added cp.quarantine(..., p_source_file_id) which stamps source_file_id on
+# the quarantine edge; the harness now passes source_file_id=<raw claim file_id>.
+# So the quarantine output_link is no longer a dead-end in cp.v_provenance /
+# trace_row.sql — it anchors to the raw claim file (completes F2 in the demo).
+# --------------------------------------------------------------------------- #
+def test_20_quarantine_output_traces_to_raw(demo, conn):
+    normal = demo["normal"]
+    raw_claim_path = normal["files"]["claim"]["s3_raw_path"]
+    raw_claim_file_id = normal["claim_ingest"]["file_id"]
+    dlq_id = normal["claim_canonical"]["dlq_ids"][0]
+    qlink = conn.execute(
+        "SELECT quarantine_output_link_id FROM cp.dlq WHERE dlq_id=%s",
+        (dlq_id,)).fetchone()[0]
+
+    # The quarantine edge now carries the raw claim file_id as source_file_id (the
+    # lineage anchor), not merely in source_ref JSON.
+    edge_src_file_id = conn.execute(
+        "SELECT source_file_id FROM cp.lineage_edge WHERE lineage_link_id=%s "
+        "AND edge_type='quarantine'", (qlink,)).fetchone()[0]
+    assert str(edge_src_file_id) == str(raw_claim_file_id), (
+        "quarantine edge must anchor to the raw claim file_id (FIX-A handoff)")
+
+    # And the quarantine output traces to the raw claim file via trace_row.sql.
+    assert raw_claim_path in _raw_paths(_trace(conn, qlink)), (
+        "quarantine output must now trace to the raw claim file (F2 end-to-end)")

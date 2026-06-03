@@ -193,10 +193,19 @@ def test_05_corrected_detail_rows_stamped_with_refeed_output_link(demo, conn):
 
 
 # --------------------------------------------------------------------------- #
-# Test 6: a corrected aggregate row traces back through detail_to_aggregate to
-#         the CORRECTED claim raw (v_provenance / trace_row.sql).
+# Test 6 (F1): a corrected aggregate row traces back through detail_to_aggregate
+#         to ALL of its contributing detail outputs' raws.
+#
+# The recomputed 'auto' aggregate = CL100 + CL102 (CHANGED, from the corrected
+# refeed detail sink -> corrected refeed claim raw) PLUS CL101 (UNCHANGED, from
+# the ORIGINAL Day-2 detail sink -> original claim raw). With COMPLETE provenance
+# (F1) the aggregate names BOTH contributing detail sinks, so it legitimately
+# traces to BOTH the corrected AND the original claim raw (the original raw is
+# the true origin of the unchanged contributing claim CL101, NOT a leak). Reuses
+# the policy raw. (Before F1 it named only the corrected detail sink, so it
+# under-reported its provenance and missed the original raw.)
 # --------------------------------------------------------------------------- #
-def test_06_corrected_aggregate_traces_to_corrected_claim_raw(demo, conn):
+def test_06_corrected_aggregate_traces_to_all_contributing_raws(demo, conn):
     refeed = demo["refeed"]
     agg_link = refeed["aggregate"]["link_id"]
 
@@ -209,11 +218,12 @@ def test_06_corrected_aggregate_traces_to_corrected_claim_raw(demo, conn):
 
     # Walk the provenance chain from the aggregate output back to raw.
     paths = _raw_paths(_trace(conn, agg_link))
-    # Reaches the CORRECTED claim raw (distinct refeed path) and the policy raw.
+    # Reaches the CORRECTED claim raw (changed contributing claims CL100/CL102)...
     assert f"s3://raw/{DOMAIN}/claim/{REFEED_DATE}-refeed.json" in paths
     assert f"s3://raw/{DOMAIN}/policy/{REFEED_DATE}.json" in paths
-    # Must NOT reach the original (non-refeed) Day-2 claim raw.
-    assert f"s3://raw/{DOMAIN}/claim/{REFEED_DATE}.json" not in paths
+    # ...AND the original claim raw (unchanged contributing claim CL101 came from
+    # the original Day-2 detail output) — complete provenance, not a leak.
+    assert f"s3://raw/{DOMAIN}/claim/{REFEED_DATE}.json" in paths
 
 
 # --------------------------------------------------------------------------- #
@@ -337,3 +347,115 @@ def test_07b_all_runs_orchestrator_type_airflow(demo, conn):
         (list(wfids),),
     ).fetchone()[0]
     assert bad == 0
+
+
+# --------------------------------------------------------------------------- #
+# Test 8 (F1): COMPLETE refeed-aggregate provenance.
+#
+# The refeed corrected ONLY the 'auto' claims (CL100 amount 500->600, CL102
+# status open->closed). The recomputed 'auto' aggregate for Day-2 is computed
+# from the FULL current 'auto' detail set: CL100 + CL102 (CHANGED -> in the
+# refeed detail sink) PLUS CL101 (UNCHANGED -> still in the ORIGINAL Day-2
+# detail sink). Its detail_to_aggregate input edges MUST therefore name BOTH the
+# original normal detail sink and the corrected refeed detail sink, with
+# per-edge contributing record_counts that sum to the aggregate's claim_count
+# (here 1 original + 2 corrected = 3 == auto claim_count). Mirrors the DLQ
+# workflow's test_19. The UNCHANGED 'home' aggregate is NOT recomputed.
+# --------------------------------------------------------------------------- #
+def test_08_refeed_aggregate_names_both_contributing_details(demo, conn):
+    refeed = demo["refeed"]
+    agg_link = refeed["aggregate"]["link_id"]
+    normal_detail_link = str(demo["day2"]["detail_sink"]["link_id"])
+    refeed_detail_link = str(refeed["detail_sink"]["link_id"])
+
+    edges = conn.execute(
+        "SELECT upstream_output_link_id::text, record_count FROM cp.input_edge "
+        "WHERE output_link_id = %s AND edge_type = 'detail_to_aggregate' "
+        "ORDER BY input_slot",
+        (agg_link,),
+    ).fetchall()
+
+    upstreams = {e[0] for e in edges}
+    assert len(edges) >= 2, (
+        "recomputed refeed aggregate must name >=2 contributing detail outputs")
+    assert normal_detail_link in upstreams, (
+        "refeed aggregate must name the ORIGINAL normal detail output "
+        "(it contributed the unchanged auto claim CL101)")
+    assert refeed_detail_link in upstreams, (
+        "refeed aggregate must name the CORRECTED refeed detail output "
+        "(it contributed CL100 + CL102)")
+
+    counts = {e[0]: e[1] for e in edges}
+    assert counts[normal_detail_link] == 1   # unchanged auto row CL101
+    assert counts[refeed_detail_link] == 2   # corrected auto rows CL100, CL102
+    # Per-edge counts sum to the recomputed 'auto' aggregate's claim_count (3).
+    auto_agg = next(r for r in refeed["aggregate_rows"]
+                    if r["policy_type"] == "auto")
+    assert counts[normal_detail_link] + counts[refeed_detail_link] == (
+        auto_agg["claim_count"])
+
+
+# --------------------------------------------------------------------------- #
+# Test 9 (F6 blocker, documented): reconcile_workflow is NOT wired into this
+# STAR-SCHEMA workflow because its raw_in == sink_out + dlq_out model cannot
+# balance here.
+#
+# raw_in SUMS every raw_to_curated edge — the policy DIMENSION (3) AND the claim
+# FACT (4) = 7. sink_out is the claims detail (= #claims) + the row-REDUCING
+# daily aggregate (< #claims). The policy dimension rows do NOT flow 1:1 to the
+# sink, so raw_in EXCEEDS sink_out by exactly the dimension contribution: a
+# reconcile_workflow call here would record a (model-driven) breach, and
+# cp.developer_diagnostics would then flag that non-'ok' reconciliation row on
+# the terminal sink run of an otherwise-clean workflow. So it is deliberately NOT
+# wired; per-output reconcile_sink_link (which gates visibility.activate) is the
+# operative recon. This test pins the decision: no workflow recon row exists, and
+# computing one WOULD breach (proving the gap is real, not silently ignored).
+# --------------------------------------------------------------------------- #
+def test_09_workflow_recon_blocked_by_dimension_shape(demo, conn):
+    # No execution wired a check_type='workflow' row (scoped to this demo).
+    for ex in demo["executions"]:
+        n = conn.execute(
+            """
+            SELECT count(*) FROM cp.reconciliation_log rl
+            JOIN cp.run_log r ON r.run_id = rl.run_id
+            WHERE r.workflow_run_id = %s AND rl.check_type = 'workflow'
+            """,
+            (ex["workflow_run_id"],),
+        ).fetchone()[0]
+        assert n == 0, (
+            f"{ex['execution_type']}: reconcile_workflow must NOT be wired into "
+            "the star-schema policy/claims workflow (it cannot reconcile ok)")
+
+    # Demonstrate WHY: for a normal day, raw_in (policy+claim) > sink_out, so the
+    # cross-hop model would breach. Compute the same quantities the SQL would.
+    wfid = demo["day1"]["workflow_run_id"]
+    raw_in = conn.execute(
+        "SELECT coalesce(sum(l.record_count),0) FROM cp.lineage_link l "
+        "JOIN cp.run_log r ON r.run_id = l.consumer_run_id "
+        "WHERE r.workflow_run_id = %s AND l.edge_type = 'raw_to_curated'",
+        (wfid,),
+    ).fetchone()[0]
+    sink_out = conn.execute(
+        """
+        SELECT count(*) FROM (
+            SELECT t._ods_lineage_link_id FROM ods.policy_claim t
+            JOIN cp.lineage_link l ON l.lineage_link_id = t._ods_lineage_link_id
+            JOIN cp.run_log r ON r.run_id = l.consumer_run_id
+            WHERE r.workflow_run_id = %s
+              AND l.edge_type IN ('canonical_to_sink','detail_to_aggregate')
+            UNION ALL
+            SELECT t._ods_lineage_link_id FROM ods.policy_claim_daily t
+            JOIN cp.lineage_link l ON l.lineage_link_id = t._ods_lineage_link_id
+            JOIN cp.run_log r ON r.run_id = l.consumer_run_id
+            WHERE r.workflow_run_id = %s
+              AND l.edge_type IN ('canonical_to_sink','detail_to_aggregate')
+        ) s
+        """,
+        (wfid, wfid),
+    ).fetchone()[0]
+    # raw_in = 3 policy + 4 claim = 7; sink_out = 4 detail + 2 aggregate = 6.
+    assert raw_in == 7
+    assert sink_out == 6
+    assert raw_in > sink_out, (
+        "the policy dimension makes raw_in exceed sink_out — reconcile_workflow "
+        "would breach, which is why it is not wired (F6 blocker)")

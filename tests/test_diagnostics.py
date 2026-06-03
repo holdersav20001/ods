@@ -232,6 +232,15 @@ def test_target_row_missing_ods_ids(conn):
 def test_target_row_output_link_does_not_exist(conn):
     demo = run_demo(conn, commit=False)
     wf = demo["day1"]["workflow_run_id"]
+    # The FIX-A demo-table guard (ods_policy_claim_link_mirror_consistent) forbids
+    # _ods_output_link_id != _ods_lineage_link_id at the storage layer, so the
+    # broken-link anomaly the diagnostic must catch cannot be materialised while
+    # the CHECK is active. Drop it within this rolled-back txn (same approach as
+    # test_visibility_conflict drops the unique index), inject the anomaly, then
+    # assert the diagnostic detects it.
+    conn.execute(
+        "ALTER TABLE ods.policy_claim "
+        "DROP CONSTRAINT IF EXISTS ods_policy_claim_link_mirror_consistent")
     conn.execute(
         "UPDATE ods.policy_claim SET _ods_output_link_id = %s "
         "WHERE row_id = (SELECT min(row_id) FROM ods.policy_claim "
@@ -465,11 +474,16 @@ def test_dashboard_airflow_lookup_round_trip(conn):
 # input_edge_without_input_identifier.
 # --------------------------------------------------------------------------- #
 def test_p1a_quarantine_edge_not_flagged(conn):
-    """The DLQ workflow's quarantine edge anchors to nothing (it carries context
-    in source_ref, exempt by the 012 edge_must_anchor CHECK) — it must NOT be
-    reported as input_edge_without_input_identifier (the 027 copy exempted only
+    """The DLQ workflow's quarantine edge is exempt from REQUIRING an anchor by the
+    012 edge_must_anchor CHECK — it must NOT be reported as
+    input_edge_without_input_identifier (the 027 copy exempted only
     'orchestrates', falsely flagging it). Scope to the canonicalization wfid whose
-    quarantine edge exists."""
+    quarantine edge exists.
+
+    F2 handoff: the harness now passes source_file_id=<raw claim file_id> to
+    dlq.quarantine, so the quarantine edge LEGITIMATELY anchors to the raw claim
+    file (a non-null anchor is allowed; the CHECK only EXEMPTS quarantine from
+    requiring one). The diagnostic must still not flag it."""
     demo = run_dlq_demo(conn, commit=False)
     normal_wf = demo["normal"]["workflow_run_id"]
     # The quarantine edge belongs to the normal canonicalization run.
@@ -478,13 +492,15 @@ def test_p1a_quarantine_edge_not_flagged(conn):
         "ON r.run_id = d.run_id WHERE r.workflow_run_id = %s",
         [normal_wf]).fetchone()[0]
     assert qlink is not None
-    # The quarantine edge anchors to neither file nor upstream output.
-    anchors = conn.execute(
+    # F2: the quarantine edge now anchors to the raw claim file (source_file_id),
+    # not to nothing — it is the same raw file the canonicalization ingested.
+    src_file_id, upstream = conn.execute(
         "SELECT source_file_id, upstream_lineage_link_id FROM cp.lineage_edge "
         "WHERE lineage_link_id = %s AND edge_type = 'quarantine'", [qlink]
     ).fetchone()
-    assert anchors == (None, None)
-    # ... yet developer_diagnostics must NOT flag it.
+    assert str(src_file_id) == str(demo["normal"]["claim_ingest"]["file_id"])
+    assert upstream is None
+    # ... and developer_diagnostics must NOT flag it.
     flagged = conn.execute(
         "SELECT object_id FROM cp.developer_diagnostics(%s) "
         "WHERE check_name = 'input_edge_without_input_identifier'",

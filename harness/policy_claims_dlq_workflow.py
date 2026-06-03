@@ -155,6 +155,18 @@ def ensure_targets(conn) -> None:
             )
             """
         )
+        # FIX-A (F8) demo-table guard: mirror the ods.orders CHECK so the dual
+        # _ods_* mirror columns can never diverge (rename shelved). A null on
+        # either side is tolerated. DROP+ADD keeps it idempotent under the
+        # CREATE TABLE IF NOT EXISTS path.
+        conn.execute(
+            f"ALTER TABLE ods.{table} "
+            f"DROP CONSTRAINT IF EXISTS ods_{table}_link_mirror_consistent")
+        conn.execute(
+            f"ALTER TABLE ods.{table} "
+            f"ADD CONSTRAINT ods_{table}_link_mirror_consistent CHECK ("
+            f"_ods_output_link_id IS NULL OR _ods_lineage_link_id IS NULL "
+            f"OR _ods_output_link_id = _ods_lineage_link_id)")
 
 
 def reset_demo_state(conn) -> None:
@@ -363,7 +375,12 @@ def _canonicalize_claim_with_validation(
                         "schema_version": SCHEMA_VERSION},
             payload_ref=f"s3://dlq/{DOMAIN}/{CONTRACT_DATASET}/{BUSINESS_DATE}/"
                         f"claim-v1-errors.json",
-            record_count=1, failed_payload=bad_row, commit=commit)
+            record_count=1, failed_payload=bad_row,
+            # FIX-A handoff: anchor the quarantine edge to the raw claim file so
+            # the quarantine output traces to raw via cp.v_provenance /
+            # trace_row.sql (completes F2 end-to-end), not just in source_ref JSON.
+            source_file_id=ingest["file_id"],
+            commit=commit)
         dlq_ids.append(dlq_id)
 
     # Recon: input rows == good + dlq (spec lines 304-308) -> status 'ok'.
@@ -651,6 +668,14 @@ def normal_execution(conn, *, workflow_run_id: str, dag_run_id: str,
         conn, dataset=AGG_DATASET, target_name=AGG_TARGET, sink=aggregate_sink,
         workflow_run_id=workflow_run_id, rows=aggregate_rows,
         key_fn=aggregate_business_key, reason="normal load", commit=commit)
+
+    # NOTE on F6: this DLQ demo is ALSO a star-schema workflow (policy DIMENSION
+    # + claim FACT + row-reducing aggregate) AND it legitimately quarantines a row.
+    # reconcile_workflow's raw_in (policy + claim) cannot equal sink_out + dlq_out
+    # because the policy dimension rows do not flow 1:1 to the sink, so it cannot
+    # reconcile 'ok' and would record a breach that cp.developer_diagnostics flags.
+    # Per-output reconcile_sink_link (gating visibility) is the operative recon.
+    # See the F6 blocker note in the audit report.
 
     return {
         "workflow_run_id": workflow_run_id,

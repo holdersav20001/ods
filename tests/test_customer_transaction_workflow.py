@@ -319,10 +319,19 @@ def test_12_day2_corrected_detail_traces_to_corrected_transaction_raw(demo, conn
 
 
 # --------------------------------------------------------------------------- #
-# Test 13: a Day-2 corrected AGGREGATE row traces back to the corrected
-#          transaction raw.
+# Test 13 (F1): a Day-2 corrected AGGREGATE row traces back to ALL of its
+#          contributing detail outputs' raws.
+#
+# The recomputed C001 aggregate = T100 (UNCHANGED, from the ORIGINAL Day-2 detail
+# sink -> original transaction raw) + T101 (CHANGED, from the corrected refeed
+# detail sink -> corrected refeed raw). With COMPLETE provenance (F1) the
+# aggregate names BOTH contributing detail sinks, so it legitimately traces to
+# BOTH the corrected AND the original transaction raw (the original raw is the
+# true origin of the unchanged contributing row, NOT a leak). Reuses the original
+# customer raw. (Before F1 the aggregate named only the corrected detail sink, so
+# it under-reported its provenance and missed the original raw.)
 # --------------------------------------------------------------------------- #
-def test_13_day2_corrected_aggregate_traces_to_corrected_transaction_raw(demo, conn):
+def test_13_day2_corrected_aggregate_traces_to_all_contributing_raws(demo, conn):
     wfid = demo["refeed"]["workflow_run_id"]
     agg_link = conn.execute(
         f"""
@@ -334,8 +343,11 @@ def test_13_day2_corrected_aggregate_traces_to_corrected_transaction_raw(demo, c
     paths = _raw_paths(_trace(conn, agg_link))
     corrected = f"s3://raw/sales/{TRANSACTION_DATASET}/{REFEED_DATE}-refeed.json"
     original = f"s3://raw/sales/{TRANSACTION_DATASET}/{REFEED_DATE}.json"
+    # Reaches the corrected refeed raw (changed contributing row T101)...
     assert corrected in paths
-    assert original not in paths
+    # ...AND the original transaction raw (unchanged contributing row T100 came
+    # from the original Day-2 detail output) — complete provenance, not a leak.
+    assert original in paths
     assert f"s3://raw/sales/{CUSTOMER_DATASET}/{REFEED_DATE}.json" in paths
 
 
@@ -431,11 +443,164 @@ def test_15_target_row_link_id_present_in_links(demo, conn):
 
 
 # --------------------------------------------------------------------------- #
-# Test 16: target visibility is a NON-GOAL.
+# Test 16 (F3): customer_transaction now WIRES target visibility activation.
+#
+# A4-01: this workflow writes business-visible Postgres sinks but previously
+# NEVER called control.visibility.activate, so `sales` had 0 target_visibility
+# rows and write-contract step 9 was skipped. It now activates per business_key
+# (changed-only on the refeed), mirroring policy_claims. Scoped to THIS run's
+# own wfids (robust to committed data).
 # --------------------------------------------------------------------------- #
-def test_16_target_visibility_is_non_goal():
-    # Spec §Non-Goals explicitly excludes target active/inactive visibility
-    # semantics from this demo: the ad-hoc demo tables (ods.customer_transaction /
-    # ods.customer_transaction_daily) do NOT wire target activation, so there is
-    # no active/inactive slice to assert. Out of demo scope.
-    pytest.skip("target active/inactive visibility is out of demo scope (Non-Goals)")
+def _vis_rows(conn, *, dataset, replacement_key, business_date, workflow_run_ids):
+    return conn.execute(
+        """
+        SELECT status, lineage_link_id::text, workflow_run_id, deactivated_at
+        FROM ods.target_visibility
+        WHERE domain = 'sales' AND dataset = %s AND business_date = %s
+          AND replacement_scope = 'business_key' AND replacement_key = %s
+          AND workflow_run_id = ANY(%s)
+        ORDER BY activated_at, created_at
+        """,
+        (dataset, business_date, replacement_key, list(workflow_run_ids)),
+    ).fetchall()
+
+
+def test_16_customer_transaction_wires_visibility(demo, conn):
+    wfids = [demo[k]["workflow_run_id"] for k in ("day1", "day2", "day3", "refeed")]
+
+    # `sales` now has target_visibility rows produced by THIS demo's wfids.
+    n = conn.execute(
+        "SELECT count(*) FROM ods.target_visibility "
+        "WHERE domain = 'sales' AND workflow_run_id = ANY(%s)",
+        (wfids,),
+    ).fetchone()[0]
+    assert n > 0, "customer_transaction must activate target_visibility (F3)"
+
+    # Day-1 normal: every detail business key and every aggregate key is active Y,
+    # produced by the Day-1 wfid (single Y, never superseded by anything).
+    day1 = demo["day1"]
+    day1_detail_key = f"{CUSTOMER_ROWS[0]['customer_id']}:T100"
+    rows = _vis_rows(conn, dataset=DETAIL_DATASET, replacement_key=day1_detail_key,
+                     business_date=DAY1, workflow_run_ids=wfids)
+    assert [r[0] for r in rows] == ["Y"]
+    assert rows[0][2] == day1["workflow_run_id"]
+    assert rows[0][3] is None
+
+    # ---- The Day-2 transaction refeed is CHANGED-ONLY. ----
+    day2 = demo["day2"]
+    refeed = demo["refeed"]
+
+    # A CHANGED detail key (T101, amount 74.50 -> 79.50): original N + corrected Y.
+    changed_key = "C001:T101"
+    rows = _vis_rows(conn, dataset=DETAIL_DATASET, replacement_key=changed_key,
+                     business_date=REFEED_DATE, workflow_run_ids=wfids)
+    assert [r[0] for r in rows] == ["N", "Y"], rows
+    assert rows[0][1] == day2["detail_sink"]["link_id"]      # original now N
+    assert rows[1][1] == refeed["detail_sink"]["link_id"]    # corrected now Y
+    assert rows[0][3] is not None                            # deactivated_at set
+
+    # An UNCHANGED detail key (T102, C002 identical in refeed): single original Y.
+    unchanged_key = "C002:T102"
+    rows = _vis_rows(conn, dataset=DETAIL_DATASET, replacement_key=unchanged_key,
+                     business_date=REFEED_DATE, workflow_run_ids=wfids)
+    assert [r[0] for r in rows] == ["Y"], rows
+    assert rows[0][2] == day2["workflow_run_id"]
+    assert rows[0][3] is None
+
+    # No double-active: exactly one Y per key across this demo's wfids.
+    dup = conn.execute(
+        """
+        SELECT dataset, business_date, replacement_key, count(*)
+        FROM ods.target_visibility
+        WHERE status = 'Y' AND domain = 'sales' AND workflow_run_id = ANY(%s)
+        GROUP BY dataset, business_date, replacement_key HAVING count(*) > 1
+        """,
+        (wfids,),
+    ).fetchall()
+    assert dup == [], f"more than one active Y for some key: {dup}"
+
+
+# --------------------------------------------------------------------------- #
+# Test 17 (F1): COMPLETE refeed-aggregate provenance.
+#
+# The refeed corrected T101 (C001) and T104 (C003). The recomputed C001 daily
+# aggregate draws from BOTH the ORIGINAL Day-2 detail output (the unchanged T100)
+# and the CORRECTED refeed detail output (T101); its detail_to_aggregate input
+# edges must name BOTH detail sink outputs, with per-edge contributing counts
+# summing to the aggregate's transaction_count. Mirrors the DLQ workflow's
+# test_19. The unchanged C002 aggregate is NOT recomputed.
+# --------------------------------------------------------------------------- #
+def test_17_refeed_aggregate_names_both_contributing_details(demo, conn):
+    refeed = demo["refeed"]
+    agg_link = refeed["aggregate"]["link_id"]
+    normal_detail_link = str(demo["day2"]["detail_sink"]["link_id"])
+    refeed_detail_link = str(refeed["detail_sink"]["link_id"])
+
+    edges = conn.execute(
+        "SELECT upstream_output_link_id::text, record_count FROM cp.input_edge "
+        "WHERE output_link_id = %s AND edge_type = 'detail_to_aggregate' "
+        "ORDER BY input_slot",
+        (agg_link,),
+    ).fetchall()
+    upstreams = {e[0] for e in edges}
+    assert len(edges) >= 2, (
+        "recomputed refeed aggregate must name >=2 contributing detail outputs")
+    assert normal_detail_link in upstreams, (
+        "refeed aggregate must name the ORIGINAL Day-2 detail output (T100/T105)")
+    assert refeed_detail_link in upstreams, (
+        "refeed aggregate must name the CORRECTED refeed detail output (T101/T104)")
+
+    counts = {e[0]: e[1] for e in edges}
+    # C001: T100 (original, unchanged) + T101 (refeed, changed) -> 1 + 1.
+    # C003: T105 (original, unchanged) + T104 (refeed, changed) -> 1 + 1.
+    # Per-edge contributing counts sum to the recomputed aggregate's tx count.
+    changed_tx_count = sum(
+        r["transaction_count"] for r in refeed["changed_aggregate_rows"])
+    assert counts[normal_detail_link] + counts[refeed_detail_link] == changed_tx_count
+
+
+# --------------------------------------------------------------------------- #
+# Test 18 (F6): cross-hop reconcile_workflow ran and reconciles ok on the
+#               BALANCED normal days (A4-03: it was previously never called).
+#
+# customer_transaction is the only end-to-end BALANCED demo shape: a normal day
+# ingests 3 customers + 6 transactions (raw_in = 9) and writes 6 detail + 3
+# aggregate sink rows (sink_out = 9, dlq 0), so reconcile_workflow reconciles ok
+# AND stays diagnostically clean (cp.developer_diagnostics flags any non-'ok'
+# reconciliation row on the terminal sink run).
+#
+# The CHANGED-ONLY refeed re-writes only the changed rows, so it CANNOT balance
+# raw_in (the whole corrected file) against sink_out (only the changed rows) —
+# reconcile_workflow would record a (correct-by-design) breach that diagnostics
+# then surface. It is therefore deliberately NOT wired on the refeed; the refeed
+# relies on per-output reconcile_sink_link (which already gates visibility).
+# (Same constraint blocks the star-schema policy_claims + DLQ workflows — see
+# the F6 blocker note in the audit report.)
+# --------------------------------------------------------------------------- #
+def test_18_workflow_recon_ran_and_normal_days_ok(demo, conn):
+    def _wf_recon(wfid):
+        return conn.execute(
+            """
+            SELECT rl.status, rl.metrics FROM cp.reconciliation_log rl
+            JOIN cp.run_log r ON r.run_id = rl.run_id
+            WHERE r.workflow_run_id = %s AND rl.check_type = 'workflow'
+            """,
+            (wfid,),
+        ).fetchall()
+
+    # The three balanced NORMAL days each have exactly one workflow recon row and
+    # reconcile ok (raw_in == sink_out, dlq 0).
+    for date in (DAY1, DAY2, DAY3):
+        wfid = demo["normals_by_date"][date]["workflow_run_id"]
+        rows = _wf_recon(wfid)
+        assert len(rows) == 1, (
+            f"normal {date}: expected one workflow recon row, got {len(rows)}")
+        status, metrics = rows[0]
+        assert status == "ok", f"normal {date}: workflow recon {status}, {metrics}"
+        assert metrics["raw_in"] == metrics["sink_out"] == 9
+        assert metrics["dlq_out"] == 0
+        assert metrics["workflow_run_id"] == wfid
+
+    # The changed-only refeed deliberately has NO workflow recon row (would breach
+    # by design); diagnostics therefore stay clean.
+    assert _wf_recon(demo["refeed"]["workflow_run_id"]) == []
