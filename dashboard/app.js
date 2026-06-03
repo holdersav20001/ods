@@ -28,6 +28,7 @@
   const KNOWN_DATA_FILES = [
     ["demo-workflow.json", "Customer / Transaction demo"],
     ["policy-claims-workflow.json", "Insurance Policy / Claims"],
+    ["policy-claims-dlq-workflow.json", "Insurance DLQ / quarantine + replay"],
   ];
   const DEFAULT_DATA_FILE = KNOWN_DATA_FILES[0][0];
 
@@ -1814,6 +1815,63 @@ if sync_to_postgres:
     },
   ];
 
+  // Diagnostics reference. The dashboard renders from a static JSON snapshot,
+  // so it never calls these. They are the read-side support functions an
+  // operator would run directly against Postgres to reproduce what each tab
+  // shows. Listed here as documentation only.
+  const SUPPORT_FUNCTIONS = [
+    {
+      name: "cp.dashboard_workflows",
+      signature: "cp.dashboard_workflows(business_date date default null)",
+      purpose: "Workflow-level summary feeding the Workflows tab: one row per workflow_run_id with task/run counts, status, trigger, and orchestrator identity.",
+    },
+    {
+      name: "cp.developer_diagnostics",
+      signature: "cp.developer_diagnostics(workflow_run_id uuid)",
+      purpose: "Per-run developer view: the control API calls (runs.start, write_output_link, activate_target_slice) and their payloads for the Developer Model tab.",
+    },
+    {
+      name: "cp.dashboard_output_trace",
+      signature: "cp.dashboard_output_trace(output_link_id uuid)",
+      purpose: "Walks an output link back through input edges to the raw files that produced it. Powers the Control Links raw-file trace and the trace cards.",
+    },
+    {
+      name: "cp.dashboard_file_usage",
+      signature: "cp.dashboard_file_usage(file_id uuid)",
+      purpose: "Forward view from a raw file: every output link and run that consumed it, so a single raw file can be traced to all downstream targets.",
+    },
+    {
+      name: "cp.dashboard_target_row_trace",
+      signature: "cp.dashboard_target_row_trace(target_schema text, target_table text, row_id bigint)",
+      purpose: "Row-level trace-back: from a stamped _ods_output_link_id on a business row to its output link, run, and raw files. Powers the Target Rows tab.",
+    },
+    {
+      name: "cp.dashboard_airflow_lookup",
+      signature: "cp.dashboard_airflow_lookup(orchestrator_run_id text)",
+      purpose: "Maps an Airflow dag_run / task_id back to the ODS run_log rows, so an operator starting from the Airflow UI can find the control-plane runs.",
+    },
+  ];
+
+  // Static pointers to the design docs. The dashboard cannot open these, but
+  // listing them keeps the demonstration self-describing.
+  const DOC_LINKS = [
+    {
+      label: "Write contract",
+      path: "docs/reference/control-plane-write-contract.md",
+      note: "The minimum metadata every producing task must write: run, output link, input edges, target-row stamping, active slice.",
+    },
+    {
+      label: "Operations runbook",
+      path: "docs/reference/control-plane-runbook.md",
+      note: "Operational playbook: refeed, replay/resolve from the DLQ, and how to read the control tables when the dashboard is unavailable.",
+    },
+    {
+      label: "Control-plane cookbook",
+      path: "docs/reference/control-plane-cookbook/",
+      note: "Worked templates (also surfaced in the Templates tab) with entity-relationship diagrams per pattern.",
+    },
+  ];
+
   function App() {
     const [data, setData] = React.useState(null);
     const [error, setError] = React.useState(null);
@@ -2101,6 +2159,41 @@ if sync_to_postgres:
 
   function snapshotHasAirflow(data) {
     return (data.runs || []).some((run) => run.orchestrator_type === "airflow");
+  }
+
+  // DLQ/quarantine + replay detection. Demonstration-grade: derived entirely
+  // from the static snapshot (quarantine output links, replay-triggered runs,
+  // and replay executions). No live cp.dlq query is performed.
+  function snapshotHasQuarantine(data) {
+    return (data.links || []).some((link) => link.edge_type === "quarantine");
+  }
+
+  function dlqSummary(data) {
+    const quarantineLinks = (data.links || []).filter((link) => link.edge_type === "quarantine");
+    if (!quarantineLinks.length) return null;
+    const replayRuns = (data.runs || []).filter(
+      (run) => run.trigger_type === "replay" || run.execution_type === "replay" || run.replay_of_run_id
+    );
+    const replayExecutions = (data.executions || []).filter(
+      (ex) => ex.execution_type === "replay" || ex.replay_of_workflow_run_id
+    );
+    const quarantinedRecords = quarantineLinks.reduce(
+      (total, link) => total + (Number(link.record_count) || 0),
+      0
+    );
+    // open -> resolved: a quarantine exists (open); a successful replay run
+    // for the same dataset means the quarantined records were reprocessed.
+    const resolved = replayRuns.some((run) => run.status === "succeeded");
+    return {
+      quarantineLinks,
+      replayRuns,
+      replayExecutions,
+      quarantinedRecords,
+      status: resolved ? "resolved" : "open",
+      quarantinedKey: data.scenario?.quarantined_claim_id || null,
+      dlqStage: data.scenario?.dlq_stage || null,
+      story: data.scenario?.story || null,
+    };
   }
 
   function WorkflowsTab({ data, selectedExecutionId, jsonWorkflowId, setJsonWorkflowId, olWorkflowId, setOlWorkflowId, openDetails, openProcess, openAirflow, openDeveloper }) {
@@ -3285,6 +3378,41 @@ if sync_to_postgres:
     return { runs, nodes, edges, edgeDetails };
   }
 
+  function DlqBanner({ data }) {
+    const dlq = dlqSummary(data);
+    if (!dlq) return null;
+    const link = dlq.quarantineLinks[0];
+    const replay = dlq.replayRuns[0];
+    return e("section", { className: "dlq-banner panel" },
+      e("div", { className: "panel-head" },
+        e("h2", null, "DLQ / quarantine path"),
+        e("span", { className: `pill ${dlq.status === "resolved" ? "green" : "red"}` },
+          dlq.status === "resolved" ? "resolved (replayed)" : "open"
+        )
+      ),
+      e("div", { className: "panel-body dlq-grid" },
+        dlq.story && e("p", { className: "dlq-story" }, dlq.story),
+        e("div", { className: "dlq-facts" },
+          e(MetadataFact, { label: "quarantined records", value: String(dlq.quarantinedRecords) }),
+          dlq.quarantinedKey && e(MetadataFact, { label: "quarantined key", value: dlq.quarantinedKey }),
+          dlq.dlqStage && e(MetadataFact, { label: "failed at stage", value: dlq.dlqStage }),
+          e(MetadataFact, { label: "dlq_id", value: shortId(link?.target_ref?.dlq_id || link?.target_ref?.content_hash) }),
+          e(MetadataFact, { label: "dlq target", value: link?.target_ref?.path || "-" }),
+          e(MetadataFact, { label: "replay runs", value: String(dlq.replayRuns.length) }),
+          replay && e(MetadataFact, { label: "replay run_id", value: shortId(replay.run_id) }),
+          replay && e(MetadataFact, { label: "replay status", value: replay.status || "-" })
+        ),
+        e("p", { className: "dlq-note" },
+          "Records that fail schema validation are written to a ",
+          e("code", null, "edge_type='quarantine'"),
+          " output link (red below) instead of the target. A ",
+          e("code", null, "trigger_type='replay'"),
+          " execution reprocesses them once corrected, which marks the DLQ entry resolved."
+        )
+      )
+    );
+  }
+
   function WorkflowDiagramTab({ data, selectedExecutionId, setSelectedExecutionId, focusLink }) {
     const execution = data.executionByWorkflow[selectedExecutionId] || data.executions[0];
     const runs = filteredRuns(data, execution.workflow_run_id)
@@ -3308,6 +3436,7 @@ if sync_to_postgres:
           e("span", null, "Runs do work. Output links describe produced outputs. Later runs consume upstream_output_link_id; only raw-file starts show file_id.")
         )
       ),
+      e(DlqBanner, { data }),
       e("section", { className: "lineage-board panel" },
         e("div", { className: "panel-head" },
           e("h2", null, `Workflow diagram: ${execution.business_date} ${execution.execution_type}`),
@@ -3444,16 +3573,24 @@ if sync_to_postgres:
 
   function DiagramLinkCard({ link, onClick }) {
     const linkId = outputLinkId(link);
-    return e("button", { className: "diagram-card link-card-diagram", type: "button", onClick },
+    const isQuarantine = link.edge_type === "quarantine";
+    return e("button", {
+      className: `diagram-card link-card-diagram ${isQuarantine ? "quarantine" : ""}`,
+      type: "button",
+      onClick,
+    },
       e("div", { className: "diagram-card-title" },
-        e("span", { className: "pill mini" }, link.edge_type),
-        e("strong", null, "output_link")
+        e("span", { className: `pill mini ${isQuarantine ? "red" : ""}` }, link.edge_type),
+        e("strong", null, isQuarantine ? "DLQ output_link" : "output_link"),
+        isQuarantine && e("span", { className: "pill mini red" }, "DLQ")
       ),
       e("div", { className: "diagram-facts" },
         e(DiagramFact, { label: "output_link_id", value: shortId(linkId) }),
         e(DiagramFact, { label: "sink_type", value: link.sink_type || "-" }),
         e(DiagramFact, { label: "target", value: link.target_ref?.path || "-" }),
-        e(DiagramFact, { label: "content_hash", value: shortId(link.target_ref?.content_hash) })
+        isQuarantine
+          ? e(DiagramFact, { label: "dlq_id", value: shortId(link.target_ref?.dlq_id || link.target_ref?.content_hash) })
+          : e(DiagramFact, { label: "content_hash", value: shortId(link.target_ref?.content_hash) })
       )
     );
   }
@@ -4596,21 +4733,58 @@ if sync_to_postgres:
           )
         )
       ),
-      e("section", { className: "docs-detail panel" },
-        e("div", { className: "panel-head docs-heading" },
-          e("div", null,
-            e("h2", null, selected.question),
-            e("p", null, selected.topic)
-          )
-        ),
-        e("div", { className: "panel-body docs-body" },
-          e("div", { className: "docs-answer" },
-            selected.answer.map((paragraph) =>
-              e("p", { key: paragraph }, paragraph)
+      e("div", { className: "docs-detail-stack" },
+        e("section", { className: "docs-detail panel" },
+          e("div", { className: "panel-head docs-heading" },
+            e("div", null,
+              e("h2", null, selected.question),
+              e("p", null, selected.topic)
             )
           ),
-          e("pre", { className: "template-code docs-code" },
-            e("code", null, selected.code)
+          e("div", { className: "panel-body docs-body" },
+            e("div", { className: "docs-answer" },
+              selected.answer.map((paragraph) =>
+                e("p", { key: paragraph }, paragraph)
+              )
+            ),
+            e("pre", { className: "template-code docs-code" },
+              e("code", null, selected.code)
+            )
+          )
+        ),
+        e(DiagnosticsPanel)
+      )
+    );
+  }
+
+  function DiagnosticsPanel() {
+    return e("section", { className: "diagnostics panel" },
+      e("div", { className: "panel-head" },
+        e("h2", null, "Diagnostics & docs"),
+        e("span", { className: "pill" }, "read-side reference")
+      ),
+      e("div", { className: "panel-body diagnostics-body" },
+        e("p", { className: "diagnostics-intro" },
+          "This dashboard renders from a static JSON snapshot and never queries Postgres. ",
+          "The functions below are the read-side support helpers an operator runs directly ",
+          "against the control plane to reproduce what each tab shows."
+        ),
+        e("div", { className: "diagnostics-functions" },
+          SUPPORT_FUNCTIONS.map((fn) =>
+            e("div", { className: "diagnostics-function", key: fn.name },
+              e("code", { className: "diagnostics-signature" }, fn.signature),
+              e("p", null, fn.purpose)
+            )
+          )
+        ),
+        e("h3", { className: "diagnostics-subhead" }, "Reference docs"),
+        e("div", { className: "diagnostics-docs" },
+          DOC_LINKS.map((doc) =>
+            e("div", { className: "diagnostics-doc", key: doc.path },
+              e("strong", null, doc.label),
+              e("code", null, doc.path),
+              e("small", null, doc.note)
+            )
           )
         )
       )

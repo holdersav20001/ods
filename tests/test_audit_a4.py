@@ -44,7 +44,20 @@ from control import dlq, lineage, recon, runs, stages
 from control.db import connect
 from harness import composers, fakes
 
-A4 = "audit_a4"
+# ISOLATION: the committing probes discover their upstream run via
+# latest_succeeded_run / succeeded_runs, which key on (domain, dataset,
+# business_date, pipeline_type). A prior INTERRUPTED run (or any committed demo
+# data) sharing that slice would be discovered as a stale "newest succeeded run"
+# and silently anchor a replay/sink to the WRONG run — an intermittent flake on a
+# re-run against a data-present DB. We close that window two ways:
+#   (1) the namespace prefix is UNIQUE PER PYTEST SESSION (a short uuid tag), so no
+#       committed demo/other-session/prior-interrupted data can EVER live in this
+#       session's slice — discovery cannot collide; and
+#   (2) the committing fixture PRE-CLEANS this session's namespace at setup (not
+#       just in finally), so even a re-entrant slice starts empty.
+# The unique tag is a prefix of the original "audit_a4" name, so the LIKE-scoped
+# cleanup and every ``A4 + "_sX"`` per-test domain inherit the isolation for free.
+A4 = "audit_a4_" + uuid.uuid4().hex[:8]
 TRACE_SQL = open(
     os.path.join(os.path.dirname(__file__), "..", "control", "queries",
                  "trace_row.sql")).read()
@@ -57,6 +70,7 @@ TRACE_SQL = open(
 def cc():
     c = connect()
     c.autocommit = True
+    _cleanup(c)  # PRE-clean: a prior interrupted run can't pollute discovery.
     try:
         yield c
     finally:
@@ -88,6 +102,29 @@ def _cleanup(c):
               (A4 + "%",))
     c.execute("DELETE FROM cp.run_log WHERE domain LIKE %s", (A4 + "%",))
     c.execute("DELETE FROM cp.file_catalogue WHERE domain LIKE %s", (A4 + "%",))
+
+
+def _settle_order(c, *, domain, dataset="orders", bd="2026-05-01"):
+    """Backdate every EXISTING succeeded run in this slice by an hour so a run
+    committed AFTERWARDS is unambiguously the newest.
+
+    DISCOVERY DETERMINISM: latest_succeeded_run / succeeded_runs order
+    ``finished_at DESC, run_id DESC``. finished_at is clock_timestamp() (007), so
+    two runs committed in quick succession can tie at microsecond resolution under
+    load — the ``run_id DESC`` (random uuid) tiebreak then picks NON-
+    deterministically (the very fragility test_s2_refeed_discovery_ordering_
+    fragility_NOTE proves is real). When a probe builds an ORIGINAL chain then a
+    REPLAY chain in one slice, that tie can make the replay re-canonicalize/sink
+    discover the ORIGINAL ingest/canon instead of the replay — an intermittent
+    flake. Calling this BETWEEN the original and the replay makes the replay's
+    runs strictly newest, so discovery is deterministic. No assertion's meaning
+    changes; test-only data nudge (same technique _s2b uses); never touches
+    production code."""
+    c.execute(
+        "UPDATE cp.run_log SET finished_at = finished_at - interval '1 hour' "
+        "WHERE domain=%s AND dataset=%s AND business_date=%s "
+        "AND status='succeeded' AND finished_at IS NOT NULL",
+        (domain, dataset, bd))
 
 
 def _file(n, *, domain, dataset="orders", bd="2026-05-01", tag="x"):
@@ -256,6 +293,7 @@ def test_s2_refeed_no_cross_contamination(cc):
     f2 = _file(12, domain=dom, tag="fixed")
     f2["file_md5"] = dom + "_fixed_md5"
     f2["s3_raw_path"] = "s3://raw/" + dom + "/CORRECTED"
+    _settle_order(cc, domain=dom)  # replay runs strictly newest -> deterministic
     rep = composers.replay_single_file(
         cc, original_run_id=r1["ingest"]["run_id"], file=f2, commit=True)
 
@@ -276,15 +314,21 @@ def test_s2_refeed_no_cross_contamination(cc):
         orig_raws_after, rep_raws))
 
 
-def test_s2_refeed_discovery_ordering_fragility_NOTE(cc):
-    """The no-contamination guarantee above relies on the corrected ingest
-    committing with a STRICTLY-NEWER finished_at. latest_succeeded_run /
-    run_output_link order by finished_at DESC then a RANDOM run_id/uuid; if two
-    ingests in the slice share finished_at (clock_timestamp ties, or an
-    out-of-order/backfilled finished_at), a refeed re-canonicalize discovers a
-    NON-DETERMINISTIC upstream. This probe documents the ordering dependency by
-    forcing two succeeded ingests in one slice with EQUAL finished_at and
-    showing discovery is decided by uuid, not recency."""
+def test_s2_refeed_discovery_ordering_tiebreak_FIXED(cc):
+    """The no-contamination guarantee above relies on the corrected ingest being
+    discovered as the latest. latest_succeeded_run / run_output_link order by
+    finished_at DESC; if two ingests in the slice share finished_at
+    (clock_timestamp ties, or an out-of-order/backfilled finished_at), the
+    secondary key decides.
+
+    HISTORY: this probe USED to document a fragility — the secondary key was a
+    RANDOM run_id (uuid) DESC, so on a finished_at tie discovery was a coin-flip
+    and a refeed could re-canonicalize a STALE ingest.
+
+    FIXED (migration 028): the secondary key is now `seq DESC` (a monotonic
+    BIGSERIAL insert-order key). On a finished_at tie the run CREATED LATER
+    (higher seq) wins DETERMINISTICALLY — i.e. the corrected/newer ingest, not a
+    uuid coin-flip. This probe now ASSERTS that fixed, deterministic behaviour."""
     dom = A4 + "_s2b"
     f1 = _file(10, domain=dom, tag="one")
     f2 = _file(20, domain=dom, tag="two")
@@ -296,18 +340,24 @@ def test_s2_refeed_discovery_ordering_fragility_NOTE(cc):
     # Force an EXACT finished_at tie (the hazard the clock normally hides).
     cc.execute("UPDATE cp.run_log SET finished_at = (SELECT finished_at FROM "
                "cp.run_log WHERE run_id=%s) WHERE run_id=%s", (i1["run_id"], i2["run_id"]))
+    # The deterministic winner is the LATER-created run (higher seq) — i2, the
+    # corrected/newer ingest — regardless of how the random uuids compare.
+    seq1, seq2 = cc.execute(
+        "SELECT (SELECT seq FROM cp.run_log WHERE run_id=%s),"
+        "       (SELECT seq FROM cp.run_log WHERE run_id=%s)",
+        (i1["run_id"], i2["run_id"]),
+    ).fetchone()
+    assert seq2 > seq1, "i2 (created later) must have the higher seq"
     disc = runs.latest_succeeded_run(cc, domain=dom, dataset="orders",
                                      business_date="2026-05-01",
                                      pipeline_type="ingestion")
-    # The winner is purely the run_id DESC tiebreak, NOT "the corrected/newer".
-    expected = max(i1["run_id"], i2["run_id"])
-    assert str(disc) == expected, (
-        "ORDERING FRAGILITY CONFIRMED: on a finished_at tie, discovery is a "
-        "random run_id DESC tiebreak. A refeed whose corrected ingest ties the "
-        "old one can re-canonicalize the WRONG (stale) ingest — silent "
-        "cross-contamination.")
-    print("\n[S2b NOTE] finished_at tie -> discovery picked", str(disc)[:8],
-          "by uuid DESC, not by recency")
+    assert str(disc) == i2["run_id"], (
+        "ORDERING FRAGILITY FIXED (028): on a finished_at tie, discovery now picks "
+        "the higher-seq (later-created) run deterministically — the corrected/newer "
+        "ingest — NOT a random run_id DESC coin-flip. Stale-ingest re-canonicalize "
+        "is closed at the source.")
+    print("\n[S2b FIXED] finished_at tie -> discovery picked", str(disc)[:8],
+          "by seq DESC (deterministic, = later-created ingest)")
 
 
 # ========================================================================= #
@@ -325,10 +375,12 @@ def test_s3_double_replay_idempotent(cc):
     fc["file_md5"] = dom + "_fix"
     fc["s3_raw_path"] = "s3://raw/" + dom + "/FIX"
 
+    _settle_order(cc, domain=dom)  # replay1 runs strictly newest -> deterministic
     rep1 = composers.replay_single_file(
         cc, original_run_id=base["ingest"]["run_id"], file=fc, commit=True)
     # SECOND replay of the SAME corrected file (idempotent re-drive). It mints a
     # fresh wfid+run but the curated/canonical content_hash is identical.
+    _settle_order(cc, domain=dom)  # replay2 runs strictly newest -> deterministic
     rep2 = composers.replay_single_file(
         cc, original_run_id=base["ingest"]["run_id"], file=fc, commit=True)
 
