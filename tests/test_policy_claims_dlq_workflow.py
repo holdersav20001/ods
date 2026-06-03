@@ -302,6 +302,49 @@ def test_09_bad_row_visibility_before_and_after_replay(demo, conn):
 
 
 # --------------------------------------------------------------------------- #
+# Cross-hop fact-spine recon (F6, migration 031): the validating NORMAL run
+# records a workflow recon row that reconciles ok on the FACT SPINE, and it is
+# the headline DLQ guarantee at workflow grain: fact 'claim_dlq' raw 4 == leaf
+# 'policy_claim_dlq' detail 3 + dlq_unresolved 1 (the 4 = 3 good + 1 quarantined).
+# raw_in excludes the policy DIMENSION; sink_out excludes the daily aggregate.
+# The REPLAY execution reconciles at changed-slice grain (per-output
+# reconcile_sink_link) and records NO whole-fact workflow recon row.
+# --------------------------------------------------------------------------- #
+def test_09_workflow_recon_fact_spine_ok(demo, conn):
+    normal = demo["normal"]
+    rows = conn.execute(
+        """
+        SELECT rl.status, rl.metrics FROM cp.reconciliation_log rl
+        JOIN cp.run_log r ON r.run_id = rl.run_id
+        WHERE r.workflow_run_id = %s AND rl.check_type = 'workflow'
+        """,
+        (normal["workflow_run_id"],),
+    ).fetchall()
+    assert len(rows) == 1, "normal DLQ run must record one workflow recon row"
+    status, metrics = rows[0]
+    assert status == "ok", f"DLQ normal workflow recon {status}, {metrics}"
+    # The headline 4 = 3 good + 1 quarantined.
+    assert metrics["raw_in"] == 4
+    assert metrics["sink_out"] == 3
+    assert metrics["dlq_out"] == 1
+    assert metrics["source_datasets"] == ["claim_dlq"]
+    assert metrics["leaf_target"] == DETAIL_DATASET
+    assert metrics["aggregates_excluded"] is True
+    assert metrics["workflow_run_id"] == normal["workflow_run_id"]
+
+    # The replay reconciles at changed-slice grain — no whole-fact workflow row.
+    n = conn.execute(
+        """
+        SELECT count(*) FROM cp.reconciliation_log rl
+        JOIN cp.run_log r ON r.run_id = rl.run_id
+        WHERE r.workflow_run_id = %s AND rl.check_type = 'workflow'
+        """,
+        (demo["replay"]["workflow_run_id"],),
+    ).fetchone()[0]
+    assert n == 0, "DLQ replay must not record a whole-fact workflow recon"
+
+
+# --------------------------------------------------------------------------- #
 # Schema-validation tests (area 3).
 # --------------------------------------------------------------------------- #
 def test_10_missing_required_column_goes_to_dlq(conn):

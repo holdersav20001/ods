@@ -396,66 +396,49 @@ def test_08_refeed_aggregate_names_both_contributing_details(demo, conn):
 
 
 # --------------------------------------------------------------------------- #
-# Test 9 (F6 blocker, documented): reconcile_workflow is NOT wired into this
-# STAR-SCHEMA workflow because its raw_in == sink_out + dlq_out model cannot
-# balance here.
+# Test 9 (F6 fact-spine, migration 031): reconcile_workflow IS wired on each
+# normal execution of this STAR SCHEMA and reconciles ok on the FACT SPINE.
 #
-# raw_in SUMS every raw_to_curated edge — the policy DIMENSION (3) AND the claim
-# FACT (4) = 7. sink_out is the claims detail (= #claims) + the row-REDUCING
-# daily aggregate (< #claims). The policy dimension rows do NOT flow 1:1 to the
-# sink, so raw_in EXCEEDS sink_out by exactly the dimension contribution: a
-# reconcile_workflow call here would record a (model-driven) breach, and
-# cp.developer_diagnostics would then flag that non-'ok' reconciliation row on
-# the terminal sink run of an otherwise-clean workflow. So it is deliberately NOT
-# wired; per-output reconcile_sink_link (which gates visibility.activate) is the
-# operative recon. This test pins the decision: no workflow recon row exists, and
-# computing one WOULD breach (proving the gap is real, not silently ignored).
+# The only universal cross-hop invariant for a star schema is the fact spine:
+#   raw('claim' FACT) == leaf 'policy_claim' detail + dlq_unresolved.
+# raw_in counts ONLY the claim FACT raw_to_curated link (the policy DIMENSION is
+# OFF-spine, excluded via source_datasets); sink_out counts ONLY the policy_claim
+# leaf-detail canonical_to_sink rows (the daily aggregate is OFF-spine, verified
+# per-hop by reconcile_sink_link). So a normal day reconciles ok: fact 4 ==
+# leaf-detail 4 + dlq 0. The unsound 030 whole-workflow model (raw_in = policy 3 +
+# claim 4 = 7; sink_out = detail 4 + aggregate 2 = 6 -> breach) is GONE.
 # --------------------------------------------------------------------------- #
-def test_09_workflow_recon_blocked_by_dimension_shape(demo, conn):
-    # No execution wired a check_type='workflow' row (scoped to this demo).
-    for ex in demo["executions"]:
-        n = conn.execute(
+def test_09_workflow_recon_fact_spine_ok(demo, conn):
+    # Each NORMAL execution recorded exactly one ok workflow recon row on the
+    # fact spine (scoped to its own wfid); the refeed has none (changed slice).
+    for date in (DAY1, DAY2, DAY3):
+        wfid = demo["normals_by_date"][date]["workflow_run_id"]
+        rows = conn.execute(
             """
-            SELECT count(*) FROM cp.reconciliation_log rl
+            SELECT rl.status, rl.metrics FROM cp.reconciliation_log rl
             JOIN cp.run_log r ON r.run_id = rl.run_id
             WHERE r.workflow_run_id = %s AND rl.check_type = 'workflow'
             """,
-            (ex["workflow_run_id"],),
-        ).fetchone()[0]
-        assert n == 0, (
-            f"{ex['execution_type']}: reconcile_workflow must NOT be wired into "
-            "the star-schema policy/claims workflow (it cannot reconcile ok)")
+            (wfid,),
+        ).fetchall()
+        assert len(rows) == 1, f"normal {date}: expected one workflow recon row"
+        status, metrics = rows[0]
+        assert status == "ok", f"normal {date}: {status}, {metrics}"
+        # Fact spine: claim raw 4 == policy_claim detail 4, dlq 0.
+        assert metrics["raw_in"] == 4 and metrics["sink_out"] == 4
+        assert metrics["dlq_out"] == 0
+        assert metrics["source_datasets"] == ["claim"]
+        assert metrics["leaf_target"] == DETAIL_DATASET
+        assert metrics["aggregates_excluded"] is True
+        assert metrics["workflow_run_id"] == wfid
 
-    # Demonstrate WHY: for a normal day, raw_in (policy+claim) > sink_out, so the
-    # cross-hop model would breach. Compute the same quantities the SQL would.
-    wfid = demo["day1"]["workflow_run_id"]
-    raw_in = conn.execute(
-        "SELECT coalesce(sum(l.record_count),0) FROM cp.lineage_link l "
-        "JOIN cp.run_log r ON r.run_id = l.consumer_run_id "
-        "WHERE r.workflow_run_id = %s AND l.edge_type = 'raw_to_curated'",
-        (wfid,),
-    ).fetchone()[0]
-    sink_out = conn.execute(
+    # The changed-only refeed deliberately has NO workflow recon row.
+    n = conn.execute(
         """
-        SELECT count(*) FROM (
-            SELECT t._ods_lineage_link_id FROM ods.policy_claim t
-            JOIN cp.lineage_link l ON l.lineage_link_id = t._ods_lineage_link_id
-            JOIN cp.run_log r ON r.run_id = l.consumer_run_id
-            WHERE r.workflow_run_id = %s
-              AND l.edge_type IN ('canonical_to_sink','detail_to_aggregate')
-            UNION ALL
-            SELECT t._ods_lineage_link_id FROM ods.policy_claim_daily t
-            JOIN cp.lineage_link l ON l.lineage_link_id = t._ods_lineage_link_id
-            JOIN cp.run_log r ON r.run_id = l.consumer_run_id
-            WHERE r.workflow_run_id = %s
-              AND l.edge_type IN ('canonical_to_sink','detail_to_aggregate')
-        ) s
+        SELECT count(*) FROM cp.reconciliation_log rl
+        JOIN cp.run_log r ON r.run_id = rl.run_id
+        WHERE r.workflow_run_id = %s AND rl.check_type = 'workflow'
         """,
-        (wfid, wfid),
+        (demo["refeed"]["workflow_run_id"],),
     ).fetchone()[0]
-    # raw_in = 3 policy + 4 claim = 7; sink_out = 4 detail + 2 aggregate = 6.
-    assert raw_in == 7
-    assert sink_out == 6
-    assert raw_in > sink_out, (
-        "the policy dimension makes raw_in exceed sink_out — reconcile_workflow "
-        "would breach, which is why it is not wired (F6 blocker)")
+    assert n == 0, "changed-only refeed must not record a whole-fact workflow recon"

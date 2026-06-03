@@ -735,6 +735,21 @@ END $function$;
 --      double-count, sink_out includes detail_to_aggregate.
 --
 --   ╔══════════════════════════════════════════════════════════════════════╗
+--   ║ ***SUPERSEDED by migration 031*** (031_reconcile_workflow_fact_spine). ║
+--   ║ This 030 body kept FIX-A (a) seq tiebreak + (b) unresolved-only dlq    ║
+--   ║ BUT change (c) below — folding detail_to_aggregate into sink_out — is  ║
+--   ║ UNSOUND: it sums the row-REDUCING aggregate rollup into sink_out while  ║
+--   ║ raw_in sums the customer/policy DIMENSION input, neither of which is on ║
+--   ║ the row-conservation spine. It passed `sales` only by arithmetic        ║
+--   ║ coincidence and breaches merge/aggregate pipelines by design. 031       ║
+--   ║ re-declares reconcile_workflow as a FACT-SPINE conservation             ║
+--   ║ (raw(fact) == leaf-detail + dlq_unresolved; dimensions/aggregates       ║
+--   ║ off-spine — aggregates verified per-hop by reconcile_sink_link) and     ║
+--   ║ applies LAST, so the 031 definition wins. See migration 031 + the F6    ║
+--   ║ REVISED block in docs/reviews/2026-06-03-audit-consolidated.md.         ║
+--   ╚══════════════════════════════════════════════════════════════════════╝
+--
+--   ╔══════════════════════════════════════════════════════════════════════╗
 --   ║ The 015 copy of cp.reconcile_workflow is SUPERSEDED by this 030 body.  ║
 --   ║ 030 applies last so THIS definition wins. Signature + return type      ║
 --   ║ UNCHANGED (1 arg, void) -> CREATE OR REPLACE suffices. The body is the ║

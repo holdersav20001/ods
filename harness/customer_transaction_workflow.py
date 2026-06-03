@@ -688,10 +688,17 @@ def normal_execution(conn, business_date: dt.date,
         workflow_run_id=workflow_run_id, rows=aggregate_rows,
         key_fn=aggregate_business_key, reason="normal load", commit=commit)
 
-    # F6: cross-hop reconciliation (Σ raw_to_curated vs sink + dlq). For this
-    # balanced demo a normal day reconciles ok (raw_in == sink_out); recorded in
+    # F6 (fact-spine, migration 031): cross-hop reconciliation on the FACT SPINE.
+    # raw_in counts ONLY the 'transaction' FACT raw_to_curated link (the
+    # 'customer' DIMENSION is OFF-spine, excluded); sink_out counts ONLY the
+    # 'customer_transaction' leaf-detail canonical_to_sink rows (the daily
+    # aggregate is OFF-spine, verified per-hop by reconcile_sink_link). So a
+    # normal day reconciles ok: fact 6 == leaf-detail 6 + dlq 0. Recorded in
     # reconciliation_log (check_type='workflow').
-    recon.reconcile_workflow(conn, workflow_run_id=workflow_run_id, commit=commit)
+    recon.reconcile_workflow(
+        conn, workflow_run_id=workflow_run_id,
+        source_datasets=[TRANSACTION_DATASET], leaf_target=DETAIL_DATASET,
+        commit=commit)
 
     return {
         "workflow_run_id": workflow_run_id,
@@ -826,14 +833,9 @@ def refeed_execution(conn, *, original_day2_result: dict[str, Any],
         key_fn=aggregate_business_key, reason="transaction refeed (changed only)",
         commit=commit)
 
-    # NOTE on F6: a changed-only refeed re-writes ONLY the changed rows, so it
-    # CANNOT balance raw_in (the whole corrected file) against sink_out (only the
-    # changed rows) — reconcile_workflow would record a (correct-by-design)
-    # breach. cp.developer_diagnostics then surfaces any non-'ok' reconciliation
-    # row on the terminal sink run as a finding. So reconcile_workflow is wired
-    # only on the BALANCED normal executions (see normal_execution); the refeed
-    # relies on per-output reconcile_sink_link (already gating visibility). See
-    # the F6 blocker note in the audit report.
+    # NOTE on F6 (fact-spine): refeed reconciles at changed-slice grain via
+    # per-output reconcile_sink_link (already gating visibility); whole-fact
+    # reconcile_workflow is not applicable to a changed-only slice.
 
     return {
         "workflow_run_id": workflow_run_id,

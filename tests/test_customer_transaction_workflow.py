@@ -560,22 +560,21 @@ def test_17_refeed_aggregate_names_both_contributing_details(demo, conn):
 
 
 # --------------------------------------------------------------------------- #
-# Test 18 (F6): cross-hop reconcile_workflow ran and reconciles ok on the
-#               BALANCED normal days (A4-03: it was previously never called).
+# Test 18 (F6 fact-spine, migration 031): cross-hop reconcile_workflow ran and
+#               reconciles ok on each normal day along the FACT SPINE.
 #
-# customer_transaction is the only end-to-end BALANCED demo shape: a normal day
-# ingests 3 customers + 6 transactions (raw_in = 9) and writes 6 detail + 3
-# aggregate sink rows (sink_out = 9, dlq 0), so reconcile_workflow reconciles ok
-# AND stays diagnostically clean (cp.developer_diagnostics flags any non-'ok'
-# reconciliation row on the terminal sink run).
+# customer_transaction is a star schema (customer DIMENSION joined to the
+# transaction FACT, then a row-reducing daily aggregate). The only universal
+# cross-hop invariant is the fact spine: raw('transaction' FACT) == leaf
+# 'customer_transaction' detail + dlq_unresolved. raw_in counts ONLY the 6
+# transaction FACT rows (the 3-row customer DIMENSION is OFF-spine, excluded);
+# sink_out counts ONLY the 6 customer_transaction leaf-detail rows (the daily
+# aggregate is OFF-spine, verified per-hop by reconcile_sink_link). So a normal
+# day reconciles ok: fact 6 == leaf-detail 6 + dlq 0.
 #
-# The CHANGED-ONLY refeed re-writes only the changed rows, so it CANNOT balance
-# raw_in (the whole corrected file) against sink_out (only the changed rows) —
-# reconcile_workflow would record a (correct-by-design) breach that diagnostics
-# then surface. It is therefore deliberately NOT wired on the refeed; the refeed
-# relies on per-output reconcile_sink_link (which already gates visibility).
-# (Same constraint blocks the star-schema policy_claims + DLQ workflows — see
-# the F6 blocker note in the audit report.)
+# The CHANGED-ONLY refeed reconciles at changed-slice grain via per-output
+# reconcile_sink_link; whole-fact reconcile_workflow is not applicable to a
+# changed-only slice, so the refeed records NO workflow recon row.
 # --------------------------------------------------------------------------- #
 def test_18_workflow_recon_ran_and_normal_days_ok(demo, conn):
     def _wf_recon(wfid):
@@ -588,8 +587,8 @@ def test_18_workflow_recon_ran_and_normal_days_ok(demo, conn):
             (wfid,),
         ).fetchall()
 
-    # The three balanced NORMAL days each have exactly one workflow recon row and
-    # reconcile ok (raw_in == sink_out, dlq 0).
+    # The three NORMAL days each have exactly one workflow recon row and reconcile
+    # ok on the fact spine (transaction raw 6 == customer_transaction detail 6).
     for date in (DAY1, DAY2, DAY3):
         wfid = demo["normals_by_date"][date]["workflow_run_id"]
         rows = _wf_recon(wfid)
@@ -597,10 +596,42 @@ def test_18_workflow_recon_ran_and_normal_days_ok(demo, conn):
             f"normal {date}: expected one workflow recon row, got {len(rows)}")
         status, metrics = rows[0]
         assert status == "ok", f"normal {date}: workflow recon {status}, {metrics}"
-        assert metrics["raw_in"] == metrics["sink_out"] == 9
+        assert metrics["raw_in"] == metrics["sink_out"] == 6
         assert metrics["dlq_out"] == 0
+        assert metrics["source_datasets"] == ["transaction"]
+        assert metrics["leaf_target"] == "customer_transaction"
+        assert metrics["aggregates_excluded"] is True
         assert metrics["workflow_run_id"] == wfid
 
-    # The changed-only refeed deliberately has NO workflow recon row (would breach
-    # by design); diagnostics therefore stay clean.
+        # The customer DIMENSION (raw 3) is NOT in raw_in: the whole-workflow raw
+        # sum is 9 (3 customer + 6 transaction), but fact-scoped raw_in is 6.
+        all_raw = conn.execute(
+            "SELECT coalesce(sum(l.record_count),0) FROM cp.lineage_link l "
+            "JOIN cp.run_log r ON r.run_id=l.consumer_run_id "
+            "WHERE r.workflow_run_id=%s AND l.edge_type='raw_to_curated'", (wfid,)
+        ).fetchone()[0]
+        assert all_raw == 9 and metrics["raw_in"] == 6, (
+            "customer dimension must be excluded from raw_in")
+
+        # The daily AGGREGATE (3 rows in ods.customer_transaction_daily) is NOT in
+        # sink_out: detail 6 + aggregate 3 = 9 canonical_to_sink rows total, but
+        # leaf-scoped sink_out is 6.
+        all_sink = conn.execute(
+            """
+            SELECT count(*) FROM (
+                SELECT 1 FROM ods.customer_transaction t
+                JOIN cp.lineage_link l ON l.lineage_link_id=t._ods_lineage_link_id
+                JOIN cp.run_log r ON r.run_id=l.consumer_run_id
+                WHERE r.workflow_run_id=%s AND l.edge_type='canonical_to_sink'
+                UNION ALL
+                SELECT 1 FROM ods.customer_transaction_daily t
+                JOIN cp.lineage_link l ON l.lineage_link_id=t._ods_lineage_link_id
+                JOIN cp.run_log r ON r.run_id=l.consumer_run_id
+                WHERE r.workflow_run_id=%s AND l.edge_type='canonical_to_sink'
+            ) s
+            """, (wfid, wfid)).fetchone()[0]
+        assert all_sink == 9 and metrics["sink_out"] == 6, (
+            "daily aggregate must be excluded from sink_out")
+
+    # The changed-only refeed deliberately has NO workflow recon row.
     assert _wf_recon(demo["refeed"]["workflow_run_id"]) == []

@@ -669,13 +669,18 @@ def normal_execution(conn, *, workflow_run_id: str, dag_run_id: str,
         workflow_run_id=workflow_run_id, rows=aggregate_rows,
         key_fn=aggregate_business_key, reason="normal load", commit=commit)
 
-    # NOTE on F6: this DLQ demo is ALSO a star-schema workflow (policy DIMENSION
-    # + claim FACT + row-reducing aggregate) AND it legitimately quarantines a row.
-    # reconcile_workflow's raw_in (policy + claim) cannot equal sink_out + dlq_out
-    # because the policy dimension rows do not flow 1:1 to the sink, so it cannot
-    # reconcile 'ok' and would record a breach that cp.developer_diagnostics flags.
-    # Per-output reconcile_sink_link (gating visibility) is the operative recon.
-    # See the F6 blocker note in the audit report.
+    # F6 (fact-spine, migration 031): cross-hop reconciliation on the FACT SPINE.
+    # This is the headline guarantee at workflow grain: raw_in counts ONLY the
+    # 'claim_dlq' FACT raw_to_curated link (the 'policy_dlq' DIMENSION is OFF-spine,
+    # excluded); sink_out counts ONLY the 'policy_claim_dlq' leaf-detail
+    # canonical_to_sink rows (the daily aggregate is OFF-spine, verified per-hop by
+    # reconcile_sink_link); dlq_out counts the unresolved quarantine. So the
+    # validating load reconciles ok: fact 4 == leaf-detail 3 + dlq 1 (the 4 = 3
+    # good + 1 quarantined). Recorded as check_type='workflow'.
+    recon.reconcile_workflow(
+        conn, workflow_run_id=workflow_run_id,
+        source_datasets=[CLAIM_DATASET], leaf_target=DETAIL_DATASET,
+        commit=commit)
 
     return {
         "workflow_run_id": workflow_run_id,
@@ -840,6 +845,10 @@ def replay_dlq(conn, *, normal_result: dict[str, Any],
         normal_result=normal_result, corrected_detail_rows=detail_rows,
         detail_sink=detail_sink, content_tag=content_tag, dag_run_id=dag_run_id,
         commit=commit)
+
+    # NOTE on F6 (fact-spine): replay reconciles at changed-slice grain via
+    # per-output reconcile_sink_link (already gating visibility); whole-fact
+    # reconcile_workflow is not applicable to a changed-only slice.
 
     return {
         "workflow_run_id": workflow_run_id,

@@ -50,17 +50,27 @@ def reconcile_sink_link(conn, *, lineage_link_id, source_count, commit=True) -> 
         conn.commit()
 
 
-def reconcile_workflow(conn, *, workflow_run_id, commit=True) -> None:
-    """End-to-end CROSS-HOP reconciliation (P10-C / THEME F, A4-S5).
+def reconcile_workflow(conn, *, workflow_run_id, source_datasets=None,
+                       leaf_target=None, commit=True) -> None:
+    """End-to-end CROSS-HOP reconciliation on the FACT SPINE (migration 031).
 
     Per-run sink recon is blind to a wholly-failed upstream that silently drops
     rows: each run's recon is self-consistent. This compares what ENTERED the
-    workflow (raw_in = SUM of raw_to_curated link record_counts over the
-    workflow's runs) to what LEFT it (accounted = actual sink rows across the
-    workflow's datasets + dlq record_counts). A genuine cross-hop loss BREACHES.
-    Writes a reconciliation_log row with check_type='workflow', run_id = the
-    workflow's terminal run, and metrics carrying raw_in/sink_out/dlq_out and the
-    workflow_run_id."""
-    conn.execute("SELECT cp.reconcile_workflow(%s)", [workflow_run_id])
+    workflow on the FACT SPINE (raw_in = SUM of raw_to_curated link record_counts,
+    RESTRICTED to the fact dataset(s) in ``source_datasets`` when given — so the
+    customer/policy DIMENSION is excluded) to what LEFT it on the leaf
+    (accounted = canonical_to_sink rows of the ``leaf_target`` detail table +
+    unresolved dlq record_counts). Aggregates are OFF-spine (verified per-hop by
+    reconcile_sink_link) and NEVER counted here. A genuine cross-hop loss BREACHES.
+
+    ``source_datasets`` (a Python list -> psycopg adapts to text[]) and
+    ``leaf_target`` are OPTIONAL; when both omitted the SQL falls back to the
+    single-source behaviour (all raw_to_curated vs all canonical_to_sink leaf
+    rows), so existing no-arg callers keep working. Writes a reconciliation_log
+    row with check_type='workflow', run_id = the workflow's terminal run, and
+    metrics carrying raw_in/sink_out/dlq_out, source_datasets, leaf_target, and
+    aggregates_excluded:true."""
+    conn.execute("SELECT cp.reconcile_workflow(%s,%s,%s)",
+                 [workflow_run_id, source_datasets, leaf_target])
     if commit:
         conn.commit()

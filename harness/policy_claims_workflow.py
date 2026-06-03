@@ -803,15 +803,18 @@ def normal_execution(conn, business_date: dt.date,
         workflow_run_id=workflow_run_id, rows=aggregate_rows,
         key_fn=aggregate_business_key, reason="normal load", commit=commit)
 
-    # NOTE on F6: this is a STAR-SCHEMA workflow (policy DIMENSION joined to the
-    # claim FACT, then a row-REDUCING daily aggregate). reconcile_workflow's model
-    # is raw_in == sink_out + dlq_out, where raw_in SUMS every raw_to_curated edge
-    # (policy AND claim) but sink_out is the claims detail + the (fewer) aggregate
-    # rows; the policy dimension rows do NOT flow 1:1 to the sink, so it CANNOT
-    # reconcile 'ok'. Wiring it would record a breach that cp.developer_diagnostics
-    # then flags on the terminal sink run. Per-output reconcile_sink_link (which
-    # gates visibility.activate) is the operative recon here. See the F6 blocker
-    # note in the audit report.
+    # F6 (fact-spine, migration 031): cross-hop reconciliation on the FACT SPINE.
+    # This is a star schema (policy DIMENSION joined to the claim FACT, then a
+    # row-REDUCING daily aggregate), so the only universal invariant is the fact
+    # spine: raw_in counts ONLY the 'claim' FACT raw_to_curated link (the 'policy'
+    # DIMENSION is OFF-spine, excluded); sink_out counts ONLY the 'policy_claim'
+    # leaf-detail canonical_to_sink rows (the daily aggregate is OFF-spine,
+    # verified per-hop by reconcile_sink_link). So a normal day reconciles ok:
+    # fact 4 == leaf-detail 4 + dlq 0. Recorded as check_type='workflow'.
+    recon.reconcile_workflow(
+        conn, workflow_run_id=workflow_run_id,
+        source_datasets=[CLAIM_DATASET], leaf_target=DETAIL_DATASET,
+        commit=commit)
 
     return {
         "workflow_run_id": workflow_run_id,
@@ -951,10 +954,9 @@ def refeed_execution(conn, *, original_day2_result: dict[str, Any],
         key_fn=aggregate_business_key, reason="claim refeed (changed only)",
         commit=commit)
 
-    # NOTE on F6: a changed-only refeed (and the star-schema shape) cannot balance
-    # raw_in vs sink_out — see the note in normal_execution. reconcile_workflow is
-    # not wired here for the same reason. Per-output reconcile_sink_link gates
-    # visibility. See the F6 blocker note in the audit report.
+    # NOTE on F6 (fact-spine): refeed reconciles at changed-slice grain via
+    # per-output reconcile_sink_link (already gating visibility); whole-fact
+    # reconcile_workflow is not applicable to a changed-only slice.
 
     return {
         "workflow_run_id": workflow_run_id,
