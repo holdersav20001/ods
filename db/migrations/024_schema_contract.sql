@@ -37,6 +37,13 @@ CREATE TABLE cp.schema_contract (
 --   LATEST by schema_version (descending text order — versions are sortable tags
 --   like 'claim.v1', 'claim.v2'). Returns the whole row so callers (and the Python
 --   helper) get every contract field. Zero rows -> returns no row (NULL via SELECT).
+--
+--   *** SUPERSEDED by 029_dlq_diagnostics_fixes.sql (P3). ***
+--   "DESC by text" is WRONG: 'claim.v9' sorts AFTER 'claim.v10', so v9 wrongly
+--   wins over v10. 029 re-declares cp.get_schema_contract (same signature) to
+--   order the latest by the NUMERIC trailing-integer of schema_version DESC (then
+--   effective_from / created_at). 029 applies last so its definition wins; this
+--   body is kept as-applied. The exact-version path is unchanged either way.
 -- =====================================================================
 CREATE OR REPLACE FUNCTION cp.get_schema_contract(
     p_domain text, p_dataset text, p_layer text,

@@ -783,6 +783,24 @@ def replay_dlq(conn, *, normal_result: dict[str, Any],
         key_fn=detail_business_key, reason="dlq replay (corrected row)",
         commit=commit)
 
+    # ----------------------------------------------------------------------- #
+    # P1b FIX — recompute the AFFECTED aggregate key(s) so
+    # policy_claim_daily_dlq is not left STALE after replay.
+    #
+    # The corrected detail row changed exactly the policy_type(s) it belongs to
+    # (CL900 -> P002 -> 'auto'). The NORMAL aggregate for 'auto' counted only the
+    # 2 originally-good auto claims (CL500, CL501 -> count=2, total=750). Now that
+    # the corrected CL900 (auto, 300) is in the current detail set, the 'auto'
+    # aggregate must be recomputed from the FULL current auto detail set
+    # (count=3, total=1050). We recompute CHANGED-ONLY: only the aggregate keys
+    # whose claims changed (the corrected row's policy_type(s)); unchanged keys
+    # (e.g. 'home') are left untouched and stay active.
+    aggregate_replay = _recompute_affected_aggregates(
+        conn, workflow_run_id=workflow_run_id,
+        normal_result=normal_result, corrected_detail_rows=detail_rows,
+        detail_sink=detail_sink, content_tag=content_tag, dag_run_id=dag_run_id,
+        commit=commit)
+
     return {
         "workflow_run_id": workflow_run_id,
         "dag_run_id": dag_run_id,
@@ -795,6 +813,72 @@ def replay_dlq(conn, *, normal_result: dict[str, Any],
         "detail_sink": detail_sink,
         "detail_rows": detail_rows,
         "corrected_business_key": detail_business_key(detail_rows[0]),
+        "aggregate_replay": aggregate_replay,
+    }
+
+
+def _recompute_affected_aggregates(
+        conn, *, workflow_run_id: str, normal_result: dict[str, Any],
+        corrected_detail_rows: list[dict[str, Any]], detail_sink: dict[str, str],
+        content_tag: str, dag_run_id: str, commit: bool) -> dict[str, Any]:
+    """Recompute + re-sink + re-activate ONLY the aggregate key(s) the replay
+    changed, superseding the stale aggregate row(s) for those keys.
+
+    The current full detail set after replay = the NORMAL good detail rows PLUS
+    the corrected detail row(s). The affected aggregate keys are the policy_type
+    buckets that the corrected row(s) touch; we recompute those buckets from the
+    full current detail set so claim_count / total reflect the corrected reality
+    (e.g. 'auto' -> 3 claims / 1050). The aggregation run consumes the CORRECTED
+    DETAIL SINK output (edge_type detail_to_aggregate), mirroring the NORMAL
+    aggregate path, so the recomputed aggregate traces to the corrected detail.
+    """
+    # The full current detail set: normal good detail rows + the corrected rows.
+    current_detail = list(normal_result["detail_rows"]) + list(corrected_detail_rows)
+
+    # The aggregate keys CHANGED by the replay = the policy_types of the corrected
+    # rows (changed-only; unchanged keys are not recomputed).
+    affected_types = {row["policy_type"] for row in corrected_detail_rows}
+
+    # Recompute EVERY aggregate bucket from the full current detail set, then keep
+    # ONLY the affected ones (so the recomputed counts include both pre-existing
+    # and corrected claims for that policy_type).
+    all_recomputed = _aggregate_rows(current_detail)
+    affected_aggregate_rows = [
+        row for row in all_recomputed if row["policy_type"] in affected_types
+    ]
+    if not affected_aggregate_rows:
+        return {"affected_policy_types": [], "aggregate": None,
+                "aggregate_sink": None, "aggregate_rows": []}
+
+    agg_content_tag = f"{content_tag}-agg-replay"
+    aggregate = _aggregate_from_detail(
+        conn, workflow_run_id=workflow_run_id, detail_sink=detail_sink,
+        detail_rows=corrected_detail_rows, aggregate_rows=affected_aggregate_rows,
+        content_tag=agg_content_tag, dag_run_id=dag_run_id,
+        execution_type="replay", commit=commit)
+    aggregate_sink = _sink_rows(
+        conn, workflow_run_id=workflow_run_id, dataset=AGG_DATASET,
+        upstream_run_id=aggregate["run_id"], upstream_link_id=aggregate["link_id"],
+        upstream_edge_type="detail_to_aggregate", rows=affected_aggregate_rows,
+        content_tag=agg_content_tag, stage_name="upsert_policy_claim_daily",
+        task_id="replay_sink_policy_claim_daily", dag_run_id=dag_run_id,
+        execution_type="replay", commit=commit)
+    # Activate the recomputed aggregate business_key(s), superseding the stale
+    # NORMAL aggregate row(s) for the SAME key(s). business_key scope means only
+    # these keys are superseded; unchanged aggregate keys stay active.
+    _activate_business_keys(
+        conn, dataset=AGG_DATASET, target_name=AGG_TARGET, sink=aggregate_sink,
+        workflow_run_id=workflow_run_id, rows=affected_aggregate_rows,
+        key_fn=aggregate_business_key,
+        reason="dlq replay (recomputed aggregate)", commit=commit)
+
+    return {
+        "affected_policy_types": sorted(affected_types),
+        "aggregate": aggregate,
+        "aggregate_sink": aggregate_sink,
+        "aggregate_rows": affected_aggregate_rows,
+        "affected_aggregate_keys": [
+            aggregate_business_key(row) for row in affected_aggregate_rows],
     }
 
 

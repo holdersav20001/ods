@@ -43,6 +43,7 @@ from harness.policy_claims_dlq_workflow import (
     DOMAIN,
     GOOD_CLAIM_ROWS,
     SCHEMA_VERSION,
+    aggregate_business_key,
     detail_business_key,
     run_demo,
 )
@@ -377,3 +378,87 @@ def test_15_distinct_domain_isolates_from_main_demo(demo, conn):
     assert bad == 0
     # And the claim row count actually consumed was 4.
     assert len(CLAIM_ROWS) == 4
+
+
+# --------------------------------------------------------------------------- #
+# (P1b) After replay, the affected aggregate key reflects the corrected counts
+# AND is active; the stale aggregate for that key is superseded; unchanged
+# aggregate keys stay active.
+# --------------------------------------------------------------------------- #
+def _agg_visibility_rows(conn, *, replacement_key, wfids):
+    """All target_visibility rows for an aggregate business key, scoped to this
+    demo's wfids (robust to committed data)."""
+    return conn.execute(
+        "SELECT status, workflow_run_id, lineage_link_id FROM ods.target_visibility "
+        "WHERE dataset=%s AND replacement_key=%s AND workflow_run_id = ANY(%s) "
+        "ORDER BY activated_at",
+        (AGG_DATASET, replacement_key, wfids)).fetchall()
+
+
+def test_16_replay_recomputes_affected_aggregate(demo, conn):
+    """The replay corrected CL900 (P002 -> 'auto', 300). The 'auto' aggregate for
+    this business_date must be recomputed to claim_count=3 / total=1050 (the 2
+    originally-good auto claims CL500+CL501 plus the corrected CL900), sunk into
+    ods.policy_claim_daily_dlq, and ACTIVE (Y) — produced by the replay wfid."""
+    wfids = _wfids(demo)
+    auto_key = aggregate_business_key(
+        {"business_date": str(BUSINESS_DATE), "policy_type": "auto"})
+
+    # The recomputed aggregate is materialised in the target by the replay.
+    replay_agg_sink = demo["replay"]["aggregate_replay"]["aggregate_sink"]
+    assert replay_agg_sink is not None, "replay must recompute the aggregate"
+    payload = conn.execute(
+        "SELECT payload FROM ods.policy_claim_daily_dlq "
+        "WHERE _ods_output_link_id = %s",
+        (replay_agg_sink["link_id"],)).fetchone()[0]
+    assert payload["policy_type"] == "auto"
+    assert payload["claim_count"] == 3, "auto must include CL500+CL501+CL900"
+    assert float(payload["total_claim_amount"]) == 1050.0
+
+    # The recomputed 'auto' aggregate is the ACTIVE (Y) visibility row, produced
+    # by the replay execution.
+    active = [r for r in _agg_visibility_rows(conn, replacement_key=auto_key,
+                                              wfids=wfids) if r[0] == "Y"]
+    assert len(active) == 1, "exactly one active aggregate row for 'auto'"
+    assert active[0][1] == demo["replay"]["workflow_run_id"]
+    assert str(active[0][2]) == str(replay_agg_sink["link_id"])
+
+
+def test_17_stale_aggregate_for_affected_key_is_superseded(demo, conn):
+    """The NORMAL 'auto' aggregate (count=2 / total=750) was active before replay;
+    after replay it must be SUPERSEDED (status N) by the recomputed one."""
+    wfids = _wfids(demo)
+    auto_key = aggregate_business_key(
+        {"business_date": str(BUSINESS_DATE), "policy_type": "auto"})
+    rows = _agg_visibility_rows(conn, replacement_key=auto_key, wfids=wfids)
+    # The normal aggregate row (produced by the normal wfid) is now N.
+    normal_rows = [r for r in rows
+                   if r[1] == demo["normal"]["workflow_run_id"]]
+    assert normal_rows, "the normal aggregate row for 'auto' should exist"
+    assert all(r[0] == "N" for r in normal_rows), (
+        "the stale normal 'auto' aggregate must be superseded to N")
+    # And the stale normal aggregate row's payload was the pre-replay count=2/750.
+    normal_link = normal_rows[0][2]
+    stale_payload = conn.execute(
+        "SELECT payload FROM ods.policy_claim_daily_dlq "
+        "WHERE _ods_output_link_id = %s AND payload->>'policy_type' = 'auto'",
+        (normal_link,)).fetchone()
+    if stale_payload is not None:
+        assert stale_payload[0]["claim_count"] == 2
+        assert float(stale_payload[0]["total_claim_amount"]) == 750.0
+
+
+def test_18_unchanged_aggregate_key_stays_active(demo, conn):
+    """The 'home' aggregate (CL502, unchanged by the replay) must stay ACTIVE (Y),
+    produced by the NORMAL execution — changed-only recompute does not touch it."""
+    wfids = _wfids(demo)
+    home_key = aggregate_business_key(
+        {"business_date": str(BUSINESS_DATE), "policy_type": "home"})
+    active = [r for r in _agg_visibility_rows(conn, replacement_key=home_key,
+                                              wfids=wfids) if r[0] == "Y"]
+    assert len(active) == 1, "the unchanged 'home' aggregate must stay active"
+    assert active[0][1] == demo["normal"]["workflow_run_id"], (
+        "'home' must still be the NORMAL execution's aggregate (not recomputed)")
+    # The replay must NOT have produced a 'home' aggregate output.
+    replay_meta = demo["replay"]["aggregate_replay"]
+    assert "home" not in replay_meta["affected_policy_types"]

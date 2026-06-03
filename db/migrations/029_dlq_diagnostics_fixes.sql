@@ -1,61 +1,62 @@
--- 027_diagnostics.sql — strengthen support/developer diagnostics (spec area 6).
+-- 029_dlq_diagnostics_fixes.sql — six confirmed Codex-review fixes against the
+-- DLQ / diagnostics / contract surface. Each affected function is RE-DECLARED
+-- here (CREATE OR REPLACE, same signature) so the prior copy in 027/023/024 is
+-- cleanly superseded; SUPERSEDED banners are added to those prior copies.
 --
--- Spec:  docs/specs/2026-06-03-working-platform-completion-plan.md
---        §6 "Strengthen Diagnostics" — the "Diagnostics Must Detect" list and
---        the optional "Required Additions" lookup functions.
--- Tests: tests/test_diagnostics.py (TDD — written failing first). The 022
---        contract tests in tests/test_dashboard_developer_functions.py and the
---        ASSERTED set in tests/test_contract.py keep this honest.
+-- Spec/source: external (Codex) review — all six findings verified TRUE against
+--              live code. New migration ONLY; 001–028 are applied and frozen.
+-- Tests: tests/test_diagnostics.py + tests/test_contract.py (P1a/P2a/P2b/P3) and
+--        tests/test_policy_claims_dlq_workflow.py (P1b) — written failing first.
 --
--- WHAT THIS MIGRATION DOES
---   1. RE-DECLARES cp.developer_diagnostics(text, text) with the SAME signature
---      and return shape as 022 (check_name, severity, object_type, object_id,
---      message, details). All 022 checks are PRESERVED verbatim, and four new
---      checks from the spec list are ADDED:
---        * unfinished_stage                              (a running/never-closed
---          stage on ANY run, independent of run status)
---        * dlq_row_missing_trace_context                 (cp.dlq row with null
---          quarantine_output_link_id, or null reason, or null source identity)
---        * quarantine_output_without_dlq_rows            (a first-class
---          quarantine output_link with no cp.dlq row pointing at it)
---        * schema_validation_output_missing_schema_version (a curated_to_canonical
---          output whose target_ref lacks 'schema_version' WHERE a schema_contract
---          exists for that dataset)
---      The 022 copy is left in place but its developer_diagnostics body is
---      SUPERSEDED (banner below). CREATE OR REPLACE keeps the same signature, so
---      the 022 definition is overwritten cleanly — the OTHER 022 functions
---      (dashboard_workflows / _workflow_detail / _output_trace) are untouched.
+-- FINDINGS FIXED
+--   P1a (HIGH) — developer_diagnostics "input_edge_without_input_identifier"
+--     exempted ONLY 'orchestrates', so a SANCTIONED 'quarantine' (or 'replay')
+--     edge — which legitimately carries context in source_ref and anchors to
+--     nothing per the 012 edge_must_anchor CHECK — was falsely flagged dirty.
+--     FIX: exempt the SAME set the CHECK exempts:
+--          NOT IN ('orchestrates','quarantine','replay').
 --
---   2. ADDS three optional read/lookup helpers (spec "Required Additions"),
---      each round-tripped in tests/test_diagnostics.py and added to the
---      test_contract.py ASSERTED set:
---        * cp.dashboard_file_usage(p_file_id uuid)
---        * cp.dashboard_target_row_trace(p_target_schema, p_target_table, p_row_id)
---        * cp.dashboard_airflow_lookup(p_dag_id, p_dag_run_id)
+--   P2a (MED) — the "target_row_missing_ods_ids" check filtered on
+--     `t._ods_workflow_run_id = $1 AND (... t._ods_workflow_run_id IS NULL ...)`,
+--     a contradiction: a row that LOST its workflow id can never satisfy
+--     `= $1`, so the very anomaly it claimed to detect was invisible.
+--     FIX: scope the target-row checks by the OUTPUT LINK that belongs to this
+--     workflow (t._ods_output_link_id -> cp.output_link -> cp.run_log where
+--     workflow_run_id = $1) so a row with NULL _ods_workflow_run_id but a valid
+--     link is still attributable and flagged; ALSO keep flagging rows whose
+--     _ods_output_link_id/_ods_lineage_link_id is null but whose
+--     _ods_workflow_run_id = $1. A row with ALL ODS ids null is unattributable
+--     to ANY workflow, so it gets a NEW table-wide check
+--     'target_row_orphan_no_ods_ids' (NOT $1-scoped) so it is never invisible.
 --
--- NOTE on the "check_name" column vs the spec's "issue_type": the public column
--- name is kept as check_name to avoid breaking the 022 contract test and the
--- dashboard; check_name IS the issue_type. The return tuple (check_name,
--- severity, object_type, object_id) is the clean, stable shape requested.
+--   P2b (MED) — dashboard_file_usage only returns the DIRECT ingest edges
+--     (source_file_id = p_file_id). It is kept AS-IS (the direct-edge view). A
+--     NEW cp.dashboard_file_impact(p_file_id) returns every DOWNSTREAM output
+--     whose cp.v_provenance chain reaches that raw file (canonical, merge, sink,
+--     aggregate) — the downstream-impact view.
 --
+--   P2c (MED) — resolve_dlq coalesced refs, so resolve_dlq(id,'resolved') with
+--     no refs closed a DLQ untraceably. FIX: a TERMINAL resolution
+--     ('resolved'/'replayed') whose EFFECTIVE resolved_by_run_id AND
+--     resolved_by_output_link_id would BOTH be null RAISES. 'rejected' and the
+--     non-terminal states stay lenient. failed_payload/reason never touched.
+--
+--   P3 (LOW) — get_schema_contract ordered the latest by `schema_version DESC`
+--     (TEXT), so 'claim.v9' sorted AFTER 'claim.v10'. FIX: order by the trailing
+--     integer of schema_version DESC (true numeric semver), then by
+--     effective_from / created_at as a stable tiebreak. Exact-version path
+--     (p_schema_version supplied) unchanged.
+--
+-- (P1b is a harness fix — harness/policy_claims_dlq_workflow.py — not SQL.)
+
+
 -- ======================================================================
 -- SUPERSEDED: cp.developer_diagnostics(text, text) as defined in
---   022_dashboard_developer_functions.sql is REPLACED below (same signature).
---   The other 022 read functions remain authoritative.
---
---   *** This 027 body is itself SUPERSEDED by 029_dlq_diagnostics_fixes.sql. ***
---   029 re-declares cp.developer_diagnostics (same signature) with two fixes:
---     * P1a — "input_edge_without_input_identifier" exempts
---       ('orchestrates','quarantine','replay') to match the 012 edge_must_anchor
---       CHECK (the 027 copy below exempts ONLY 'orchestrates', falsely flagging a
---       valid quarantine/replay edge).
---     * P2a — the "target_row_missing_ods_ids" check below has a contradictory
---       `_ods_workflow_run_id = $1 AND _ods_workflow_run_id IS NULL` predicate;
---       029 attributes rows by their output link's workflow and adds a table-wide
---       'target_row_orphan_no_ods_ids' check.
---   029 applies last so its definition wins. The 027 body is kept as-applied.
+--   027_diagnostics.sql is REPLACED below (same signature). 027's other
+--   read helpers (dashboard_file_usage / _target_row_trace / _airflow_lookup)
+--   remain authoritative. P1a + P2a are the only body changes; every other 027
+--   check is reproduced verbatim.
 -- ======================================================================
-
 CREATE OR REPLACE FUNCTION cp.developer_diagnostics(
     p_workflow_run_id text,
     p_target_table text DEFAULT NULL
@@ -114,9 +115,7 @@ BEGIN
     WHERE r.workflow_run_id = p_workflow_run_id
       AND (r.finished_at IS NULL OR r.status = 'running');
 
-    -- ---- unfinished stage (NEW 027): a stage that never closed, on ANY run ----
-    -- This catches a stuck/abandoned stage independent of the run's own status,
-    -- including a stage left 'running' on a run that itself is still running.
+    -- ---- unfinished stage (027): a stage that never closed, on ANY run --------
     RETURN QUERY
     SELECT
         'unfinished_stage'::text,
@@ -207,7 +206,12 @@ BEGIN
     HAVING count(ie.input_edge_id) = 0;
 
     -- ---- input_edge missing input identity (non-annotation edge types) -------
-    -- 'orchestrates' is the non-provenance annotation edge type; it is exempt.
+    -- P1a FIX: the 012 edge_must_anchor CHECK legitimately exempts
+    --   'quarantine','orchestrates','replay' from anchoring to a file/upstream
+    --   output — they carry context in source_ref (e.g. a quarantine edge's
+    --   source_ref.raw_file_id, a replay edge's dlq_id). Exempt the SAME set here
+    --   so a sanctioned DLQ/replay lineage edge is NOT reported dirty. (Was: only
+    --   'orchestrates' exempt, falsely flagging valid quarantine/replay edges.)
     RETURN QUERY
     SELECT
         'input_edge_without_input_identifier'::text,
@@ -220,7 +224,7 @@ BEGIN
     JOIN cp.output_link ol ON ol.consumer_run_id = r.run_id
     JOIN cp.input_edge ie ON ie.output_link_id = ol.output_link_id
     WHERE r.workflow_run_id = p_workflow_run_id
-      AND ie.edge_type <> 'orchestrates'
+      AND ie.edge_type NOT IN ('orchestrates','quarantine','replay')
       AND ie.source_file_id IS NULL
       AND ie.upstream_output_link_id IS NULL;
 
@@ -363,13 +367,7 @@ BEGIN
       AND r.pipeline_type = 'sink'
       AND (rl.recon_id IS NULL OR rl.status <> 'ok');
 
-    -- ---- DLQ row missing trace context (NEW 027) -----------------------------
-    -- A cp.dlq row should be fully traceable: it must name the quarantine
-    -- output_link it produced (quarantine_output_link_id) AND the input it came
-    -- from (a source identity in source_ref, or a payload_ref location). Missing
-    -- either breaks the support trace from the failure back to its origin.
-    --   NOTE: cp.dlq.reason is NOT NULL at the table level, so a missing reason
-    --   cannot occur here and is intentionally not checked.
+    -- ---- DLQ row missing trace context (027) ---------------------------------
     RETURN QUERY
     SELECT
         'dlq_row_missing_trace_context'::text,
@@ -394,9 +392,7 @@ BEGIN
           OR (d.source_ref IS NULL AND d.payload_ref IS NULL)
       );
 
-    -- ---- quarantine output_link with no corresponding cp.dlq rows (NEW 027) --
-    -- A first-class quarantine output_link must be referenced by at least one
-    -- cp.dlq row; otherwise the quarantine event has no failure record.
+    -- ---- quarantine output_link with no corresponding cp.dlq rows (027) ------
     RETURN QUERY
     SELECT
         'quarantine_output_without_dlq_rows'::text,
@@ -413,22 +409,7 @@ BEGIN
     GROUP BY r.run_id, ol.output_link_id, ol.target_ref, ol.record_count
     HAVING count(d.dlq_id) = 0;
 
-    -- ---- schema-validation output missing schema_version (NEW 027) -----------
-    -- A curated_to_canonical output is the product of schema validation. When a
-    -- schema_contract exists for that (domain, dataset) AND this workflow's
-    -- canonicalization stamps schema_version on AT LEAST ONE of its canonical
-    -- outputs, then EVERY such output MUST carry schema_version — a sibling that
-    -- omits it is the anomaly.
-    --
-    -- PRACTICAL SCOPE NOTE: we deliberately do NOT flag a canonical output whose
-    -- workflow records schema_version NOWHERE. The current demo workflows pre-date
-    -- the 024/025 schema-version-in-target_ref convention and never stamp it; an
-    -- unconditional "contract exists -> require schema_version" check would make
-    -- the sanctioned demo dirty (it has no schema_version anywhere). We therefore
-    -- detect the realistic anomaly — a workflow that USES schema_version but has a
-    -- canonical output missing it — and skip workflows that never adopted it. A
-    -- repository-wide "no workflow records schema_version" gap is a coverage issue
-    -- for the writer contract (area 1), not a per-workflow integrity defect.
+    -- ---- schema-validation output missing schema_version (027) ---------------
     RETURN QUERY
     SELECT
         'schema_validation_output_missing_schema_version'::text,
@@ -510,6 +491,14 @@ BEGIN
         END IF;
 
         -- target row missing ODS ids
+        -- P2a FIX: attribute a row to THIS workflow either by its own
+        --   _ods_workflow_run_id = $1 OR by its output link belonging to a run
+        --   whose workflow_run_id = $1 (so a row that LOST _ods_workflow_run_id
+        --   but still names a valid link of this workflow is detected). Flag the
+        --   row when ANY required ODS stamp (_ods_workflow_run_id /
+        --   _ods_output_link_id / _ods_lineage_link_id) is null. The contradictory
+        --   `_ods_workflow_run_id = $1 AND _ods_workflow_run_id IS NULL` predicate
+        --   that made the null-workflow case invisible is gone.
         RETURN QUERY EXECUTE format($fmt$
             SELECT
                 'target_row_missing_ods_ids'::text,
@@ -525,16 +514,50 @@ BEGIN
                     'payload', t.payload
                 )
             FROM %I.%I t
-            WHERE t._ods_workflow_run_id = $1
+            LEFT JOIN cp.output_link ol ON ol.output_link_id = t._ods_output_link_id
+            LEFT JOIN cp.run_log r      ON r.run_id = ol.consumer_run_id
+            WHERE (
+                      t._ods_workflow_run_id = $1
+                      OR r.workflow_run_id = $1
+                  )
               AND (
-                  t._ods_workflow_run_id IS NULL
-                  OR t._ods_output_link_id IS NULL
-                  OR t._ods_lineage_link_id IS NULL
-              )
+                      t._ods_workflow_run_id IS NULL
+                      OR t._ods_output_link_id IS NULL
+                      OR t._ods_lineage_link_id IS NULL
+                  )
         $fmt$, format('%I.%I', v_schema, v_table), v_schema, v_table)
         USING p_workflow_run_id;
 
+        -- target row that is a TOTAL ORPHAN: ALL three ODS ids are null, so it is
+        -- unattributable to ANY workflow and the $1-scoped checks above can never
+        -- see it. P2a FIX: detect it TABLE-WIDE (not $1-scoped) so it is never
+        -- silently invisible. severity 'error'; object_type is the target table.
+        RETURN QUERY EXECUTE format($fmt$
+            SELECT
+                'target_row_orphan_no_ods_ids'::text,
+                'error'::text,
+                %L::text,
+                t.row_id::text,
+                'Target row has NO ODS stamp columns at all (total orphan, unattributable to any workflow)'::text,
+                jsonb_build_object(
+                    'row_id', t.row_id,
+                    '_ods_workflow_run_id', t._ods_workflow_run_id,
+                    '_ods_output_link_id', t._ods_output_link_id,
+                    '_ods_lineage_link_id', t._ods_lineage_link_id,
+                    'payload', t.payload
+                )
+            FROM %I.%I t
+            WHERE t._ods_workflow_run_id IS NULL
+              AND t._ods_output_link_id IS NULL
+              AND t._ods_lineage_link_id IS NULL
+        $fmt$, format('%I.%I', v_schema, v_table), v_schema, v_table);
+
         -- target row whose output link does not exist
+        -- P2a: also attributable by link->run workflow (a row with NULL
+        --   _ods_workflow_run_id but a non-existent link is still this workflow's
+        --   concern only when stamped with $1; a broken link cannot be joined to a
+        --   run, so we keep the $1 self-stamp scope here — a null-workflow + broken
+        --   link row is caught by target_row_missing_ods_ids / orphan above).
         RETURN QUERY EXECUTE format($fmt$
             SELECT
                 'target_row_broken_output_link'::text,
@@ -556,7 +579,8 @@ BEGIN
         $fmt$, format('%I.%I', v_schema, v_table), v_schema, v_table)
         USING p_workflow_run_id;
 
-        -- target row workflow mismatch
+        -- target row workflow mismatch (unchanged): the row names a workflow id
+        -- that disagrees with the workflow that produced its output link.
         RETURN QUERY EXECUTE format($fmt$
             SELECT
                 'target_row_workflow_mismatch'::text,
@@ -586,16 +610,100 @@ END $$;
 
 
 -- ======================================================================
--- Optional read/lookup helpers (spec §6 "Required Additions").
--- All read-only; round-tripped in tests/test_diagnostics.py.
+-- SUPERSEDED: cp.resolve_dlq(uuid, text, uuid, uuid) as defined in
+--   023_dlq_lifecycle.sql is REPLACED below (same signature). P2c: a TERMINAL
+--   resolution must be traceable to a run/output.
 -- ======================================================================
+CREATE OR REPLACE FUNCTION cp.resolve_dlq(
+    p_dlq_id uuid, p_status text,
+    p_resolved_by_run_id uuid DEFAULT NULL,
+    p_resolved_by_output_link_id uuid DEFAULT NULL
+) RETURNS void LANGUAGE plpgsql AS $$
+DECLARE
+    v_eff_run uuid;
+    v_eff_link uuid;
+BEGIN
+    -- P2c: for a TERMINAL resolution ('resolved'/'replayed'), compute the
+    -- EFFECTIVE resolution refs (the value that WOULD be stored: the passed arg,
+    -- else the value already on the row). If BOTH would be null the resolution is
+    -- untraceable -> RAISE. 'rejected' and the non-terminal states stay lenient.
+    IF p_status IN ('resolved','replayed') THEN
+        SELECT coalesce(p_resolved_by_run_id, d.resolved_by_run_id),
+               coalesce(p_resolved_by_output_link_id, d.resolved_by_output_link_id)
+          INTO v_eff_run, v_eff_link
+        FROM cp.dlq d
+        WHERE d.dlq_id = p_dlq_id;
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'resolve_dlq: no dlq row %', p_dlq_id;
+        END IF;
+        IF v_eff_run IS NULL AND v_eff_link IS NULL THEN
+            RAISE EXCEPTION 'resolve_dlq: a terminal resolution (%) must be traceable to a resolved_by_run_id or resolved_by_output_link_id', p_status
+                USING ERRCODE = 'P0001',
+                      HINT = 'Pass resolved_by_run_id and/or resolved_by_output_link_id (or set them on a prior corrected/replayed step).';
+        END IF;
+    END IF;
 
--- cp.dashboard_file_usage(file_id): every run/output/edge that consumed or
--- produced from a raw file. A raw file is consumed by an input_edge
--- (source_file_id) which belongs to an output_link produced by a run.
-CREATE OR REPLACE FUNCTION cp.dashboard_file_usage(p_file_id uuid)
+    UPDATE cp.dlq
+       SET status = p_status,
+           resolved_by_run_id = coalesce(p_resolved_by_run_id, resolved_by_run_id),
+           resolved_by_output_link_id = coalesce(p_resolved_by_output_link_id, resolved_by_output_link_id),
+           replayed_at = CASE WHEN p_status IN ('replayed','resolved')
+                              THEN clock_timestamp() ELSE replayed_at END,
+           replay_run_id = coalesce(p_resolved_by_run_id, replay_run_id)
+     WHERE dlq_id = p_dlq_id;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'resolve_dlq: no dlq row %', p_dlq_id;
+    END IF;
+END $$;
+
+
+-- ======================================================================
+-- SUPERSEDED: cp.get_schema_contract(text, text, text, text) as defined in
+--   024_schema_contract.sql is REPLACED below (same signature). P3: pick the
+--   latest by NUMERIC semver, not by text order, so 'claim.v10' beats 'claim.v9'.
+--   Exact-version path (p_schema_version supplied) is unchanged.
+-- ======================================================================
+CREATE OR REPLACE FUNCTION cp.get_schema_contract(
+    p_domain text, p_dataset text, p_layer text,
+    p_schema_version text DEFAULT NULL
+) RETURNS cp.schema_contract LANGUAGE sql STABLE AS $$
+    SELECT *
+    FROM cp.schema_contract
+    WHERE domain = p_domain
+      AND dataset = p_dataset
+      AND layer = p_layer
+      AND (p_schema_version IS NULL OR schema_version = p_schema_version)
+    -- "Latest" = highest NUMERIC semver suffix (trailing integer of the version
+    -- tag), so claim.v10 > claim.v9 (text DESC got this WRONG). NULLIF guards a
+    -- version with no digits (-> NULL, sorts last). effective_from / created_at
+    -- are stable tiebreaks ("currently effective / most recently registered").
+    ORDER BY nullif(regexp_replace(schema_version, '\D', '', 'g'), '')::bigint
+                 DESC NULLS LAST,
+             effective_from DESC NULLS LAST,
+             created_at DESC
+    LIMIT 1;
+$$;
+
+
+-- ======================================================================
+-- P2b — cp.dashboard_file_impact(p_file_id): the DOWNSTREAM-IMPACT view.
+--   Every output_link DERIVED from the raw file p_file_id — the canonical, merge,
+--   sink and aggregate outputs whose provenance chain reaches that file, NOT just
+--   the direct ingest edge that cp.dashboard_file_usage returns.
+--
+--   WHY A DESCENDANT WALK (not `WHERE v_provenance.source_file_id = p_file_id`):
+--   cp.v_provenance walks UPSTREAM and only emits source_file_id on the raw
+--   ingest edge itself — it does NOT propagate that file id down to descendant
+--   outputs. So the file impact is the DOWNSTREAM closure: start at the output
+--   link(s) whose own edge names source_file_id = p_file_id (the raw_to_curated
+--   leaves), then follow link->link adjacency DOWNWARD via
+--   lineage_edge.upstream_lineage_link_id (the mirror of trace_row.sql's upstream
+--   walk) to every output that consumed them, transitively. A CYCLE guard mirrors
+--   the v_provenance / trace_row guards so a forged cyclic upstream_lineage_link_id
+--   cannot hang the walk.
+-- ======================================================================
+CREATE OR REPLACE FUNCTION cp.dashboard_file_impact(p_file_id uuid)
 RETURNS TABLE (
-    input_edge_id uuid,
     output_link_id uuid,
     edge_type text,
     consumer_run_id uuid,
@@ -612,140 +720,44 @@ STABLE
 AS $$
 BEGIN
     IF p_file_id IS NULL THEN
-        RAISE EXCEPTION 'dashboard_file_usage: file_id is required'
+        RAISE EXCEPTION 'dashboard_file_impact: file_id is required'
             USING ERRCODE = 'P0001',
                   HINT = 'Pass a cp.file_catalogue.file_id.';
     END IF;
 
     IF NOT EXISTS (SELECT 1 FROM cp.file_catalogue fc WHERE fc.file_id = p_file_id) THEN
-        RAISE EXCEPTION 'dashboard_file_usage: file_id % not found', p_file_id
+        RAISE EXCEPTION 'dashboard_file_impact: file_id % not found', p_file_id
             USING ERRCODE = 'P0001',
                   HINT = 'Query cp.file_catalogue for available file ids.';
     END IF;
 
     RETURN QUERY
+    WITH RECURSIVE impact AS (
+        -- anchor: every link whose OWN edge derived directly from this raw file.
+        SELECT DISTINCT e.lineage_link_id
+        FROM cp.lineage_edge e
+        WHERE e.source_file_id = p_file_id
+      UNION ALL
+        -- recurse DOWNSTREAM: any link whose edge names an in-set link as its
+        -- exact upstream output (link->link adjacency).
+        SELECT de.lineage_link_id
+        FROM impact i
+        JOIN cp.lineage_edge de ON de.upstream_lineage_link_id = i.lineage_link_id
+    )
+    CYCLE lineage_link_id SET is_cycle USING path
     SELECT
-        ie.input_edge_id,
         ol.output_link_id,
-        ie.edge_type,
+        ol.edge_type,
         ol.consumer_run_id,
         r.workflow_run_id,
         r.pipeline_type,
         r.dataset,
         r.business_date,
         r.status,
-        ie.record_count,
+        ol.record_count,
         ol.target_ref
-    FROM cp.input_edge ie
-    JOIN cp.output_link ol ON ol.output_link_id = ie.output_link_id
+    FROM cp.output_link ol
     JOIN cp.run_log r ON r.run_id = ol.consumer_run_id
-    WHERE ie.source_file_id = p_file_id
-    ORDER BY r.started_at, ol.created_at, ie.input_edge_id;
-END $$;
-
-
--- cp.dashboard_target_row_trace(schema, table, row_id): resolve a target row to
--- its output_link, then walk provenance back to the raw file(s). Thin, safe
--- wrapper over cp.dashboard_output_trace keyed by the row's _ods_output_link_id.
-CREATE OR REPLACE FUNCTION cp.dashboard_target_row_trace(
-    p_target_schema text,
-    p_target_table text,
-    p_row_id bigint
-)
-RETURNS TABLE (
-    hop integer,
-    edge_type text,
-    output_link_id uuid,
-    consumer_run_id uuid,
-    pipeline_type text,
-    dataset text,
-    upstream_run_id uuid,
-    source_file_id uuid,
-    raw_s3_path text,
-    is_cycle boolean
-)
-LANGUAGE plpgsql
-STABLE
-AS $$
-DECLARE
-    v_regclass regclass;
-    v_output_link_id uuid;
-BEGIN
-    IF p_target_schema IS NULL OR p_target_table IS NULL OR p_row_id IS NULL THEN
-        RAISE EXCEPTION 'dashboard_target_row_trace: schema, table, and row_id are required'
-            USING ERRCODE = 'P0001',
-                  HINT = 'Pass the target schema, table, and a row_id from that table.';
-    END IF;
-
-    v_regclass := to_regclass(format('%I.%I', p_target_schema, p_target_table));
-    IF v_regclass IS NULL THEN
-        RAISE EXCEPTION 'dashboard_target_row_trace: target table %.% does not exist',
-                p_target_schema, p_target_table
-            USING ERRCODE = 'P0001',
-                  HINT = 'Query information_schema.tables for available target tables.';
-    END IF;
-
-    EXECUTE format(
-        'SELECT t._ods_output_link_id FROM %I.%I t WHERE t.row_id = $1',
-        p_target_schema, p_target_table
-    ) INTO v_output_link_id USING p_row_id;
-
-    IF v_output_link_id IS NULL THEN
-        RAISE EXCEPTION 'dashboard_target_row_trace: row % in %.% has no _ods_output_link_id',
-                p_row_id, p_target_schema, p_target_table
-            USING ERRCODE = 'P0001',
-                  HINT = 'The row may not exist, or it was never stamped with an output link.';
-    END IF;
-
-    RETURN QUERY SELECT * FROM cp.dashboard_output_trace(v_output_link_id);
-END $$;
-
-
--- cp.dashboard_airflow_lookup(dag_id, dag_run_id): runs whose orchestrator
--- identity (migration 020) matches an Airflow dag_run. dag_id is optional
--- (NULL = match any dag); dag_run_id is the discriminating key.
-CREATE OR REPLACE FUNCTION cp.dashboard_airflow_lookup(
-    p_dag_id text,
-    p_dag_run_id text
-)
-RETURNS TABLE (
-    workflow_run_id text,
-    run_id uuid,
-    pipeline_type text,
-    dataset text,
-    status text,
-    orchestrator_type text,
-    orchestrator_dag_id text,
-    orchestrator_run_id text,
-    orchestrator_task_id text,
-    started_at timestamptz,
-    finished_at timestamptz
-)
-LANGUAGE plpgsql
-STABLE
-AS $$
-BEGIN
-    IF p_dag_run_id IS NULL THEN
-        RAISE EXCEPTION 'dashboard_airflow_lookup: dag_run_id is required'
-            USING ERRCODE = 'P0001',
-                  HINT = 'Pass the Airflow dag_run_id (cp.run_log.orchestrator_run_id).';
-    END IF;
-
-    RETURN QUERY
-    SELECT
-        r.workflow_run_id,
-        r.run_id,
-        r.pipeline_type,
-        r.dataset,
-        r.status,
-        r.orchestrator_type,
-        r.orchestrator_dag_id,
-        r.orchestrator_run_id,
-        r.orchestrator_task_id,
-        r.started_at,
-        r.finished_at
-    FROM cp.run_log r
-    WHERE r.orchestrator_run_id = p_dag_run_id
-      AND (p_dag_id IS NULL OR r.orchestrator_dag_id = p_dag_id)
-    ORDER BY r.started_at, r.pipeline_type, r.dataset, r.run_id;
+    WHERE ol.output_link_id IN (SELECT DISTINCT lineage_link_id FROM impact)
+    ORDER BY r.started_at, ol.created_at, ol.output_link_id;
 END $$;
