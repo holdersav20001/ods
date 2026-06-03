@@ -44,6 +44,15 @@ def _recon_row(conn, run_id):
     ],
 )
 def test_recon_balance_regimes(conn, good, dlq, source, exp_disc, exp_status):
+    """SCOPE (A3 audit 2026-06-03): this pins the ARITHMETIC CONTRACT of
+    recon.write_check only — given a caller-supplied (source, accounted) pair it
+    computes discrepancy=source-accounted and the ok/breach/double_count status.
+    It does NOT detect real row loss: the test hands the function both numbers, so
+    it is balanced/imbalanced purely by what the parametrize row chose. Real
+    row-loss detection (where accounted is DB-DERIVED, not caller-supplied) lives
+    in test_graph_recon.py and test_dlq_lifecycle.py::reconcile_workflow tests —
+    those DELETE real rows and assert the breach. Keep these as the contract guard
+    for write_check's status math."""
     run_id = _start(conn)
     recon.write_check(
         conn, run_id=run_id, check_type="canonicalize",

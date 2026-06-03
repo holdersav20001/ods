@@ -78,11 +78,24 @@ def test_discovery_deterministic_repeated(conn):
 
 
 def test_succeeded_runs_ordered_by_clock(conn):
-    """cp.succeeded_runs returns ALL succeeded runs for the slice; with the
-    clock fix their finished_at values are strictly increasing in creation
-    order, so the set is complete and the ordering is stable."""
+    """cp.succeeded_runs returns ALL succeeded runs for the slice, newest-first.
+
+    A3 audit (2026-06-03): the prior body only asserted ``set(ids) <= got`` — a
+    MEMBERSHIP check that a reordering (or reverse-order) mutation passes. The
+    name/docstring promised ordering it never verified. Strengthened to construct
+    THREE runs (whose clock_timestamp finished_at strictly increase in creation
+    order) and assert the EXACT returned sequence is newest-first (the reverse of
+    creation order). A mutation that returned the runs in arbitrary or ascending
+    order now FAILS."""
     ids = [_start_and_finalise_ingest(conn) for _ in range(3)]
-    got = set(runs.succeeded_runs(
+    got = runs.succeeded_runs(
         conn, domain="sales", dataset="orders", business_date=BD,
-        pipeline_type="ingestion"))
-    assert set(ids) <= got, "succeeded_runs dropped a run"
+        pipeline_type="ingestion")
+    # Restrict to the three we created (the slice may hold others in-txn) while
+    # preserving the order cp.succeeded_runs returned them in.
+    trio = [r for r in got if r in set(ids)]
+    assert set(trio) == set(ids), "succeeded_runs dropped a run"
+    # newest-first => the reverse of creation order (clock_timestamp advances).
+    assert trio == list(reversed(ids)), (
+        f"succeeded_runs not newest-first: got {trio}, "
+        f"expected {list(reversed(ids))}")

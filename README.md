@@ -105,13 +105,20 @@ $env:ODS_CP_PASSWORD="ods"
 ## Apply Migrations
 
 `db/apply.py` connects over TCP and applies the ordered migrations in
-`db/migrations/` (001 through 027). Because `docker exec` is unavailable, this is
+`db/migrations/` (001 through 031). Because `docker exec` is unavailable, this is
 **the** way to (re)create the schema:
 
 ```powershell
-# Drop and recreate ods_cp from scratch, then apply 001-027.
+# Drop and recreate ods_cp from scratch, then apply 001-031.
 python -m db.apply --drop
 ```
+
+The most recent migrations: **028** adds a deterministic `seq` tie-break to
+run-grain discovery; **029** fixes the DLQ diagnostics (input-edge exemption +
+null-workflow attribution); **030** corrects audit SQL (quarantine→raw trace,
+schema-version sort, visibility-conflict group-by, `validate_rows`/dual-ODS
+guard); **031** rebuilds `reconcile_workflow` on a fact-spine (raw-in vs
+sink+dlq-out across the whole workflow).
 
 Run `python -m db.apply --drop` for a reliably-clean database before running the
 full test suite or regenerating snapshots.
@@ -122,7 +129,7 @@ full test suite or regenerating snapshots.
 python -m pytest -q
 ```
 
-Expected: **341 passed, 2 skipped, 1 xfailed**. Run `python -m db.apply --drop`
+Expected: **385 passed, 1 skipped, 1 xfailed**. Run `python -m db.apply --drop`
 first for a deterministic, clean database.
 
 Useful focused suites:
@@ -200,9 +207,9 @@ mapping of each step to the exact `control/` wrapper is
 ```text
 1. register file        control.runs.register_file(...)
 2. start run            control.runs.start(...)
-3. start stage          control.stages.start(...)
-4. application work
-5. finish stage         control.stages.finish(...)
+3. start stage          with control.stages.stage_scope(...) as st:   (context manager)
+4. application work          ... (set st.record_in / st.record_out / st.metrics)
+5. finish stage         (automatic on stage_scope exit: succeeded, or failed on exception)
 6. write output+inputs  control.lineage.write_output_link(...)  (or write_output_then_rows)
 7. stamp target rows    (included in write_output_then_rows when there is a sink)
 8. reconcile            control.recon.*
@@ -210,8 +217,12 @@ mapping of each step to the exact `control/` wrapper is
 10. finish run          control.runs.finalise(...)
 ```
 
-`control/sdk.py` provides context managers (`run(...)`, `stage(...)`) that wrap
-steps 2/3/5/10 and mark runs/stages failed on exception. See also
+There is **no** `control.stages.start` / `control.stages.finish`: stage lifecycle
+is the `control.stages.stage_scope(conn, run_id, stage, attempt=1)` context manager,
+which opens the stage on enter and finishes it (`succeeded`, or `failed` and
+re-raised on exception) on exit. `control/sdk.py` provides context managers
+(`control.sdk.task(...)` for the run, and `run.stage(...)` over `stage_scope`)
+that wrap steps 2/3/5/10 and mark runs/stages failed on exception. See also
 `docs/reference/refeed-replacement-policy.md` for how a refeed decides which
 prior active output it replaces.
 
@@ -219,7 +230,8 @@ prior active output it replaces.
 
 All read-only. These power both the dashboard and a developer/support engineer
 working directly against Postgres (over TCP — `docker exec` is unavailable).
-Validated and round-tripped in `tests/` (migrations 022 and 027).
+Validated and round-tripped in `tests/` (dashboard functions in migration 022;
+diagnostics in 027, corrected by 029/030).
 
 | Function | Purpose | Example |
 |---|---|---|
@@ -266,7 +278,7 @@ registered raw file the row ultimately came from.
 ```text
 control/        thin Python wrappers + SDK over the cp.* write functions
 control/queries/ reusable SQL (e.g. trace_row.sql — provenance walk to raw)
-db/migrations/  001-027 ordered Postgres migrations (schema + functions)
+db/migrations/  001-031 ordered Postgres migrations (schema + functions)
 db/apply.py     migration applier (TCP; python -m db.apply --drop)
 harness/        the three demo workflows + shared snapshot exporter
 dashboard/      static React dashboard + committed snapshots in dashboard/data/

@@ -124,17 +124,53 @@ def test_probe_FIXED_run_output_link_multioutput_raises_then_disambiguates(conn)
         "both multi-output links must be addressable by path (C1/C3 satisfied)")
 
 
-def test_probe_CONFIRMED_run_output_link_tiebreak_is_nondeterministic(conn):
-    """All links written in one transaction share created_at (now() is
-    txn-stable, verified: now()!=clock_timestamp()). So run_output_link's
-    'ORDER BY created_at DESC' is a TIE for same-run multi-output, broken only by
-    'lineage_link_id DESC' — a random gen_random_uuid(). Which output a sink
-    wires to is therefore an accident of UUID sort order, not of intent. We pin
-    the txn-stable-clock precondition that makes this non-deterministic."""
-    stable = conn.execute("SELECT now() <> clock_timestamp()").fetchone()[0]
-    assert stable, (
-        "now() is txn-stable; multi-output links in one txn tie on created_at, "
-        "so run_output_link's winner is decided by random UUID order")
+def test_probe_FIXED_discovery_tiebreak_picks_max_seq_run_deterministically(conn):
+    """Production run-grain discovery tiebreak (migration 028) is DETERMINISTIC.
+
+    A3 audit (2026-06-03) flagged the prior probe (then named
+    ``..._tiebreak_is_nondeterministic``) as a near-tautology: it only asserted
+    ``now() <> clock_timestamp()`` — a Postgres truism — and never exercised the
+    discovery tiebreak it was named for. It would stay green even after the
+    tiebreak was fixed (it has been: 028).
+
+    Replaced with an assertion of the REAL fixed behaviour. cp.latest_succeeded_run
+    orders ``finished_at DESC NULLS LAST, seq DESC`` (028 monotonic BIGSERIAL
+    insert-order key). We FORCE an exact finished_at tie on three succeeded runs so
+    only the seq key can decide, then assert discovery returns the MAX-seq run (the
+    one created last) deterministically across repeats — NOT a random uuid pick. A
+    regression to a random/non-seq secondary key would flap and fail."""
+    bd = "2026-05-29"
+    dom = "audit_a1_seq_dom"
+    ds = "audit_a1_seq_ds"
+
+    def _succeeded_ingest():
+        rid = conn.execute(
+            "SELECT cp.start_run(%s,'ingestion',%s,%s,%s,'manual')",
+            [str(uuid.uuid4()), dom, ds, bd]).fetchone()[0]
+        conn.execute("SELECT cp.patch_run(%s,'{\"status\":\"succeeded\"}'::jsonb)",
+                     [rid])
+        return str(rid)
+
+    r1, r2, r3 = (_succeeded_ingest() for _ in range(3))
+    # Force a byte-identical finished_at tie so seq DESC is the ONLY decider.
+    conn.execute("UPDATE cp.run_log SET finished_at = now() "
+                 "WHERE run_id = ANY(%s)", [[r1, r2, r3]])
+    seqs = {str(rid): seq for rid, seq in conn.execute(
+        "SELECT run_id::text, seq FROM cp.run_log WHERE run_id = ANY(%s)",
+        [[r1, r2, r3]]).fetchall()}
+    assert len({conn.execute("SELECT finished_at FROM cp.run_log WHERE run_id=%s",
+                             [r]).fetchone()[0] for r in (r1, r2, r3)}) == 1, \
+        "precondition: finished_at must be a genuine tie"
+    expected = max((r1, r2, r3), key=lambda r: seqs[r])  # the max-seq (last-created)
+
+    picks = {
+        str(conn.execute("SELECT cp.latest_succeeded_run(%s,%s,%s,'ingestion')",
+                         [dom, ds, bd]).fetchone()[0])
+        for _ in range(10)
+    }
+    assert picks == {expected}, (
+        f"028 tiebreak non-deterministic: discovery returned {picks}, must always "
+        f"pick the max-seq (last-created) run {expected} on a finished_at tie")
 
 
 # =========================================================================== #

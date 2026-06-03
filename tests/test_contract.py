@@ -180,6 +180,12 @@ def test_write_link_then_rows_unknown_run_raises(conn):
     [(100, 100, 0, "ok"), (100, 90, 10, "breach"), (90, 100, -10, "double_count")],
 )
 def test_write_reconciliation_check(conn, src, acc, disc, status):
+    """SCOPE (A3 audit 2026-06-03): function-contract test for the status math of
+    cp.write_reconciliation_check on caller-supplied (source, accounted) numbers —
+    NOT a real-loss detector (it never queries actual stamped rows). The
+    DB-derived, falsifiable recon contract is covered separately by
+    test_contract.py::test_reconcile_sink_link_per_output_roundtrip and the
+    cross-hop reconcile_workflow tests."""
     run_id, _ = _start_run(conn)
     conn.execute(
         "SELECT cp.write_reconciliation_check(%s,'row_count',%s,%s)",

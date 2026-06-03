@@ -653,10 +653,28 @@ def test_s7a_cycle_view_and_trace_row_both_terminate_FIXED(conn):
     conn.execute("SET LOCAL statement_timeout = '4000'")
     rows = conn.execute(TRACE_SQL, {"link_id": link}).fetchall()
     conn.execute("ROLLBACK TO SAVEPOINT trace_probe")
-    assert rows is not None, "trace_row.sql returned no result set"
+    # A3 audit (2026-06-03): the prior assert was ``rows is not None`` — a no-op
+    # (a .fetchall() cursor result is NEVER None, so it would pass even if the
+    # CYCLE guard were dropped and the query timed out before this line — except
+    # the timeout would raise first). Strengthened to pin what termination MEANS:
+    #   * the guarded walk actually RAN (it emitted >=1 hop for the cyclic link),
+    #   * and it TERMINATED at a BOUNDED hop count instead of looping. The forged
+    #     self-cycle (link -> itself) admits exactly the start hop + the one
+    #     revisit the CYCLE clause stops at, so the walk must be tiny (<=2 hops on
+    #     the cyclic link). A regression that dropped the guard would either trip
+    #     the 4s statement_timeout (QueryCanceled) above OR — if it somehow
+    #     returned — emit an unbounded hop count, failing this assertion.
+    assert rows, "trace_row.sql returned no hop rows for the cyclic link"
+    cyclic_hops = [r for r in rows if str(r[2]) == str(run)]
+    assert cyclic_hops, "trace did not even visit the cyclic link's consumer run"
+    max_hop = max(r[0] for r in rows)
+    assert max_hop <= 2, (
+        "CYCLE guard failed to bound the self-cycle walk: max hop %s (a dropped "
+        "guard loops until the statement_timeout)" % max_hop)
     print("\n[S7a FIXED] v_provenance cycle-safe (is_cycle flagged) AND "
           "trace_row.sql now has its own CYCLE guard — it TERMINATES on the "
-          "same forged edge (returned %d hop rows within the timeout)." % len(rows))
+          "same forged edge (returned %d hop rows, max hop %d, within the "
+          "timeout)." % (len(rows), max_hop))
 
 
 def test_s7b_deep_chain_5hops_fully_traces(conn):

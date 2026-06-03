@@ -348,29 +348,31 @@ def test_reconcile_workflow_terminal_run_chosen_by_seq(conn):
 # ---- recon consistency: input rows = good rows + dlq rows ---------------------
 
 def test_quarantine_recon_input_equals_good_plus_dlq(conn):
-    """Spec lines 304-308: reconciliation accounts for good + DLQ. With 4 raw
-    rows, 3 good + 1 dlq, the quarantine record_count + good record_count == raw."""
-    run_id, _ = _run(conn)
-    fid = _raw_file(conn)
-    conn.execute(
-        "SELECT cp.write_lineage_link(%s,'raw_to_curated',%s,%s,%s)",
-        (run_id, json.dumps({"path": "s3://silver/c", "content_hash": "g",
-                             "version": 1}), 3,
-         json.dumps([{"edge_type": "raw_to_curated", "source_file_id": str(fid),
-                      "source_ref": {}, "record_count": 3}])),
-    )
-    conn.execute(
-        "SELECT cp.quarantine(%s,'validate','bad',%s,%s,%s,%s)",
-        (run_id, json.dumps({}), "s3://dlq/e.json", 1, json.dumps({"x": 1})),
-    )
-    good = conn.execute(
-        "SELECT coalesce(sum(record_count),0) FROM cp.lineage_link "
-        "WHERE consumer_run_id=%s AND edge_type='raw_to_curated'", (run_id,)
-    ).fetchone()[0]
-    dlq_n = conn.execute(
-        "SELECT coalesce(sum(record_count),0) FROM cp.dlq WHERE run_id=%s", (run_id,)
-    ).fetchone()[0]
-    assert good + dlq_n == 4
+    """Spec lines 304-308: reconciliation accounts for good + DLQ — and the SYSTEM
+    must record that, not Python arithmetic.
+
+    A3 audit (2026-06-03) flagged the prior body as a pure ``3 + 1 == 4`` tautology
+    that NEVER invoked recon: the ``4`` was a constant the test itself chose, so it
+    would stay green even if cp.reconcile_workflow were entirely broken. Strengthened
+    to drive a real 4-raw / 3-sink / 1-quarantined workflow and assert the RECORDED
+    workflow reconciliation row (post-031 fact-spine): raw_in=4, sink_out=3,
+    dlq_out=1, discrepancy=0, status='ok'. The test now FAILS if recon stops summing
+    the dlq output into the input account (raw_in == sink_out + dlq_out)."""
+    wf = str(uuid4())
+    _full_workflow(conn, wf, raw=4, dlq_n=1)
+    conn.execute("SELECT cp.reconcile_workflow(%s)", (wf,))
+    status, disc, metrics = conn.execute(
+        "SELECT status, discrepancy, metrics FROM cp.reconciliation_log "
+        "WHERE check_type='workflow' AND metrics->>'workflow_run_id'=%s "
+        "ORDER BY recon_id DESC LIMIT 1", (wf,)
+    ).fetchone()
+    # The SYSTEM reconciled input(4) == good(3) + dlq(1): a recorded fact, not a
+    # constant the test asserted against itself.
+    assert metrics["raw_in"] == 4
+    assert metrics["sink_out"] == 3
+    assert metrics["dlq_out"] == 1
+    assert metrics["sink_out"] + metrics["dlq_out"] == metrics["raw_in"]
+    assert disc == 0 and status == "ok"
 
 
 # ---- resolve_dlq round-trip ---------------------------------------------------
