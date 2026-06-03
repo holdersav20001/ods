@@ -10,14 +10,34 @@ from . import runs
 
 
 def quarantine(conn, *, run_id, stage, reason, source_ref, payload_ref,
-               record_count, commit=True) -> str:
+               record_count, failed_payload=None, commit=True) -> str:
+    """Quarantine a failed batch: writes a cp.dlq row (status='open'), a
+    first-class 'quarantine' output_link + edge, and stamps the dlq row with the
+    quarantine_output_link_id. ``failed_payload`` is the actual rejected row(s),
+    preserved verbatim and never overwritten.
+    """
     dlq_id = conn.execute(
-        "SELECT cp.quarantine(%s,%s,%s,%s,%s,%s)",
-        [run_id, stage, reason, Jsonb(source_ref), payload_ref, record_count],
+        "SELECT cp.quarantine(%s,%s,%s,%s,%s,%s,%s)",
+        [run_id, stage, reason, Jsonb(source_ref), payload_ref, record_count,
+         Jsonb(failed_payload) if failed_payload is not None else None],
     ).fetchone()[0]
     if commit:
         conn.commit()
     return str(dlq_id)
+
+
+def resolve(conn, *, dlq_id, status, resolved_by_run_id=None,
+            resolved_by_output_link_id=None, commit=True) -> None:
+    """Flip a DLQ row's lifecycle status and record resolution refs. Never
+    touches failed_payload/reason — failure history is preserved. ``status`` must
+    be one of open/under_review/corrected/replayed/resolved/rejected.
+    """
+    conn.execute(
+        "SELECT cp.resolve_dlq(%s,%s,%s,%s)",
+        [dlq_id, status, resolved_by_run_id, resolved_by_output_link_id],
+    )
+    if commit:
+        conn.commit()
 
 
 def replay(conn, *, original_run_id, pipeline_type, domain, dataset,

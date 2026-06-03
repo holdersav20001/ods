@@ -449,6 +449,12 @@ select {
   color: #0f766e;
 }
 
+.workflow-tag.airflow {
+  border-color: #9ec4ef;
+  background: #f0f7ff;
+  color: #174f86;
+}
+
 .update-original {
   border-color: var(--line);
   background: #ffffff;
@@ -471,6 +477,7 @@ select {
   display: flex;
   gap: 8px;
   justify-content: flex-end;
+  flex-wrap: wrap;
 }
 
 .workflow-actions .small-action {
@@ -853,6 +860,76 @@ select {
   color: var(--muted);
   font-size: 12px;
   margin-top: 7px;
+}
+
+.airflow-summary {
+  margin-bottom: 16px;
+}
+
+.airflow-facts {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(140px, 1fr));
+  gap: 12px;
+}
+
+.airflow-facts .metadata-fact {
+  grid-template-columns: 1fr;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+
+.airflow-facts .metadata-fact code {
+  text-align: left;
+}
+
+.airflow-flow-wrap {
+  background: #f8fbff;
+}
+
+.airflow-node {
+  display: grid;
+  gap: 6px;
+}
+
+.airflow-node strong {
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.airflow-node small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.airflow-node .meta {
+  display: grid;
+  gap: 3px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.airflow-node code {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.airflow-pill {
+  border-color: #9ec4ef;
+  background: #e9f4ff;
+  color: #174f86;
+}
+
+.airflow-edge-detail {
+  cursor: default;
+}
+
+.airflow-edge-detail:hover {
+  border-color: var(--line);
+  background: #fbfcfe;
 }
 
 .diagram-note {

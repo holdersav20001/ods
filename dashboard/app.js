@@ -15,6 +15,7 @@
     ["flow", "Run Flow"],
     ["diagram", "Workflow Diagram"],
     ["process", "Process Model"],
+    ["airflow", "Airflow DAG"],
     ["developer", "Developer Model"],
     ["rows", "Target Rows"],
     ["templates", "Templates"],
@@ -1179,6 +1180,491 @@ control.finish_run(run.run_id, record_count_out=row_count)
 control.activate_target_slice(...)`,
     },
     {
+      topic: "Dashboard data without UI",
+      question: "How do I get the same information if I cannot use the dashboard?",
+      answer: [
+        "Everything the dashboard shows comes from control tables, stamped target rows, and the generated snapshot JSON. You do not need the UI to audit a workflow.",
+        "Start with workflow_run_id. From there you can list the run_log tasks, stage rows, output links, input edges, target rows, active visibility rows, Airflow identity, and raw-file traces.",
+        "Use cp.output_link and cp.input_edge for the developer-facing names. ods.target_visibility still stores the physical lineage_link_id column, which is the same identifier as output_link_id.",
+        "For row-level investigation, pick the target row's _ods_output_link_id, then trace that output link back through cp.v_provenance or the packaged control/queries/trace_row.sql query.",
+      ],
+      code: `-- 0. Pick the workflow.
+-- In psql:
+--   \\set workflow_run_id '2f1e820f-35b8-4a44-82e9-0136deeec2db'
+
+-- 1. Workflow summary: what ran, when, and whether it was Airflow-backed.
+select
+    workflow_run_id,
+    business_date,
+    trigger_type,
+    min(started_at) as started_at,
+    max(finished_at) as finished_at,
+    count(*) as task_runs,
+    count(*) filter (where status = 'succeeded') as succeeded_runs,
+    count(*) filter (where status <> 'succeeded') as non_succeeded_runs,
+    max(orchestrator_type) as orchestrator_type,
+    max(orchestrator_dag_id) as orchestrator_dag_id,
+    max(orchestrator_run_id) as orchestrator_run_id
+from cp.run_log
+where workflow_run_id = :'workflow_run_id'
+group by workflow_run_id, business_date, trigger_type;
+
+-- 2. Tasks/runs, including Airflow task identity when present.
+select
+    run_id,
+    pipeline_type,
+    domain,
+    dataset,
+    business_date,
+    status,
+    record_count_in,
+    record_count_out,
+    orchestrator_task_id,
+    orchestrator_try_number,
+    orchestrator_url
+from cp.run_log
+where workflow_run_id = :'workflow_run_id'
+order by started_at, pipeline_type, dataset;
+
+-- 3. Stages under those tasks.
+select
+    r.pipeline_type,
+    r.dataset,
+    s.run_id,
+    s.stage,
+    s.attempt,
+    s.status,
+    s.record_count_in,
+    s.record_count_out,
+    s.started_at,
+    s.finished_at,
+    s.metrics
+from cp.run_log r
+join cp.run_stage_log s on s.run_id = r.run_id
+where r.workflow_run_id = :'workflow_run_id'
+order by r.started_at, s.started_at;
+
+-- 4. Outputs produced by the workflow.
+select
+    r.pipeline_type,
+    r.dataset,
+    ol.output_link_id,
+    ol.edge_type,
+    ol.sink_type,
+    ol.record_count,
+    ol.target_ref->>'path' as target_path,
+    ol.target_ref->>'content_hash' as content_hash,
+    ol.created_at
+from cp.run_log r
+join cp.output_link ol on ol.consumer_run_id = r.run_id
+where r.workflow_run_id = :'workflow_run_id'
+order by r.started_at, ol.created_at;
+
+-- 5. Inputs consumed by each output.
+select
+    r.pipeline_type as consumer_pipeline_type,
+    r.dataset as consumer_dataset,
+    ol.output_link_id,
+    ie.input_edge_id,
+    ie.input_slot,
+    ie.edge_type,
+    ie.source_file_id,
+    fc.s3_raw_path as source_raw_path,
+    ie.upstream_output_link_id,
+    up_run.pipeline_type as upstream_pipeline_type,
+    up_run.dataset as upstream_dataset,
+    up_ol.target_ref->>'path' as upstream_target_path,
+    ie.record_count,
+    ie.source_ref
+from cp.run_log r
+join cp.output_link ol on ol.consumer_run_id = r.run_id
+left join cp.input_edge ie on ie.output_link_id = ol.output_link_id
+left join cp.file_catalogue fc on fc.file_id = ie.source_file_id
+left join cp.output_link up_ol on up_ol.output_link_id = ie.upstream_output_link_id
+left join cp.run_log up_run on up_run.run_id = up_ol.consumer_run_id
+where r.workflow_run_id = :'workflow_run_id'
+order by r.started_at, ol.created_at, ie.input_slot;
+
+-- 6. Business-active slices for this workflow.
+select
+    domain,
+    dataset,
+    business_date,
+    replacement_scope,
+    replacement_key,
+    status,
+    lineage_link_id as output_link_id,
+    producer_run_id,
+    activated_at,
+    deactivated_at,
+    superseded_by
+from ods.target_visibility
+where workflow_run_id = :'workflow_run_id'
+order by dataset, business_date, replacement_key, activated_at;
+
+-- 7. Target rows written by this workflow.
+-- Replace ods.policy_claim with the target table you are investigating.
+select
+    row_id,
+    _ods_workflow_run_id,
+    _ods_output_link_id,
+    _ods_lineage_link_id,
+    _ods_source_file_id,
+    payload
+from ods.policy_claim
+where _ods_workflow_run_id = :'workflow_run_id'
+order by row_id;
+
+-- 8. Row history for one business key across original loads and refeeds.
+-- This example uses the policy/claim detail key.
+select
+    row_id,
+    payload->>'business_date' as business_date,
+    payload->>'policy_id' as policy_id,
+    payload->>'claim_id' as claim_id,
+    _ods_workflow_run_id,
+    _ods_output_link_id,
+    payload
+from ods.policy_claim
+where payload->>'business_date' = '2026-05-29'
+  and payload->>'policy_id' = 'P001'
+  and payload->>'claim_id' = 'CL100'
+order by row_id;
+
+-- 9. Trace one target row back to raw files.
+-- Use the selected row's _ods_output_link_id.
+-- In psql:
+--   \\set output_link_id '97248a28-...'
+with recursive chain as (
+    select
+        p.lineage_link_id,
+        p.edge_type,
+        p.consumer_run_id,
+        p.upstream_run_id,
+        p.source_file_id,
+        1 as hop
+    from cp.v_provenance p
+    where p.lineage_link_id = :'output_link_id'
+  union all
+    select
+        p.lineage_link_id,
+        p.edge_type,
+        p.consumer_run_id,
+        p.upstream_run_id,
+        p.source_file_id,
+        c.hop + 1
+    from chain c
+    join cp.lineage_edge ce on ce.lineage_link_id = c.lineage_link_id
+    join cp.v_provenance p on p.lineage_link_id = ce.upstream_lineage_link_id
+    where ce.upstream_lineage_link_id is not null
+) cycle lineage_link_id set is_cycle using path
+select distinct
+    c.hop,
+    c.edge_type,
+    c.consumer_run_id,
+    r.pipeline_type,
+    r.dataset,
+    c.upstream_run_id,
+    c.source_file_id,
+    fc.s3_raw_path as raw_s3_path
+from chain c
+left join cp.run_log r on r.run_id = c.consumer_run_id
+left join cp.file_catalogue fc on fc.file_id = c.source_file_id
+order by c.hop;
+
+-- 10. Offline JSON option: generate the same snapshot the dashboard reads.
+-- The JSON contains executions, runs, links, files, traces, and target rows.
+--   python -m harness.customer_transaction_workflow --out dashboard/data/demo-workflow.json
+--   python -m harness.policy_claims_workflow --out dashboard/data/policy-claims-workflow.json`,
+    },
+    {
+      topic: "Developer diagnostics",
+      question: "What SQL helps diagnose missing stages, bad IDs, or broken lineage?",
+      answer: [
+        "These checks are for developers and support engineers when a workflow looks wrong or the dashboard cannot explain a row.",
+        "The most common mistakes are: a run was started but never finished, a stage was started but not closed, a task wrote data without creating an output_link, an input_edge did not name the exact upstream_output_link_id, or target rows were not stamped with ODS ids.",
+        "Run the workflow-level checks first, then run the target-table checks for the specific table you are investigating.",
+      ],
+      code: `-- Pick the workflow being diagnosed.
+-- In psql:
+--   \\set workflow_run_id '2f1e820f-35b8-4a44-82e9-0136deeec2db'
+
+-- 1. Runs started but not finished.
+-- Symptom: Airflow says the task ended, but ODS still thinks it is running.
+select
+    run_id,
+    pipeline_type,
+    dataset,
+    status,
+    started_at,
+    finished_at,
+    error
+from cp.run_log
+where workflow_run_id = :'workflow_run_id'
+  and (finished_at is null or status = 'running')
+order by started_at;
+
+-- 2. Runs marked succeeded while one or more stages are not closed.
+select
+    r.run_id,
+    r.pipeline_type,
+    r.dataset,
+    r.status as run_status,
+    s.stage,
+    s.status as stage_status,
+    s.started_at,
+    s.finished_at
+from cp.run_log r
+join cp.run_stage_log s on s.run_id = r.run_id
+where r.workflow_run_id = :'workflow_run_id'
+  and r.status = 'succeeded'
+  and (s.finished_at is null or s.status <> 'succeeded')
+order by r.started_at, s.started_at;
+
+-- 3. Runs with no stage rows at all.
+-- This catches code that called start_run but forgot start_stage/finish_stage.
+select
+    r.run_id,
+    r.pipeline_type,
+    r.dataset,
+    r.status,
+    r.started_at,
+    r.finished_at
+from cp.run_log r
+left join cp.run_stage_log s on s.run_id = r.run_id
+where r.workflow_run_id = :'workflow_run_id'
+group by r.run_id, r.pipeline_type, r.dataset, r.status, r.started_at, r.finished_at
+having count(s.*) = 0
+order by r.started_at;
+
+-- 4. Succeeded runs that did not create an output_link.
+-- In this demo, every task should produce an output link.
+select
+    r.run_id,
+    r.pipeline_type,
+    r.dataset,
+    r.status
+from cp.run_log r
+left join cp.output_link ol on ol.consumer_run_id = r.run_id
+where r.workflow_run_id = :'workflow_run_id'
+  and r.status = 'succeeded'
+group by r.run_id, r.pipeline_type, r.dataset, r.status
+having count(ol.*) = 0
+order by r.pipeline_type, r.dataset;
+
+-- 5. Output links with no input_edge rows.
+-- Usually suspicious. Raw ingestion should still have an input_edge with source_file_id.
+select
+    r.pipeline_type,
+    r.dataset,
+    ol.output_link_id,
+    ol.edge_type,
+    ol.target_ref->>'path' as target_path
+from cp.run_log r
+join cp.output_link ol on ol.consumer_run_id = r.run_id
+left join cp.input_edge ie on ie.output_link_id = ol.output_link_id
+where r.workflow_run_id = :'workflow_run_id'
+group by r.pipeline_type, r.dataset, ol.output_link_id, ol.edge_type, ol.target_ref
+having count(ie.*) = 0
+order by r.pipeline_type, r.dataset;
+
+-- 6. Input edges that did not identify an input.
+-- Each input_edge should point to either a raw source_file_id OR an upstream_output_link_id.
+select
+    r.pipeline_type,
+    r.dataset,
+    ol.output_link_id,
+    ie.input_edge_id,
+    ie.edge_type,
+    ie.source_file_id,
+    ie.upstream_output_link_id,
+    ie.source_ref
+from cp.run_log r
+join cp.output_link ol on ol.consumer_run_id = r.run_id
+join cp.input_edge ie on ie.output_link_id = ol.output_link_id
+where r.workflow_run_id = :'workflow_run_id'
+  and ie.source_file_id is null
+  and ie.upstream_output_link_id is null
+order by r.pipeline_type, r.dataset;
+
+-- 7. Downstream input edges that forgot the exact upstream_output_link_id.
+-- This is the big lineage mistake: upstream_run_id alone is not precise enough.
+select
+    r.pipeline_type,
+    r.dataset,
+    ol.output_link_id,
+    ie.input_edge_id,
+    ie.edge_type,
+    ie.upstream_run_id,
+    ie.upstream_output_link_id
+from cp.run_log r
+join cp.output_link ol on ol.consumer_run_id = r.run_id
+join cp.input_edge ie on ie.output_link_id = ol.output_link_id
+where r.workflow_run_id = :'workflow_run_id'
+  and ie.source_file_id is null
+  and ie.upstream_run_id is not null
+  and ie.upstream_output_link_id is null
+order by r.pipeline_type, r.dataset;
+
+-- 8. Input edges whose upstream_output_link_id cannot be found.
+select
+    r.pipeline_type,
+    r.dataset,
+    ie.input_edge_id,
+    ie.upstream_output_link_id
+from cp.run_log r
+join cp.output_link ol on ol.consumer_run_id = r.run_id
+join cp.input_edge ie on ie.output_link_id = ol.output_link_id
+left join cp.output_link upstream on upstream.output_link_id = ie.upstream_output_link_id
+where r.workflow_run_id = :'workflow_run_id'
+  and ie.upstream_output_link_id is not null
+  and upstream.output_link_id is null;
+
+-- 9. Output links missing required target_ref fields.
+select
+    r.pipeline_type,
+    r.dataset,
+    ol.output_link_id,
+    ol.edge_type,
+    ol.target_ref
+from cp.run_log r
+join cp.output_link ol on ol.consumer_run_id = r.run_id
+where r.workflow_run_id = :'workflow_run_id'
+  and (
+      ol.target_ref is null
+      or not (ol.target_ref ? 'path')
+      or not (ol.target_ref ? 'content_hash')
+      or not (ol.target_ref ? 'version')
+  )
+order by r.pipeline_type, r.dataset;
+
+-- 10. Sinks that wrote output_link metadata but have no stamped target rows.
+-- Replace ods.policy_claim with the table being investigated.
+select
+    r.pipeline_type,
+    r.dataset,
+    ol.output_link_id,
+    ol.record_count as output_link_count,
+    count(t.*) as stamped_target_rows
+from cp.run_log r
+join cp.output_link ol on ol.consumer_run_id = r.run_id
+left join ods.policy_claim t on t._ods_output_link_id = ol.output_link_id
+where r.workflow_run_id = :'workflow_run_id'
+  and r.pipeline_type = 'sink'
+group by r.pipeline_type, r.dataset, ol.output_link_id, ol.record_count
+having count(t.*) = 0
+order by r.dataset;
+
+-- 11. Target rows not stamped with the required ODS ids.
+-- Run this against each target table.
+select
+    row_id,
+    _ods_workflow_run_id,
+    _ods_output_link_id,
+    _ods_lineage_link_id,
+    _ods_source_file_id,
+    payload
+from ods.policy_claim
+where _ods_workflow_run_id is null
+   or _ods_output_link_id is null
+   or _ods_lineage_link_id is null;
+
+-- 12. Target rows whose output id does not exist in cp.output_link.
+select
+    t.row_id,
+    t._ods_workflow_run_id,
+    t._ods_output_link_id,
+    t.payload
+from ods.policy_claim t
+left join cp.output_link ol on ol.output_link_id = t._ods_output_link_id
+where t._ods_workflow_run_id = :'workflow_run_id'
+  and ol.output_link_id is null;
+
+-- 13. Target rows stamped with a workflow id that disagrees with the output link's producer run.
+select
+    t.row_id,
+    t._ods_workflow_run_id as target_workflow_run_id,
+    r.workflow_run_id as output_link_workflow_run_id,
+    t._ods_output_link_id,
+    r.pipeline_type,
+    r.dataset,
+    t.payload
+from ods.policy_claim t
+join cp.output_link ol on ol.output_link_id = t._ods_output_link_id
+join cp.run_log r on r.run_id = ol.consumer_run_id
+where t._ods_workflow_run_id = :'workflow_run_id'
+  and t._ods_workflow_run_id <> r.workflow_run_id;
+
+-- 14. Active visibility conflicts: more than one Y for the same business key.
+select
+    domain,
+    dataset,
+    business_date,
+    replacement_scope,
+    replacement_key,
+    count(*) as active_rows,
+    array_agg(lineage_link_id order by activated_at) as active_output_link_ids
+from ods.target_visibility
+where status = 'Y'
+group by domain, dataset, business_date, replacement_scope, replacement_key
+having count(*) > 1
+order by dataset, business_date, replacement_key;
+
+-- 15. Target rows whose output_link_id has no active visibility row.
+-- This is not always wrong for internal/non-business outputs, but it is wrong
+-- for serving targets that business users should query.
+select
+    t.row_id,
+    t._ods_workflow_run_id,
+    t._ods_output_link_id,
+    t.payload
+from ods.policy_claim t
+left join ods.target_visibility tv
+  on tv.lineage_link_id = t._ods_output_link_id
+ and tv.status = 'Y'
+where t._ods_workflow_run_id = :'workflow_run_id'
+  and tv.visibility_id is null;
+
+-- 16. Airflow-triggered runs missing orchestrator identity.
+select
+    run_id,
+    pipeline_type,
+    dataset,
+    trigger_type,
+    orchestrator_type,
+    orchestrator_dag_id,
+    orchestrator_run_id,
+    orchestrator_task_id
+from cp.run_log
+where workflow_run_id = :'workflow_run_id'
+  and trigger_type = 'airflow'
+  and (
+      orchestrator_type is null
+      or orchestrator_dag_id is null
+      or orchestrator_run_id is null
+      or orchestrator_task_id is null
+  )
+order by started_at;
+
+-- 17. Reconciliation gaps for sink runs, when reconciliation rows exist.
+-- Useful when counts do not match what was written.
+select
+    r.pipeline_type,
+    r.dataset,
+    r.run_id,
+    rl.check_type,
+    rl.source_count,
+    rl.accounted_count,
+    rl.discrepancy,
+    rl.status,
+    rl.metrics
+from cp.run_log r
+left join cp.reconciliation_log rl on rl.run_id = r.run_id
+where r.workflow_run_id = :'workflow_run_id'
+  and r.pipeline_type = 'sink'
+order by r.dataset, rl.created_at;`,
+    },
+    {
       topic: "Pipeline type",
       question: "What does pipeline_type='sink' do? Can a sink be S3 or Postgres?",
       answer: [
@@ -1370,6 +1856,12 @@ if sync_to_postgres:
       }
     }, [data, selectedExecutionId]);
 
+    React.useEffect(() => {
+      if (data && tab === "airflow" && !snapshotHasAirflow(data)) {
+        setTab("workflows");
+      }
+    }, [data, tab]);
+
     if (error) {
       return e("main", { className: "content" },
         e("div", { className: "error" },
@@ -1416,6 +1908,10 @@ if sync_to_postgres:
           openProcess: (workflowRunId) => {
             setSelectedExecutionId(workflowRunId);
             setTab("process");
+          },
+          openAirflow: (workflowRunId) => {
+            setSelectedExecutionId(workflowRunId);
+            setTab("airflow");
           },
           openDeveloper: (workflowRunId) => {
             setSelectedExecutionId(workflowRunId);
@@ -1465,6 +1961,11 @@ if sync_to_postgres:
           selectedExecutionId,
           setSelectedExecutionId,
           focusLink,
+        }),
+        tab === "airflow" && e(AirflowDagTab, {
+          data,
+          selectedExecutionId,
+          setSelectedExecutionId,
         }),
         tab === "developer" && e(DeveloperProcessModelTab, {
           data,
@@ -1560,6 +2061,7 @@ if sync_to_postgres:
       runs: data.runs?.length || 0,
       links: data.links?.length || 0,
     };
+    const visibleTabs = TABS.filter(([id]) => id !== "airflow" || snapshotHasAirflow(data));
     return e("header", { className: "topbar" },
       e("div", { className: "brand" },
         e("h1", null, "ODS Lineage Dashboard"),
@@ -1586,7 +2088,7 @@ if sync_to_postgres:
         )
       ),
       e("nav", { className: "tabs" },
-        TABS.map(([id, label]) =>
+        visibleTabs.map(([id, label]) =>
           e("button", {
             key: id,
             className: `tab ${tab === id ? "active" : ""}`,
@@ -1597,7 +2099,11 @@ if sync_to_postgres:
     );
   }
 
-  function WorkflowsTab({ data, selectedExecutionId, jsonWorkflowId, setJsonWorkflowId, olWorkflowId, setOlWorkflowId, openDetails, openProcess, openDeveloper }) {
+  function snapshotHasAirflow(data) {
+    return (data.runs || []).some((run) => run.orchestrator_type === "airflow");
+  }
+
+  function WorkflowsTab({ data, selectedExecutionId, jsonWorkflowId, setJsonWorkflowId, olWorkflowId, setOlWorkflowId, openDetails, openProcess, openAirflow, openDeveloper }) {
     const summaries = workflowSummaries(data);
     const selectedJson = jsonWorkflowId
       ? buildWorkflowJson(data, jsonWorkflowId)
@@ -1643,6 +2149,7 @@ if sync_to_postgres:
             olOpen: olWorkflowId === summary.workflow_run_id,
             onDetails: () => openDetails(summary.workflow_run_id),
             onProcess: () => openProcess(summary.workflow_run_id),
+            onAirflow: () => openAirflow(summary.workflow_run_id),
             onDeveloper: () => openDeveloper(summary.workflow_run_id),
             onJson: () => {
               setOlWorkflowId("");
@@ -1682,7 +2189,7 @@ if sync_to_postgres:
     );
   }
 
-  function WorkflowSummaryCard({ summary, selected, jsonOpen, olOpen, onDetails, onProcess, onDeveloper, onJson, onOpenLineage }) {
+  function WorkflowSummaryCard({ summary, selected, jsonOpen, olOpen, onDetails, onProcess, onAirflow, onDeveloper, onJson, onOpenLineage }) {
     const statusClass = summary.execution_type === "refeed" ? "amber" : "green";
     return e("article", { className: `workflow-summary-card ${selected ? "selected" : ""}` },
       e("div", { className: "workflow-summary-main" },
@@ -1708,6 +2215,9 @@ if sync_to_postgres:
         e(WorkflowMetric, { label: "failed", value: summary.failedCount })
       ),
       e("div", { className: "workflow-tags" },
+        summary.isAirflow && e("span", { className: "workflow-tag airflow" },
+          `airflow${summary.dagIds.length ? `: ${summary.dagIds[0]}` : ""}`
+        ),
         summary.datasets.map((dataset) => e("span", {
           className: `workflow-tag ${summary.datasetRoles?.[dataset] || ""}`,
           key: dataset,
@@ -1717,6 +2227,7 @@ if sync_to_postgres:
       e("div", { className: "workflow-actions" },
         e("button", { type: "button", className: "small-action", onClick: onDetails }, "Details"),
         e("button", { type: "button", className: "small-action", onClick: onProcess }, "Process Diagram"),
+        summary.isAirflow && e("button", { type: "button", className: "small-action", onClick: onAirflow }, "Airflow DAG"),
         e("button", { type: "button", className: "small-action", onClick: onDeveloper }, "Developer Model"),
         e("button", { type: "button", className: `small-action ${olOpen ? "active" : ""}`, onClick: onOpenLineage },
           olOpen ? "Hide OL" : "OL"
@@ -1763,6 +2274,9 @@ if sync_to_postgres:
         datasets: unique(runs.map((run) => run.dataset)).sort(),
         datasetRoles: workflowDatasetRoles(execution, runs),
         pipelineTypes: unique(runs.map((run) => run.pipeline_type)).sort(),
+        orchestratorTypes: unique(runs.map((run) => run.orchestrator_type).filter(Boolean)).sort(),
+        dagIds: unique(runs.map((run) => run.orchestrator_dag_id).filter(Boolean)).sort(),
+        isAirflow: runs.some((run) => run.orchestrator_type === "airflow"),
       };
     });
   }
@@ -2558,6 +3072,217 @@ if sync_to_postgres:
       });
     });
     return { nodes, edges, edgeDetails };
+  }
+
+  function AirflowDagTab({ data, selectedExecutionId, setSelectedExecutionId }) {
+    const airflowExecutions = (data.executions || []).filter((execution) =>
+      filteredRuns(data, execution.workflow_run_id).some((run) => run.orchestrator_type === "airflow")
+    );
+    const execution = airflowExecutions.find((item) => item.workflow_run_id === selectedExecutionId)
+      || airflowExecutions[0]
+      || null;
+
+    if (!execution) {
+      return e("section", { className: "panel" },
+        e("div", { className: "panel-head" }, e("h2", null, "Airflow DAG")),
+        e("div", { className: "panel-body" },
+          e("div", { className: "empty" }, "This snapshot has no Airflow orchestrator rows.")
+        )
+      );
+    }
+
+    const graph = buildAirflowDagGraph(data, execution.workflow_run_id);
+    const firstRun = graph.runs[0] || {};
+    const dagId = firstRun.orchestrator_dag_id || data.scenario?.dag_id || "-";
+    const dagRunId = firstRun.orchestrator_run_id || "-";
+    const flowKey = `airflow-${execution.workflow_run_id}-${graph.nodes.length}-${graph.edges.length}`;
+
+    return e(React.Fragment, null,
+      e("div", { className: "toolbar" },
+        e(SelectField, {
+          label: "Airflow Execution",
+          value: execution.workflow_run_id,
+          onChange: setSelectedExecutionId,
+          options: airflowExecutions.map((item) => [
+            item.workflow_run_id,
+            `${item.business_date} - ${item.execution_type} - ${shortId(item.workflow_run_id)}`,
+          ]),
+        }),
+        e("div", { className: "diagram-note" },
+          e("strong", null, "Airflow view"),
+          e("span", null, "Nodes are orchestrator_task_id values. Arrows are derived from the output_link consumed by the next task's input_edge.")
+        )
+      ),
+      e("section", { className: "airflow-summary panel" },
+        e("div", { className: "panel-head" },
+          e("h2", null, `Airflow DAG: ${dagId}`),
+          e("span", { className: `pill ${execution.execution_type === "refeed" ? "amber" : "green"}` },
+            execution.execution_type
+          )
+        ),
+        e("div", { className: "panel-body airflow-facts" },
+          e(MetadataFact, { label: "workflow_run_id", value: execution.workflow_run_id }),
+          e(MetadataFact, { label: "orchestrator_run_id", value: dagRunId }),
+          e(MetadataFact, { label: "business_date", value: execution.business_date }),
+          e(MetadataFact, { label: "tasks", value: String(graph.runs.length) }),
+          e(MetadataFact, { label: "dependencies", value: String(graph.edgeDetails.length) })
+        )
+      ),
+      e("section", { className: "flow-layout airflow-layout" },
+        e("div", { className: "flow-wrap airflow-flow-wrap" },
+          hasReactFlow
+            ? e(ReactFlowProvider, null,
+                e(Flow, {
+                  key: flowKey,
+                  defaultNodes: graph.nodes,
+                  defaultEdges: graph.edges,
+                  fitView: true,
+                  fitViewOptions: { padding: 0.22 },
+                  nodesDraggable: true,
+                  nodesConnectable: false,
+                  elementsSelectable: true,
+                  panOnDrag: true,
+                  panOnScroll: true,
+                  zoomOnScroll: true,
+                  zoomOnPinch: true,
+                  minZoom: 0.2,
+                  maxZoom: 1.8,
+                },
+                  e(Background, { gap: 18, size: 1 }),
+                  e(MiniMap, { pannable: true, zoomable: true }),
+                  e(Controls, null)
+                )
+              )
+            : e("div", { className: "error" }, "React Flow did not load")
+        ),
+        e("aside", { className: "flow-side panel" },
+          e("div", { className: "panel-head" },
+            e("h2", null, "Task Dependencies"),
+            e("span", { className: "pill" }, graph.edgeDetails.length)
+          ),
+          e("div", { className: "panel-body edge-detail-list" },
+            graph.edgeDetails.length
+              ? graph.edgeDetails.map((edge) => e("div", { key: edge.id, className: "edge-detail airflow-edge-detail" },
+                  e("span", { className: "pill mini" }, edge.edgeType),
+                  e("strong", null, `${edge.sourceTask} -> ${edge.targetTask}`),
+                  e("code", null, `${edge.outputLabel} / ${shortId(edge.outputLinkId)}`),
+                  e("small", null, `${edge.recordCount ?? "-"} rows consumed`)
+                ))
+              : e("div", { className: "empty" }, "No task-to-task dependencies were recorded.")
+          )
+        )
+      )
+    );
+  }
+
+  function buildAirflowDagGraph(data, workflowRunId) {
+    const runs = filteredRuns(data, workflowRunId)
+      .filter((run) => run.orchestrator_type === "airflow")
+      .slice()
+      .sort(compareWorkflowRuns);
+    const runSet = new Set(runs.map((run) => run.run_id));
+    const dependencyMap = new Map();
+
+    data.links.forEach((link) => {
+      if (!runSet.has(link.consumer_run_id)) return;
+      const targetRun = data.runById[link.consumer_run_id];
+      (link.edges || []).forEach((edge) => {
+        if (!edge.upstream_run_id || !runSet.has(edge.upstream_run_id)) return;
+        const sourceRun = data.runById[edge.upstream_run_id];
+        const key = `${edge.upstream_run_id}-${link.consumer_run_id}-${inputEdgeId(edge)}`;
+        dependencyMap.set(key, {
+          id: inputEdgeId(edge) || key,
+          sourceRun,
+          targetRun,
+          outputLinkId: upstreamOutputLinkId(edge),
+          outputLabel: link.edge_type,
+          edgeType: edge.edge_type || link.edge_type,
+          recordCount: edge.record_count,
+        });
+      });
+    });
+
+    const dependencies = Array.from(dependencyMap.values());
+    const levels = Object.fromEntries(runs.map((run) => [run.run_id, 0]));
+    for (let pass = 0; pass < runs.length; pass += 1) {
+      let changed = false;
+      dependencies.forEach((dependency) => {
+        const sourceLevel = levels[dependency.sourceRun.run_id] ?? 0;
+        const nextLevel = sourceLevel + 1;
+        if ((levels[dependency.targetRun.run_id] ?? 0) < nextLevel) {
+          levels[dependency.targetRun.run_id] = nextLevel;
+          changed = true;
+        }
+      });
+      if (!changed) break;
+    }
+
+    const grouped = {};
+    runs.forEach((run) => {
+      const level = levels[run.run_id] ?? 0;
+      if (!grouped[level]) grouped[level] = [];
+      grouped[level].push(run);
+    });
+    Object.values(grouped).forEach((items) => items.sort(compareWorkflowRuns));
+
+    const nodeWidth = 240;
+    const nodes = runs.map((run) => {
+      const level = levels[run.run_id] ?? 0;
+      const levelRuns = grouped[level] || [];
+      const index = levelRuns.findIndex((item) => item.run_id === run.run_id);
+      const yOffset = (index - (levelRuns.length - 1) / 2) * 160;
+      return {
+        id: run.run_id,
+        position: {
+          x: level * 285,
+          y: 250 + yOffset,
+        },
+        data: {
+          label: e("div", { className: "airflow-node" },
+            e("span", { className: "pill mini airflow-pill" }, "airflow task"),
+            e("strong", null, run.orchestrator_task_id || `${run.pipeline_type}_${run.dataset}`),
+            e("small", null, `${run.pipeline_type} / ${run.dataset}`),
+            e("div", { className: "meta" },
+              e("span", null, `${run.status} / ${run.record_count_in ?? "-"} -> ${run.record_count_out ?? "-"}`),
+              e("code", null, `run_log ${shortId(run.run_id)}`),
+              e("code", null, `try ${run.orchestrator_try_number ?? "-"}`)
+            )
+          ),
+        },
+        style: {
+          border: run.status === "succeeded" ? "1px solid #9ec4ef" : "2px solid #b2415b",
+          borderRadius: 8,
+          padding: 10,
+          width: nodeWidth,
+          background: "#f8fbff",
+        },
+      };
+    });
+
+    const edges = dependencies.map((dependency) => ({
+      id: dependency.id,
+      source: dependency.sourceRun.run_id,
+      target: dependency.targetRun.run_id,
+      label: "",
+      type: "smoothstep",
+      animated: false,
+      style: {
+        stroke: dependency.edgeType === "detail_to_aggregate" ? "#a46113" : "#2364aa",
+        strokeWidth: 2,
+      },
+    }));
+
+    const edgeDetails = dependencies.map((dependency) => ({
+      id: dependency.id,
+      sourceTask: dependency.sourceRun.orchestrator_task_id || shortId(dependency.sourceRun.run_id),
+      targetTask: dependency.targetRun.orchestrator_task_id || shortId(dependency.targetRun.run_id),
+      outputLabel: dependency.outputLabel,
+      outputLinkId: dependency.outputLinkId,
+      edgeType: dependency.edgeType,
+      recordCount: dependency.recordCount,
+    })).sort((a, b) => `${a.sourceTask}-${a.targetTask}`.localeCompare(`${b.sourceTask}-${b.targetTask}`));
+
+    return { runs, nodes, edges, edgeDetails };
   }
 
   function WorkflowDiagramTab({ data, selectedExecutionId, setSelectedExecutionId, focusLink }) {

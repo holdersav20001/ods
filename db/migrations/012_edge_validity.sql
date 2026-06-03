@@ -177,6 +177,12 @@ END $$;
 --   edge_type matches the link's so it is NOT smuggling. Reproduces the 002 body
 --   verbatim except the target_ref construction.
 --   NOTE: the 002 copy is SUPERSEDED by this one (banner added to 002).
+--
+--   *** SUPERSEDED by 023_dlq_lifecycle.sql. ***
+--   023 re-declares cp.quarantine to add p_failed_payload (DEFAULT NULL), capture
+--   the quarantine output_link id into cp.dlq.quarantine_output_link_id, and set
+--   cp.dlq.status='open'. 023 applies after 012 so its definition wins. The body
+--   below is kept as-applied for history.
 -- =====================================================================
 CREATE OR REPLACE FUNCTION cp.quarantine(
     p_run_id uuid, p_stage text, p_reason text, p_source_ref jsonb,

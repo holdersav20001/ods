@@ -254,6 +254,63 @@ def test_quarantine_distinct_failures_dont_collapse(conn):
     assert edge_cnt == 2
 
 
+# ---- resolve_dlq (023) ------------------------------------------------------
+
+def test_resolve_dlq_roundtrip(conn):
+    """cp.resolve_dlq (migration 023): flips status + resolution refs and leaves
+    failed_payload/reason untouched. Full lifecycle coverage in
+    tests/test_dlq_lifecycle.py."""
+    run_id, _ = _start_run(conn)
+    dlq_id = conn.execute(
+        "SELECT cp.quarantine(%s,'validate','bad',%s,%s,%s,%s)",
+        (run_id, json.dumps({}), "s3://dlq/c.json", 1, json.dumps({"x": 1})),
+    ).fetchone()[0]
+    conn.execute("SELECT cp.resolve_dlq(%s,'resolved',%s)", (dlq_id, run_id))
+    row = conn.execute(
+        "SELECT status, failed_payload, resolved_by_run_id FROM cp.dlq WHERE dlq_id=%s",
+        (dlq_id,)
+    ).fetchone()
+    assert row[0] == "resolved"
+    assert row[1] == {"x": 1}                 # preserved
+    assert str(row[2]) == str(run_id)
+
+
+# ---- get_schema_contract (024) ----------------------------------------------
+
+def test_get_schema_contract_roundtrip(conn):
+    """cp.get_schema_contract (migration 024): exact-version fetch and
+    latest-when-null. Validation logic lives in control/schema.py
+    (tests/test_schema_contract.py)."""
+    dom, ds, layer = "insurance", "claim", "silver"
+    conn.execute(
+        "INSERT INTO cp.schema_contract (domain,dataset,layer,schema_version,"
+        "required_columns,nullable_columns,business_key) VALUES "
+        "(%s,%s,%s,'claim.v1',%s,%s,%s),(%s,%s,%s,'claim.v2',%s,%s,%s)",
+        (dom, ds, layer, json.dumps(["policy_id"]), json.dumps([]),
+         json.dumps(["policy_id"]),
+         dom, ds, layer, json.dumps(["policy_id", "claim_id"]), json.dumps([]),
+         json.dumps(["policy_id", "claim_id"])),
+    )
+    # exact version
+    row = conn.execute(
+        "SELECT (c).schema_version, (c).required_columns "
+        "FROM cp.get_schema_contract(%s,%s,%s,'claim.v1') c", (dom, ds, layer)
+    ).fetchone()
+    assert row[0] == "claim.v1"
+    assert row[1] == ["policy_id"]
+    # latest when version null -> v2 (DESC by schema_version)
+    latest = conn.execute(
+        "SELECT (c).schema_version FROM cp.get_schema_contract(%s,%s,%s) c",
+        (dom, ds, layer)
+    ).fetchone()[0]
+    assert latest == "claim.v2"
+    # no match -> composite row of NULLs (PK null)
+    none_row = conn.execute(
+        "SELECT (c).schema_contract_id FROM cp.get_schema_contract('x','y','z') c"
+    ).fetchone()[0]
+    assert none_row is None
+
+
 # ---- latest_succeeded_run ---------------------------------------------------
 
 def test_latest_succeeded_run(conn):
@@ -577,9 +634,25 @@ def test_every_cp_function_is_asserted(conn):
         # at the table — asserted in tests/test_team_r3.py (test_FIXED_* probes)
         # and tests/test_team_r4.py.
         "trg_edge_type_matches_link",
-        # P10-D (016): target-visibility active-slice activation primitive —
-        # round-trip + invariants in tests/test_target_visibility.py.
+            # P10-D (016): target-visibility active-slice activation primitive —
+            # round-trip + invariants in tests/test_target_visibility.py.
         "activate_target_visibility",
+            # 022: dashboard/developer read APIs — round-trips and exception
+        # handling asserted in tests/test_dashboard_developer_functions.py.
+        "dashboard_workflows", "dashboard_workflow_detail",
+        "dashboard_output_trace", "developer_diagnostics",
+        # 023: DLQ lifecycle resolution — round-trip below
+        # (test_resolve_dlq_*). cp.quarantine re-declared in 023 (same name).
+        "resolve_dlq",
+        # 024: schema-validation contract fetch — round-trip below
+        # (test_get_schema_contract_*).
+        "get_schema_contract",
+        # 027: optional support/developer lookup helpers — round-trips in
+        # tests/test_diagnostics.py (test_dashboard_*_round_trip). The
+        # strengthened developer_diagnostics keeps the same signature (already
+        # asserted above) and is anomaly-covered in tests/test_diagnostics.py.
+        "dashboard_file_usage", "dashboard_target_row_trace",
+        "dashboard_airflow_lookup",
     }
     missing = fns - ASSERTED
     assert not missing, f"cp functions with no contract assertion: {missing}"
