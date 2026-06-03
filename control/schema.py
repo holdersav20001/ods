@@ -40,9 +40,19 @@ def validate_rows(rows, contract):
     column is present-but-NULL. ``bad`` items are ``(row, reason)`` tuples.
     A column is nullable iff it appears in the contract's nullable_columns.
     Pure Python: no DB access.
+
+    F7: a contract with NO required_columns is a MISCONFIGURATION — with no
+    required columns there is nothing to validate against, so EVERY row
+    (including an empty ``{}``) would silently pass. That is unsafe, so we raise
+    ``ValueError`` rather than accept-everything. A row that is empty or omits a
+    required column is therefore correctly marked BAD by the per-column loop
+    below (an empty ``{}`` fails the first required column's presence check).
     """
     required = list(contract.get("required_columns") or [])
     nullable = set(contract.get("nullable_columns") or [])
+
+    if not required:
+        raise ValueError("schema contract has no required_columns")
 
     good = []
     bad = []

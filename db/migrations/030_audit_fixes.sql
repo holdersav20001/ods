@@ -1,84 +1,188 @@
--- 029_dlq_diagnostics_fixes.sql — six confirmed Codex-review fixes against the
--- DLQ / diagnostics / contract surface. Each affected function is RE-DECLARED
--- here (CREATE OR REPLACE, same signature) so the prior copy in 027/023/024 is
--- cleanly superseded; SUPERSEDED banners are added to those prior copies.
+-- 030_audit_fixes.sql — full-platform audit SQL/function fixes (A1).
 --
--- Spec/source: external (Codex) review — all six findings verified TRUE against
---              live code. New migration ONLY; 001–028 are applied and frozen.
--- Tests: tests/test_diagnostics.py + tests/test_contract.py (P1a/P2a/P2b/P3) and
---        tests/test_policy_claims_dlq_workflow.py (P1b) — written failing first.
+-- Consolidated findings: docs/reviews/2026-06-03-audit-consolidated.md
+-- SQL detail:            docs/reviews/2026-06-03-audit-a1-sql.md
 --
--- FINDINGS FIXED
---   P1a (HIGH) — developer_diagnostics "input_edge_without_input_identifier"
---     exempted ONLY 'orchestrates', so a SANCTIONED 'quarantine' (or 'replay')
---     edge — which legitimately carries context in source_ref and anchors to
---     nothing per the 012 edge_must_anchor CHECK — was falsely flagged dirty.
---     FIX: exempt the SAME set the CHECK exempts:
---          NOT IN ('orchestrates','quarantine','replay').
+-- This migration is PURELY ADDITIVE in the migration ordering sense: it
+-- re-declares four cp.* functions (each LIVE copy faithfully reproduced from
+-- pg_get_functiondef, then patched) and adds one CHECK to ods.orders. It does
+-- NOT edit any applied migration 001-029; instead each prior LIVE definition
+-- carries a SUPERSEDED banner pointing here, and 030 applies last so THESE
+-- definitions win.
 --
---   P2a (MED) — the "target_row_missing_ods_ids" check filtered on
---     `t._ods_workflow_run_id = $1 AND (... t._ods_workflow_run_id IS NULL ...)`,
---     a contradiction: a row that LOST its workflow id can never satisfy
---     `= $1`, so the very anomaly it claimed to detect was invisible.
---     FIX: scope the target-row checks by the OUTPUT LINK that belongs to this
---     workflow (t._ods_output_link_id -> cp.output_link -> cp.run_log where
---     workflow_run_id = $1) so a row with NULL _ods_workflow_run_id but a valid
---     link is still attributable and flagged; ALSO keep flagging rows whose
---     _ods_output_link_id/_ods_lineage_link_id is null but whose
---     _ods_workflow_run_id = $1. A row with ALL ODS ids null is unattributable
---     to ANY workflow, so it gets a NEW table-wide check
---     'target_row_orphan_no_ods_ids' (NOT $1-scoped) so it is never invisible.
---
---   P2b (MED) — dashboard_file_usage only returns the DIRECT ingest edges
---     (source_file_id = p_file_id). It is kept AS-IS (the direct-edge view). A
---     NEW cp.dashboard_file_impact(p_file_id) returns every DOWNSTREAM output
---     whose cp.v_provenance chain reaches that raw file (canonical, merge, sink,
---     aggregate) — the downstream-impact view.
---
---   P2c (MED) — resolve_dlq coalesced refs, so resolve_dlq(id,'resolved') with
---     no refs closed a DLQ untraceably. FIX: a TERMINAL resolution
---     ('resolved'/'replayed') whose EFFECTIVE resolved_by_run_id AND
---     resolved_by_output_link_id would BOTH be null RAISES. 'rejected' and the
---     non-terminal states stay lenient. failed_payload/reason never touched.
---
---   P3 (LOW) — get_schema_contract ordered the latest by `schema_version DESC`
---     (TEXT), so 'claim.v9' sorted AFTER 'claim.v10'. FIX: order by the trailing
---     integer of schema_version DESC (true numeric semver), then by
---     effective_from / created_at as a stable tiebreak. Exact-version path
---     (p_schema_version supplied) unchanged.
---
--- (P1b is a harness fix — harness/policy_claims_dlq_workflow.py — not SQL.)
+-- FINDINGS FIXED HERE
+--   F2 (HIGH) cp.quarantine          — stamp source_file_id on the quarantine
+--                                       edge so the quarantine output traces to
+--                                       the raw file (was only in source_ref JSON).
+--   F4 (P1)   cp.get_schema_contract  — "latest" sort: replace the broken
+--                                       digit-concatenation with a correct,
+--                                       deterministic effective/recency order.
+--   F5 (P2)   cp.developer_diagnostics — active_visibility_conflict GROUP BY now
+--                                       mirrors the FULL uq_target_visibility_active
+--                                       column set (no false positives).
+--   F6 (P2)   cp.reconcile_workflow    — deterministic terminal-run tiebreak (seq),
+--                                       DLQ no longer double-counts after replay,
+--                                       sink_out includes detail_to_aggregate.
+--   F8 (P2)   ods.orders               — CHECK guaranteeing the dual _ods_* mirror
+--                                       columns stay consistent (rename shelved).
 
-
--- ======================================================================
--- SUPERSEDED: cp.developer_diagnostics(text, text) as defined in
---   027_diagnostics.sql is REPLACED below (same signature). 027's other
---   read helpers (dashboard_file_usage / _target_row_trace / _airflow_lookup)
---   remain authoritative. P1a + P2a are the only body changes; every other 027
---   check is reproduced verbatim.
+-- =====================================================================
+-- F2 — cp.quarantine: trace the quarantine output to the raw file.
 --
---   *** This 029 body is itself SUPERSEDED by 030_audit_fixes.sql (F5). ***
---   030 re-declares cp.developer_diagnostics (same signature) reproducing this
---   029 body verbatim EXCEPT the 'active_visibility_conflict' check, whose
---   GROUP BY now includes sink_type + target_name (the full
---   uq_target_visibility_active column set) to stop false positives. 030 applies
---   last so its definition wins.
--- ======================================================================
-CREATE OR REPLACE FUNCTION cp.developer_diagnostics(
-    p_workflow_run_id text,
-    p_target_table text DEFAULT NULL
+--   ╔══════════════════════════════════════════════════════════════════════╗
+--   ║ The 023 copy of cp.quarantine (itself the 012/002 lineage) is          ║
+--   ║ SUPERSEDED by this 030 body. 030 applies last so THIS definition wins. ║
+--   ║ ALL prior behaviour is preserved VERBATIM:                             ║
+--   ║   * inserts the cp.dlq row (status='open') with failed_payload,        ║
+--   ║   * writes the first-class 'quarantine' output_link + edge,            ║
+--   ║   * content_hash discriminated by dlq_id (distinct events don't        ║
+--   ║     collapse via ON CONFLICT), path falls back to 'dlq:'||dlq_id,      ║
+--   ║   * stamps quarantine_output_link_id on the dlq row.                   ║
+--   ║ CHANGE: a new TRAILING optional param p_source_file_id (DEFAULT NULL)  ║
+--   ║ is added and, when supplied, STAMPED on the quarantine edge's          ║
+--   ║ source_file_id column (kept ALSO in source_ref). source_file_id is     ║
+--   ║ exempt-but-allowed by the 012 edge_must_anchor CHECK (the CHECK only   ║
+--   ║ EXEMPTS quarantine from REQUIRING an anchor; a non-null one is legal), ║
+--   ║ so the quarantine link now appears in cp.v_provenance with a non-null  ║
+--   ║ source_file_id and trace_row.sql / dashboard_output_trace reach the    ║
+--   ║ raw file instead of dead-ending. The 023 over-claim ("source_ref names ║
+--   ║ the raw file so the quarantine event is anchored to its origin") is    ║
+--   ║ now TRUE at the lineage layer, not merely in JSON.                     ║
+--   ║                                                                        ║
+--   ║ SIGNATURE CHANGE (7 -> 8 params, trailing optional) -> DROP+CREATE.    ║
+--   ║ The new param is the LAST positional arg and defaults to NULL, so      ║
+--   ║ EVERY existing caller (the 5/6/7-arg forms in tests + harness +        ║
+--   ║ control.dlq.quarantine) keeps working unchanged.                       ║
+--   ╚══════════════════════════════════════════════════════════════════════╝
+-- =====================================================================
+DROP FUNCTION IF EXISTS cp.quarantine(uuid, text, text, jsonb, text, bigint, jsonb);
+
+CREATE OR REPLACE FUNCTION cp.quarantine(
+    p_run_id uuid,
+    p_stage text,
+    p_reason text,
+    p_source_ref jsonb,
+    p_payload_ref text,
+    p_record_count bigint,
+    p_failed_payload jsonb DEFAULT NULL::jsonb,
+    p_source_file_id uuid DEFAULT NULL::uuid
 )
-RETURNS TABLE (
-    check_name text,
-    severity text,
-    object_type text,
-    object_id text,
-    message text,
-    details jsonb
-)
+RETURNS uuid
 LANGUAGE plpgsql
+AS $function$
+DECLARE v_dlq uuid; v_link uuid;
+BEGIN
+    INSERT INTO cp.dlq (run_id, stage, reason, source_ref, payload_ref,
+                        record_count, failed_payload, status)
+    VALUES (p_run_id, p_stage, p_reason, p_source_ref, p_payload_ref,
+            p_record_count, p_failed_payload, 'open')
+    RETURNING dlq_id INTO v_dlq;
+    -- First-class quarantine output_link. content_hash discriminated by dlq_id so
+    -- two quarantine events in one run with the same payload_ref do not collapse
+    -- via ON CONFLICT. path falls back to 'dlq:'||dlq_id so target_ref_contract
+    -- (non-empty path + content_hash + non-empty version) holds. Capture the
+    -- returned link id and stamp it on the dlq row (spec quarantine_output_link_id).
+    --
+    -- F2: ALSO stamp the edge's source_file_id with p_source_file_id (when given)
+    -- so the quarantine output traces to the raw file via cp.v_provenance /
+    -- trace_row.sql / dashboard_output_trace. write_lineage_link reads
+    -- source_file_id from each edge object (nullif(elem->>'source_file_id','')),
+    -- so a NULL p_source_file_id is stored as NULL (identical to the pre-030
+    -- behaviour) and the 012 edge_must_anchor exemption still holds. source_ref is
+    -- preserved exactly as before (the raw id remains in the JSON too).
+    v_link := cp.write_lineage_link(
+        p_run_id, 'quarantine',
+        jsonb_build_object(
+            'path', coalesce(nullif(p_payload_ref, ''), 'dlq:' || v_dlq::text),
+            'content_hash', v_dlq::text,
+            'dlq_id', v_dlq,
+            'version', 1),
+        p_record_count,
+        jsonb_build_array(jsonb_build_object(
+            'source_ref', p_source_ref,
+            'source_file_id', p_source_file_id,
+            'edge_type', 'quarantine',
+            'record_count', p_record_count)));
+    UPDATE cp.dlq SET quarantine_output_link_id = v_link WHERE dlq_id = v_dlq;
+    RETURN v_dlq;
+END $function$;
+
+-- =====================================================================
+-- F4 — cp.get_schema_contract: correct, deterministic "latest" order.
+--
+--   ╔══════════════════════════════════════════════════════════════════════╗
+--   ║ The 024-seeded / 029-era copy of cp.get_schema_contract is SUPERSEDED  ║
+--   ║ by this 030 body. 030 applies last so THIS definition wins. Signature  ║
+--   ║ is UNCHANGED (4 args) -> CREATE OR REPLACE suffices.                   ║
+--   ║                                                                        ║
+--   ║ DEFECT (F4): the prior "latest" ORDER BY used                          ║
+--   ║   nullif(regexp_replace(schema_version,'\D','','g'),'')::bigint DESC   ║
+--   ║ which STRIPS all non-digits and CONCATENATES them, so 'claim.v1.2'->12,║
+--   ║ 'v1.10'->110, 'v1.0'->10. Thus v1.10 (110) > v2 (2) and v1.0 ties v10  ║
+--   ║ — "latest" could resolve to the WRONG contract.                        ║
+--   ║                                                                        ║
+--   ║ FIX: order by the currently-effective / most-recently-registered       ║
+--   ║ contract: effective_from DESC NULLS LAST, then created_at DESC. This   ║
+--   ║ is deterministic (created_at DEFAULT clock_timestamp() advances within ║
+--   ║ a txn, so even a single multi-row INSERT gets strictly increasing      ║
+--   ║ created_at and the last-registered version wins) and free of the       ║
+--   ║ digit-concatenation bug. The exact-version path (p_schema_version      ║
+--   ║ given) is UNCHANGED.                                                    ║
+--   ╚══════════════════════════════════════════════════════════════════════╝
+-- =====================================================================
+CREATE OR REPLACE FUNCTION cp.get_schema_contract(
+    p_domain text,
+    p_dataset text,
+    p_layer text,
+    p_schema_version text DEFAULT NULL::text
+)
+RETURNS cp.schema_contract
+LANGUAGE sql
 STABLE
-AS $$
+AS $function$
+    SELECT *
+    FROM cp.schema_contract
+    WHERE domain = p_domain
+      AND dataset = p_dataset
+      AND layer = p_layer
+      AND (p_schema_version IS NULL OR schema_version = p_schema_version)
+    -- "Latest" = the currently-effective / most-recently-registered contract.
+    -- (F4: replaces the broken digit-concatenation order. See banner above.)
+    ORDER BY effective_from DESC NULLS LAST,
+             created_at DESC
+    LIMIT 1;
+$function$;
+
+-- =====================================================================
+-- F5 — cp.developer_diagnostics: active_visibility_conflict GROUP BY now
+--      mirrors the FULL uq_target_visibility_active column set.
+--
+--   ╔══════════════════════════════════════════════════════════════════════╗
+--   ║ The 027/029 copy of cp.developer_diagnostics is SUPERSEDED by this 030 ║
+--   ║ body. 030 applies last so THIS definition wins. Signature + return     ║
+--   ║ type UNCHANGED -> CREATE OR REPLACE suffices. The body is the 029 LIVE ║
+--   ║ body reproduced VERBATIM with EXACTLY ONE change:                      ║
+--   ║                                                                        ║
+--   ║ DEFECT (F5): the 'active_visibility_conflict' check GROUPed BY         ║
+--   ║   (domain, dataset, business_date, replacement_scope, replacement_key) ║
+--   ║ — a SUBSET that OMITS sink_type and target_name. But                   ║
+--   ║ uq_target_visibility_active is UNIQUE on                               ║
+--   ║   (domain,dataset,business_date,sink_type,target_name,                 ║
+--   ║    replacement_scope,replacement_key) WHERE status='Y'. So two         ║
+--   ║ legitimately-distinct active rows (different sink_type/target_name)    ║
+--   ║ were FALSELY flagged as a conflict.                                    ║
+--   ║                                                                        ║
+--   ║ FIX: add tv.sink_type, tv.target_name to the GROUP BY so the           ║
+--   ║ diagnostic mirrors the real invariant — only a true >1-Y-per-key is    ║
+--   ║ flagged. The object_id concat is also widened to include sink_type +   ║
+--   ║ target_name so the reported key is unambiguous.                        ║
+--   ╚══════════════════════════════════════════════════════════════════════╝
+-- =====================================================================
+CREATE OR REPLACE FUNCTION cp.developer_diagnostics(p_workflow_run_id text, p_target_table text DEFAULT NULL::text)
+ RETURNS TABLE(check_name text, severity text, object_type text, object_id text, message text, details jsonb)
+ LANGUAGE plpgsql
+ STABLE
+AS $function$
 DECLARE
     v_schema text;
     v_table text;
@@ -293,17 +397,27 @@ BEGIN
       );
 
     -- ---- visibility conflict: >1 active 'Y' per replacement key --------------
+    -- F5 FIX: GROUP BY the FULL uq_target_visibility_active column set
+    --   (adds sink_type + target_name). The unique index is on
+    --   (domain,dataset,business_date,sink_type,target_name,replacement_scope,
+    --    replacement_key) WHERE status='Y'; mirroring it here means only a TRUE
+    --   >1-active-per-key is flagged. Previously the GROUP BY omitted
+    --   sink_type/target_name, so two legitimately-distinct active rows that
+    --   differed only by sink_type/target_name were FALSELY flagged.
     RETURN QUERY
     SELECT
         'active_visibility_conflict'::text,
         'error'::text,
         'target_visibility'::text,
-        concat(tv.domain, '/', tv.dataset, '/', tv.business_date, '/', tv.replacement_key)::text,
+        concat(tv.domain, '/', tv.dataset, '/', tv.business_date, '/',
+               tv.sink_type, '/', tv.target_name, '/', tv.replacement_key)::text,
         'More than one active target visibility row exists for the same replacement key'::text,
         jsonb_build_object(
             'domain', tv.domain,
             'dataset', tv.dataset,
             'business_date', tv.business_date,
+            'sink_type', tv.sink_type,
+            'target_name', tv.target_name,
             'replacement_scope', tv.replacement_scope,
             'replacement_key', tv.replacement_key,
             'active_output_link_ids', array_agg(tv.lineage_link_id ORDER BY tv.activated_at)
@@ -318,7 +432,8 @@ BEGIN
             AND r.dataset = tv.dataset
             AND r.business_date = tv.business_date
       )
-    GROUP BY tv.domain, tv.dataset, tv.business_date, tv.replacement_scope, tv.replacement_key
+    GROUP BY tv.domain, tv.dataset, tv.business_date, tv.sink_type, tv.target_name,
+             tv.replacement_scope, tv.replacement_key
     HAVING count(*) > 1;
 
     -- ---- Airflow/orchestrator identity missing -------------------------------
@@ -613,166 +728,132 @@ BEGIN
         $fmt$, format('%I.%I', v_schema, v_table), v_schema, v_table)
         USING p_workflow_run_id;
     END IF;
-END $$;
+END $function$;
 
-
--- ======================================================================
--- SUPERSEDED: cp.resolve_dlq(uuid, text, uuid, uuid) as defined in
---   023_dlq_lifecycle.sql is REPLACED below (same signature). P2c: a TERMINAL
---   resolution must be traceable to a run/output.
--- ======================================================================
-CREATE OR REPLACE FUNCTION cp.resolve_dlq(
-    p_dlq_id uuid, p_status text,
-    p_resolved_by_run_id uuid DEFAULT NULL,
-    p_resolved_by_output_link_id uuid DEFAULT NULL
-) RETURNS void LANGUAGE plpgsql AS $$
+-- =====================================================================
+-- F6 — cp.reconcile_workflow: deterministic terminal run, no DLQ
+--      double-count, sink_out includes detail_to_aggregate.
+--
+--   ╔══════════════════════════════════════════════════════════════════════╗
+--   ║ The 015 copy of cp.reconcile_workflow is SUPERSEDED by this 030 body.  ║
+--   ║ 030 applies last so THIS definition wins. Signature + return type      ║
+--   ║ UNCHANGED (1 arg, void) -> CREATE OR REPLACE suffices. The body is the ║
+--   ║ 015 LIVE body reproduced VERBATIM with THREE corrections:              ║
+--   ║                                                                        ║
+--   ║ (a) TERMINAL RUN: was ORDER BY started_at DESC, run_id DESC — a clock  ║
+--   ║     + random-UUID tiebreak. 028 migrated discovery selectors to        ║
+--   ║     seq DESC (deterministic, monotonic). Now: finished_at DESC NULLS   ║
+--   ║     LAST, seq DESC — matches the 028 deterministic tiebreak.           ║
+--   ║                                                                        ║
+--   ║ (b) DLQ ACCOUNTING: was sum(cp.dlq.record_count) over ALL DLQ rows of  ║
+--   ║     the workflow regardless of status -> double-counted after a        ║
+--   ║     replay/resolve (the loss is recovered but still summed as          ║
+--   ║     un-accounted). Now: only count DLQ rows still representing          ║
+--   ║     un-recovered loss — status NOT IN ('resolved','replayed'). A row   ║
+--   ║     that was replayed/resolved no longer inflates dlq_out, so a         ║
+--   ║     post-replay workflow reconciles without a phantom discrepancy.     ║
+--   ║                                                                        ║
+--   ║ (c) SINK_OUT: the canonical_to_sink iteration ignored                  ║
+--   ║     detail_to_aggregate sink outputs. Now both edge types are counted  ║
+--   ║     for the dataset loop AND the per-dataset row count, so the         ║
+--   ║     cross-hop sum is correct for aggregate sinks too.                  ║
+--   ╚══════════════════════════════════════════════════════════════════════╝
+-- =====================================================================
+CREATE OR REPLACE FUNCTION cp.reconcile_workflow(p_workflow_run_id text)
+ RETURNS void
+ LANGUAGE plpgsql
+AS $function$
 DECLARE
-    v_eff_run uuid;
-    v_eff_link uuid;
+    v_raw_in bigint; v_sink_out bigint := 0; v_dlq_out bigint;
+    v_accounted bigint; v_disc bigint; v_status text;
+    v_terminal_run uuid; v_ds text; v_cnt bigint;
 BEGIN
-    -- P2c: for a TERMINAL resolution ('resolved'/'replayed'), compute the
-    -- EFFECTIVE resolution refs (the value that WOULD be stored: the passed arg,
-    -- else the value already on the row). If BOTH would be null the resolution is
-    -- untraceable -> RAISE. 'rejected' and the non-terminal states stay lenient.
-    IF p_status IN ('resolved','replayed') THEN
-        SELECT coalesce(p_resolved_by_run_id, d.resolved_by_run_id),
-               coalesce(p_resolved_by_output_link_id, d.resolved_by_output_link_id)
-          INTO v_eff_run, v_eff_link
-        FROM cp.dlq d
-        WHERE d.dlq_id = p_dlq_id;
-        IF NOT FOUND THEN
-            RAISE EXCEPTION 'resolve_dlq: no dlq row %', p_dlq_id;
+    -- (a) deterministic terminal run: finished_at DESC NULLS LAST, seq DESC
+    --     (matches 028 discovery tiebreak; replaces started_at/run_id DESC).
+    SELECT run_id INTO v_terminal_run FROM cp.run_log
+     WHERE workflow_run_id = p_workflow_run_id
+     ORDER BY finished_at DESC NULLS LAST, seq DESC LIMIT 1;
+    IF v_terminal_run IS NULL THEN
+        RAISE EXCEPTION 'reconcile_workflow: no runs for workflow %', p_workflow_run_id;
+    END IF;
+
+    -- raw_in: rows that ENTERED — the raw_to_curated link counts for this workflow.
+    SELECT coalesce(sum(l.record_count), 0) INTO v_raw_in
+      FROM cp.lineage_link l JOIN cp.run_log r ON r.run_id = l.consumer_run_id
+     WHERE r.workflow_run_id = p_workflow_run_id AND l.edge_type = 'raw_to_curated';
+
+    -- sink_out: actual sink rows, summed over the workflow's distinct datasets
+    -- that have at least one sink-class link (iterate with dynamic %I).
+    -- (c) include detail_to_aggregate (an aggregate output is a sink-class output
+    --     of a dataset too) alongside canonical_to_sink so its rows are counted.
+    FOR v_ds IN
+        SELECT DISTINCT r.dataset
+          FROM cp.lineage_link l JOIN cp.run_log r ON r.run_id = l.consumer_run_id
+         WHERE r.workflow_run_id = p_workflow_run_id
+           AND l.edge_type IN ('canonical_to_sink','detail_to_aggregate')
+    LOOP
+        IF to_regclass('ods.' || quote_ident(v_ds)) IS NULL THEN
+            RAISE EXCEPTION 'reconcile_workflow: target table ods.% does not exist', v_ds;
         END IF;
-        IF v_eff_run IS NULL AND v_eff_link IS NULL THEN
-            RAISE EXCEPTION 'resolve_dlq: a terminal resolution (%) must be traceable to a resolved_by_run_id or resolved_by_output_link_id', p_status
-                USING ERRCODE = 'P0001',
-                      HINT = 'Pass resolved_by_run_id and/or resolved_by_output_link_id (or set them on a prior corrected/replayed step).';
-        END IF;
-    END IF;
+        EXECUTE format(
+            'SELECT count(*) FROM ods.%I t '
+            'JOIN cp.lineage_link l ON l.lineage_link_id = t._ods_lineage_link_id '
+            'JOIN cp.run_log r ON r.run_id = l.consumer_run_id '
+            'WHERE r.workflow_run_id = $1 '
+            '  AND l.edge_type IN (''canonical_to_sink'',''detail_to_aggregate'')',
+            v_ds)
+          INTO v_cnt USING p_workflow_run_id;
+        v_sink_out := v_sink_out + v_cnt;
+    END LOOP;
 
-    UPDATE cp.dlq
-       SET status = p_status,
-           resolved_by_run_id = coalesce(p_resolved_by_run_id, resolved_by_run_id),
-           resolved_by_output_link_id = coalesce(p_resolved_by_output_link_id, resolved_by_output_link_id),
-           replayed_at = CASE WHEN p_status IN ('replayed','resolved')
-                              THEN clock_timestamp() ELSE replayed_at END,
-           replay_run_id = coalesce(p_resolved_by_run_id, replay_run_id)
-     WHERE dlq_id = p_dlq_id;
-    IF NOT FOUND THEN
-        RAISE EXCEPTION 'resolve_dlq: no dlq row %', p_dlq_id;
-    END IF;
-END $$;
+    -- dlq_out: rows quarantined that STILL represent un-recovered loss.
+    -- (b) exclude DLQ rows that were resolved/replayed — that loss has been
+    --     recovered (a replay run re-emitted it) so counting it again would
+    --     double-count it against raw_in.
+    SELECT coalesce(sum(d.record_count), 0) INTO v_dlq_out
+      FROM cp.dlq d JOIN cp.run_log r ON r.run_id = d.run_id
+     WHERE r.workflow_run_id = p_workflow_run_id
+       AND d.status NOT IN ('resolved','replayed');
 
+    v_accounted := v_sink_out + v_dlq_out;
+    v_disc := v_raw_in - v_accounted;
+    v_status := CASE WHEN v_disc = 0 THEN 'ok'
+                     WHEN v_disc > 0 THEN 'breach'
+                     ELSE 'double_count' END;
 
--- ======================================================================
--- SUPERSEDED: cp.get_schema_contract(text, text, text, text) as defined in
---   024_schema_contract.sql is REPLACED below (same signature). P3: pick the
---   latest by NUMERIC semver, not by text order, so 'claim.v10' beats 'claim.v9'.
---   Exact-version path (p_schema_version supplied) is unchanged.
+    INSERT INTO cp.reconciliation_log (run_id, check_type, source_count,
+                                       accounted_count, discrepancy, status, metrics)
+    VALUES (v_terminal_run, 'workflow', v_raw_in, v_accounted, v_disc, v_status,
+            jsonb_build_object('raw_in', v_raw_in, 'sink_out', v_sink_out,
+                               'dlq_out', v_dlq_out,
+                               'workflow_run_id', p_workflow_run_id,
+                               'graph_derived', true));
+END $function$;
+
+-- =====================================================================
+-- F8 — ods.orders: keep the dual _ods_* mirror columns consistent.
 --
---   *** This 029 body is itself SUPERSEDED by 030_audit_fixes.sql (F4). ***
---   The digit-strip+concatenate order below (regexp_replace ... '\D' ... '')::bigint
---   is WRONG for multi-part versions: 'claim.v1.2'->12, 'v1.10'->110, so
---   v1.10 (110) > v2 (2). 030 re-declares cp.get_schema_contract (same signature)
---   to order by effective_from DESC NULLS LAST, created_at DESC (the currently-
---   effective / most-recently-registered contract). 030 applies last so its
---   definition wins. Exact-version path remains unchanged.
--- ======================================================================
-CREATE OR REPLACE FUNCTION cp.get_schema_contract(
-    p_domain text, p_dataset text, p_layer text,
-    p_schema_version text DEFAULT NULL
-) RETURNS cp.schema_contract LANGUAGE sql STABLE AS $$
-    SELECT *
-    FROM cp.schema_contract
-    WHERE domain = p_domain
-      AND dataset = p_dataset
-      AND layer = p_layer
-      AND (p_schema_version IS NULL OR schema_version = p_schema_version)
-    -- "Latest" = highest NUMERIC semver suffix (trailing integer of the version
-    -- tag), so claim.v10 > claim.v9 (text DESC got this WRONG). NULLIF guards a
-    -- version with no digits (-> NULL, sorts last). effective_from / created_at
-    -- are stable tiebreaks ("currently effective / most recently registered").
-    ORDER BY nullif(regexp_replace(schema_version, '\D', '', 'g'), '')::bigint
-                 DESC NULLS LAST,
-             effective_from DESC NULLS LAST,
-             created_at DESC
-    LIMIT 1;
-$$;
-
-
--- ======================================================================
--- P2b — cp.dashboard_file_impact(p_file_id): the DOWNSTREAM-IMPACT view.
---   Every output_link DERIVED from the raw file p_file_id — the canonical, merge,
---   sink and aggregate outputs whose provenance chain reaches that file, NOT just
---   the direct ingest edge that cp.dashboard_file_usage returns.
+--   The output_link physical rename is SHELVED (intentional, see spec
+--   2026-05-30-output-link-input-edge-rename.md). Target tables therefore carry
+--   BOTH _ods_lineage_link_id (the authoritative FK, written by every
+--   reconciler) AND _ods_output_link_id (the additive new-name mirror, read by
+--   diagnostics / row trace). If a writer ever stamped one and not the other,
+--   reconcilers and diagnostics would diverge SILENTLY.
 --
---   WHY A DESCENDANT WALK (not `WHERE v_provenance.source_file_id = p_file_id`):
---   cp.v_provenance walks UPSTREAM and only emits source_file_id on the raw
---   ingest edge itself — it does NOT propagate that file id down to descendant
---   outputs. So the file impact is the DOWNSTREAM closure: start at the output
---   link(s) whose own edge names source_file_id = p_file_id (the raw_to_curated
---   leaves), then follow link->link adjacency DOWNWARD via
---   lineage_edge.upstream_lineage_link_id (the mirror of trace_row.sql's upstream
---   walk) to every output that consumed them, transitively. A CYCLE guard mirrors
---   the v_provenance / trace_row guards so a forged cyclic upstream_lineage_link_id
---   cannot hang the walk.
--- ======================================================================
-CREATE OR REPLACE FUNCTION cp.dashboard_file_impact(p_file_id uuid)
-RETURNS TABLE (
-    output_link_id uuid,
-    edge_type text,
-    consumer_run_id uuid,
-    workflow_run_id text,
-    pipeline_type text,
-    dataset text,
-    business_date date,
-    run_status text,
-    record_count bigint,
-    target_ref jsonb
-)
-LANGUAGE plpgsql
-STABLE
-AS $$
-BEGIN
-    IF p_file_id IS NULL THEN
-        RAISE EXCEPTION 'dashboard_file_impact: file_id is required'
-            USING ERRCODE = 'P0001',
-                  HINT = 'Pass a cp.file_catalogue.file_id.';
-    END IF;
-
-    IF NOT EXISTS (SELECT 1 FROM cp.file_catalogue fc WHERE fc.file_id = p_file_id) THEN
-        RAISE EXCEPTION 'dashboard_file_impact: file_id % not found', p_file_id
-            USING ERRCODE = 'P0001',
-                  HINT = 'Query cp.file_catalogue for available file ids.';
-    END IF;
-
-    RETURN QUERY
-    WITH RECURSIVE impact AS (
-        -- anchor: every link whose OWN edge derived directly from this raw file.
-        SELECT DISTINCT e.lineage_link_id
-        FROM cp.lineage_edge e
-        WHERE e.source_file_id = p_file_id
-      UNION ALL
-        -- recurse DOWNSTREAM: any link whose edge names an in-set link as its
-        -- exact upstream output (link->link adjacency).
-        SELECT de.lineage_link_id
-        FROM impact i
-        JOIN cp.lineage_edge de ON de.upstream_lineage_link_id = i.lineage_link_id
-    )
-    CYCLE lineage_link_id SET is_cycle USING path
-    SELECT
-        ol.output_link_id,
-        ol.edge_type,
-        ol.consumer_run_id,
-        r.workflow_run_id,
-        r.pipeline_type,
-        r.dataset,
-        r.business_date,
-        r.status,
-        ol.record_count,
-        ol.target_ref
-    FROM cp.output_link ol
-    JOIN cp.run_log r ON r.run_id = ol.consumer_run_id
-    WHERE ol.output_link_id IN (SELECT DISTINCT lineage_link_id FROM impact)
-    ORDER BY r.started_at, ol.created_at, ol.output_link_id;
-END $$;
+--   This CHECK makes that divergence impossible at the storage layer: when both
+--   columns are present, they MUST be equal. A null on either side is tolerated
+--   (the mirror is additive / best-effort and pre-018 rows have NULL mirror), so
+--   this never breaks an existing or partial write — it only forbids two
+--   DIFFERENT non-null ids. These mirror columns MUST stay equal for as long as
+--   the rename is shelved; do NOT un-shelve here.
+--
+--   The harness ensure_*targets create the demo tables ad-hoc and are FIX-B's
+--   domain; the SAME CHECK should be added to those DDLs there. Here we add it
+--   only for the core ods.orders target.
+-- =====================================================================
+ALTER TABLE ods.orders DROP CONSTRAINT IF EXISTS ods_orders_link_mirror_consistent;
+ALTER TABLE ods.orders ADD CONSTRAINT ods_orders_link_mirror_consistent CHECK (
+    _ods_output_link_id IS NULL
+    OR _ods_lineage_link_id IS NULL
+    OR _ods_output_link_id = _ods_lineage_link_id
+);

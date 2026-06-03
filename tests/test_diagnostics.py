@@ -260,6 +260,12 @@ def test_target_row_workflow_mismatch(conn):
 # visibility / orchestrator / recon anomalies
 # --------------------------------------------------------------------------- #
 def test_visibility_conflict(conn):
+    """F5 (migration 030): the diagnostic now mirrors the FULL
+    uq_target_visibility_active key. A TRUE conflict = >1 active 'Y' row with the
+    SAME (domain,dataset,business_date,sink_type,target_name,replacement_scope,
+    replacement_key). The unique index normally PREVENTS that state, so to
+    materialise the anomaly the detector must catch we drop the index within this
+    rolled-back txn, then insert two identical-key active rows."""
     run_id, wf = _new_run(conn, status="succeeded", finished=True,
                           dataset="orders", domain="sales")
     link_a = _output_link(conn, run_id, edge_type="canonical_to_sink",
@@ -267,22 +273,50 @@ def test_visibility_conflict(conn):
     link_b = _output_link(conn, run_id, edge_type="canonical_to_sink",
                           sink_type="postgres",
                           target_ref={"path": "p2", "content_hash": "h2", "version": 1})
-    # The active-slice unique index keys on target_name too, so the two active
-    # rows differ ONLY by target_name. The diagnostic groups by replacement_key
-    # (not target_name), so they still form a conflict for the SAME key.
-    for link, target_name in ((link_a, "ods.orders_a"), (link_b, "ods.orders_b")):
+    conn.execute("DROP INDEX ods.uq_target_visibility_active")  # txn-local, rolled back
+    for link in (link_a, link_b):
         conn.execute(
             """
             INSERT INTO ods.target_visibility
                 (domain, dataset, business_date, sink_type, target_name,
                  lineage_link_id, producer_run_id, workflow_run_id,
                  replacement_scope, replacement_key, status)
-            VALUES (%s,%s,%s,'postgres',%s,%s,%s,%s,
+            VALUES (%s,%s,%s,'postgres','ods.orders',%s,%s,%s,
                     'business_date','sales/orders/2026-06-02','Y')
             """,
-            ["sales", "orders", BD, target_name, link, run_id, wf],
+            ["sales", "orders", BD, link, run_id, wf],
         )
     assert "active_visibility_conflict" in _checks(_diagnose(conn, wf))
+
+
+def test_no_false_visibility_conflict_distinct_sink_type_or_target(conn):
+    """F5: two legitimately-distinct active rows that differ ONLY by sink_type or
+    target_name (permitted by uq_target_visibility_active) must NOT be flagged as
+    a conflict — the OLD GROUP BY omitted those columns and falsely flagged them."""
+    run_id, wf = _new_run(conn, status="succeeded", finished=True,
+                          dataset="orders", domain="sales")
+    link_a = _output_link(conn, run_id, edge_type="canonical_to_sink",
+                          sink_type="postgres")
+    link_b = _output_link(conn, run_id, edge_type="canonical_to_sink",
+                          sink_type="kafka",
+                          target_ref={"path": "p2", "content_hash": "h2", "version": 1})
+    # Differ by sink_type AND target_name — two distinct legitimate sinks of the
+    # same slice. The unique index permits both 'Y' rows simultaneously.
+    for link, stype, tname in ((link_a, "postgres", "ods.orders"),
+                               (link_b, "kafka", "topic.orders")):
+        conn.execute(
+            """
+            INSERT INTO ods.target_visibility
+                (domain, dataset, business_date, sink_type, target_name,
+                 lineage_link_id, producer_run_id, workflow_run_id,
+                 replacement_scope, replacement_key, status)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,
+                    'business_date','sales/orders/2026-06-02','Y')
+            """,
+            ["sales", "orders", BD, stype, tname, link, run_id, wf],
+        )
+    assert "active_visibility_conflict" not in _checks(_diagnose(conn, wf)), \
+        "two distinct active rows were FALSELY flagged as a visibility conflict"
 
 
 def test_airflow_identity_missing(conn):

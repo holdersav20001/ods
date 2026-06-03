@@ -131,6 +131,45 @@ def test_fk_ods_orders_lineage_link_id(conn):
                 (json.dumps({"k": 1}), _bogus()))
 
 
+# --------------------------------------------------------------------------- #
+# F8 — dual _ods_* mirror columns must stay consistent (rename shelved).
+# --------------------------------------------------------------------------- #
+def test_ods_orders_mismatched_ods_link_columns_rejected(conn):
+    """F8 (migration 030): the output_link rename is SHELVED, so ods.orders
+    carries BOTH _ods_lineage_link_id (FK) and _ods_output_link_id (mirror). A
+    row whose two columns name DIFFERENT non-null ids would let reconcilers (read
+    old col) and diagnostics (read new col) diverge silently — the CHECK rejects
+    it."""
+    run_id = _real_run(conn)
+    link_a = _real_link(conn, run_id)
+    link_b = _real_link(conn, run_id)
+    assert str(link_a) != str(link_b)
+    with pytest.raises(psycopg.errors.CheckViolation):
+        with conn.transaction():
+            conn.execute(
+                "INSERT INTO ods.orders "
+                "(payload, _ods_lineage_link_id, _ods_output_link_id) "
+                "VALUES (%s,%s,%s)",
+                (json.dumps({"k": 1}), link_a, link_b))
+
+
+def test_ods_orders_equal_or_null_ods_link_columns_accepted(conn):
+    """F8: equal ids (the normal write_link_then_rows shape) and a NULL mirror
+    (pre-018 / additive) are both accepted — the CHECK only forbids two DIFFERENT
+    non-null ids."""
+    run_id = _real_run(conn)
+    link = _real_link(conn, run_id)
+    # equal ids -> accepted
+    conn.execute(
+        "INSERT INTO ods.orders "
+        "(payload, _ods_lineage_link_id, _ods_output_link_id) VALUES (%s,%s,%s)",
+        (json.dumps({"k": 1}), link, link))
+    # null mirror -> accepted
+    conn.execute(
+        "INSERT INTO ods.orders (payload, _ods_lineage_link_id) VALUES (%s,%s)",
+        (json.dumps({"k": 2}), link))
+
+
 def test_fk_dlq_run_id(conn):
     with pytest.raises(psycopg.errors.ForeignKeyViolation):
         with conn.transaction():

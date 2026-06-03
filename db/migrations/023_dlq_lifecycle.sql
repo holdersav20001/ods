@@ -69,6 +69,16 @@ ALTER TABLE cp.dlq ADD CONSTRAINT dlq_status_enum
 --   param would otherwise sit ALONGSIDE the 6-arg function (CREATE OR REPLACE
 --   only replaces a same-signature function), making a 6-arg call ambiguous
 --   ('function cp.quarantine(...) is not unique'). One signature only.
+--
+--   *** SUPERSEDED by 030_audit_fixes.sql (F2). ***
+--   This 7-arg body is dropped + re-declared in 030 with an 8th trailing
+--   optional param p_source_file_id (DEFAULT NULL) that is STAMPED on the
+--   quarantine edge's source_file_id, so the quarantine output traces to the raw
+--   file (it formerly dead-ended: the raw id lived only in source_ref JSON).
+--   030 applies last so its 8-arg definition wins. All 5/6/7-arg callers keep
+--   working (the new param defaults to NULL). The "source_ref names the raw file
+--   so the quarantine event is anchored to its origin" claim below is now TRUE
+--   at the lineage layer, not merely in JSON.
 -- =====================================================================
 DROP FUNCTION IF EXISTS cp.quarantine(uuid, text, text, jsonb, text, bigint);
 

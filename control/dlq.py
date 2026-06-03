@@ -10,16 +10,25 @@ from . import runs
 
 
 def quarantine(conn, *, run_id, stage, reason, source_ref, payload_ref,
-               record_count, failed_payload=None, commit=True) -> str:
+               record_count, failed_payload=None, source_file_id=None,
+               commit=True) -> str:
     """Quarantine a failed batch: writes a cp.dlq row (status='open'), a
     first-class 'quarantine' output_link + edge, and stamps the dlq row with the
     quarantine_output_link_id. ``failed_payload`` is the actual rejected row(s),
     preserved verbatim and never overwritten.
+
+    ``source_file_id`` (F2, OPTIONAL) is the raw file the quarantined rows came
+    from. When supplied it is STAMPED on the quarantine edge's source_file_id, so
+    the quarantine output traces back to the raw file via cp.v_provenance /
+    trace_row.sql / dashboard_output_trace (the raw id is also kept in
+    source_ref). Omitting it preserves the pre-F2 behaviour exactly (a NULL
+    source_file_id, exempt by the 012 edge_must_anchor CHECK).
     """
     dlq_id = conn.execute(
-        "SELECT cp.quarantine(%s,%s,%s,%s,%s,%s,%s)",
+        "SELECT cp.quarantine(%s,%s,%s,%s,%s,%s,%s,%s)",
         [run_id, stage, reason, Jsonb(source_ref), payload_ref, record_count,
-         Jsonb(failed_payload) if failed_payload is not None else None],
+         Jsonb(failed_payload) if failed_payload is not None else None,
+         source_file_id],
     ).fetchone()[0]
     if commit:
         conn.commit()

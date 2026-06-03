@@ -127,6 +127,224 @@ def test_quarantine_output_is_first_class_and_good_traces_to_raw(conn):
     assert sib == 2  # raw_to_curated + quarantine
 
 
+# ---- F2: quarantine output traces to the RAW file -----------------------------
+
+def test_quarantine_output_traces_to_raw_via_source_file_id(conn):
+    """F2 (migration 030): when cp.quarantine is given p_source_file_id it stamps
+    the quarantine EDGE's source_file_id, so the quarantine output_link appears in
+    cp.v_provenance WITH that raw file id (no longer NULL / dead-ending), and
+    trace_row.sql + dashboard_output_trace reach the raw S3 path from the
+    quarantine link. source_ref still carries the raw id too."""
+    run_id, _ = _run(conn)
+    fid = _raw_file(conn)
+    raw_path = conn.execute(
+        "SELECT s3_raw_path FROM cp.file_catalogue WHERE file_id=%s", (fid,)
+    ).fetchone()[0]
+
+    dlq_id = conn.execute(
+        "SELECT cp.quarantine(%s,'validate','claim_amount must be >= 0',%s,%s,%s,%s,%s)",
+        (run_id, json.dumps({"raw_file_id": str(fid)}),
+         "s3://dlq/insurance/claim/2026-05-29/errors.json", 1,
+         json.dumps({"policy_id": "P1", "claim_amount": -5}), str(fid)),
+    ).fetchone()[0]
+    qlink = conn.execute(
+        "SELECT quarantine_output_link_id FROM cp.dlq WHERE dlq_id=%s", (dlq_id,)
+    ).fetchone()[0]
+
+    # the quarantine link is in provenance AND now anchors to the raw file id
+    anchored = conn.execute(
+        "SELECT count(*) FROM cp.v_provenance "
+        "WHERE lineage_link_id=%s AND edge_type='quarantine' AND source_file_id=%s",
+        (qlink, str(fid)),
+    ).fetchone()[0]
+    assert anchored == 1, "quarantine link did not anchor to the raw source_file_id"
+
+    # source_ref STILL carries the raw id (kept, not replaced)
+    sref = conn.execute(
+        "SELECT source_ref->>'raw_file_id' FROM cp.lineage_edge "
+        "WHERE lineage_link_id=%s AND edge_type='quarantine'", (qlink,)
+    ).fetchone()[0]
+    assert sref == str(fid)
+
+    # trace_row.sql from the quarantine link reaches the raw file + raw path
+    sql = open("control/queries/trace_row.sql").read()
+    rows = conn.execute(sql, {"link_id": qlink}).fetchall()
+    cols = [d.name for d in conn.execute(sql, {"link_id": qlink}).description]
+    sfi = cols.index("source_file_id")
+    rsp = cols.index("raw_s3_path")
+    assert any(str(r[sfi]) == str(fid) and r[rsp] == raw_path for r in rows), \
+        "trace_row.sql did not reach the raw file from the quarantine link"
+
+    # dashboard_output_trace(quarantine_link) returns the raw path
+    dash = conn.execute(
+        "SELECT count(*) FROM cp.dashboard_output_trace(%s) "
+        "WHERE source_file_id=%s AND raw_s3_path=%s", (qlink, str(fid), raw_path)
+    ).fetchone()[0]
+    assert dash == 1
+
+
+def test_quarantine_without_source_file_id_still_works(conn):
+    """F2: p_source_file_id is OPTIONAL — omitting it preserves the pre-030
+    behaviour (a NULL source_file_id on the quarantine edge, exempt by the 012
+    edge_must_anchor CHECK). The 7-arg form still works."""
+    run_id, _ = _run(conn)
+    dlq_id = conn.execute(
+        "SELECT cp.quarantine(%s,'validate','bad',%s,%s,%s,%s)",
+        (run_id, json.dumps({}), "s3://dlq/e.json", 1, json.dumps({"x": 1})),
+    ).fetchone()[0]
+    qlink = conn.execute(
+        "SELECT quarantine_output_link_id FROM cp.dlq WHERE dlq_id=%s", (dlq_id,)
+    ).fetchone()[0]
+    sfi = conn.execute(
+        "SELECT source_file_id FROM cp.lineage_edge WHERE lineage_link_id=%s",
+        (qlink,)
+    ).fetchone()[0]
+    assert sfi is None
+
+
+def test_python_quarantine_passes_source_file_id(conn):
+    """F2: control.dlq.quarantine accepts source_file_id and stamps the edge."""
+    run_id, _ = _run(conn)
+    fid = _raw_file(conn)
+    dlq_id = dlq.quarantine(
+        conn, run_id=run_id, stage="validate", reason="bad",
+        source_ref={"raw_file_id": str(fid)}, payload_ref="s3://dlq/e.json",
+        record_count=1, failed_payload={"x": 1}, source_file_id=str(fid),
+        commit=False,
+    )
+    qlink = conn.execute(
+        "SELECT quarantine_output_link_id FROM cp.dlq WHERE dlq_id=%s", (dlq_id,)
+    ).fetchone()[0]
+    assert str(conn.execute(
+        "SELECT source_file_id FROM cp.lineage_edge WHERE lineage_link_id=%s",
+        (qlink,)
+    ).fetchone()[0]) == str(fid)
+
+
+# ---- F6: reconcile_workflow accounting + deterministic terminal run -----------
+
+def _full_workflow(conn, wf, raw=4, dlq_n=0, dlq_status="open"):
+    """Build a single-dataset (orders/sales) workflow: an ingestion run with a
+    raw_to_curated link (raw rows), and a sink run with canonical_to_sink rows in
+    ods.orders. Optionally quarantine dlq_n rows on the ingestion run. Returns
+    (ingest_run, sink_run)."""
+    fid = conn.execute(
+        "SELECT cp.register_file(%s,%s,%s,'sales','orders')",
+        (f"s3://raw/{uuid4()}.csv", uuid4().hex, BD),
+    ).fetchone()[0]
+    ir = conn.execute(
+        "SELECT cp.start_run(%s,'ingestion','sales','orders',%s,'manual',%s)",
+        (wf, BD, fid),
+    ).fetchone()[0]
+    good = raw - dlq_n
+    raw_link = conn.execute(
+        "SELECT cp.write_lineage_link(%s,'raw_to_curated',%s,%s,%s)",
+        (ir, json.dumps({"path": "s3://silver/o", "content_hash": uuid4().hex,
+                         "version": 1}), raw,
+         json.dumps([{"edge_type": "raw_to_curated", "source_file_id": str(fid),
+                      "source_ref": {}, "record_count": raw}])),
+    ).fetchone()[0]
+    if dlq_n:
+        dlq.quarantine(conn, run_id=ir, stage="validate", reason="bad",
+                       source_ref={"raw_file_id": str(fid)},
+                       payload_ref="s3://dlq/o.json", record_count=dlq_n,
+                       failed_payload={"x": 1}, source_file_id=str(fid),
+                       commit=False)
+    cr = conn.execute(
+        "SELECT cp.start_run(%s,'canonicalize','sales','orders',%s,'manual')",
+        (wf, BD),
+    ).fetchone()[0]
+    canon = conn.execute(
+        "SELECT cp.write_lineage_link(%s,'curated_to_canonical',%s,%s,%s)",
+        (cr, json.dumps({"path": "s3://gold/o", "content_hash": uuid4().hex,
+                         "version": 1}), good,
+         json.dumps([{"edge_type": "curated_to_canonical",
+                      "upstream_run_id": str(ir),
+                      "upstream_lineage_link_id": str(raw_link),
+                      "source_ref": {}, "record_count": good}])),
+    ).fetchone()[0]
+    sr = conn.execute(
+        "SELECT cp.start_run(%s,'sink','sales','orders',%s,'manual')",
+        (wf, BD),
+    ).fetchone()[0]
+    conn.execute(
+        "SELECT cp.write_link_then_rows(%s,'canonical_to_sink',%s,%s,%s,%s,'postgres')",
+        (sr, json.dumps({"path": "ods.orders", "content_hash": uuid4().hex,
+                         "version": 1}), good,
+         json.dumps([{"edge_type": "canonical_to_sink", "upstream_run_id": str(cr),
+                      "upstream_lineage_link_id": str(canon), "source_ref": {},
+                      "record_count": good}]),
+         json.dumps([{"order_id": i} for i in range(good)])),
+    )
+    return ir, sr
+
+
+def test_reconcile_workflow_healthy_is_ok(conn):
+    """F6: a balanced workflow (4 raw -> 4 sink, no dlq) reconciles ok."""
+    wf = str(uuid4())
+    _full_workflow(conn, wf, raw=4, dlq_n=0)
+    conn.execute("SELECT cp.reconcile_workflow(%s)", (wf,))
+    row = conn.execute(
+        "SELECT status, discrepancy, metrics FROM cp.reconciliation_log "
+        "WHERE check_type='workflow' AND metrics->>'workflow_run_id'=%s", (wf,)
+    ).fetchone()
+    assert row[0] == "ok" and row[1] == 0
+    assert row[2]["raw_in"] == 4 and row[2]["sink_out"] == 4 and row[2]["dlq_out"] == 0
+
+
+def test_reconcile_workflow_no_dlq_double_count_after_replay(conn):
+    """F6 (b): 4 raw, 3 sink + 1 quarantined reconciles ok WHILE the dlq row is
+    open (3 + 1 == 4). After the dlq row is replayed/resolved its loss is
+    recovered, so it must NO LONGER be summed into dlq_out (else 3 + 1 == 4 would
+    become a phantom over-count once the replay also lands rows). Proven by:
+    open -> dlq_out=1; resolved -> dlq_out=0."""
+    wf = str(uuid4())
+    ir, _ = _full_workflow(conn, wf, raw=4, dlq_n=1)
+    # while open: 3 sink + 1 open dlq == 4 raw, ok
+    conn.execute("SELECT cp.reconcile_workflow(%s)", (wf,))
+    m1 = conn.execute(
+        "SELECT status, metrics FROM cp.reconciliation_log "
+        "WHERE check_type='workflow' AND metrics->>'workflow_run_id'=%s "
+        "ORDER BY recon_id DESC LIMIT 1", (wf,)
+    ).fetchone()
+    assert m1[1]["dlq_out"] == 1 and m1[0] == "ok"
+
+    # replay/resolve the dlq row: its loss is recovered, no longer un-accounted.
+    dlq_id = conn.execute(
+        "SELECT dlq_id FROM cp.dlq WHERE run_id=%s", (ir,)
+    ).fetchone()[0]
+    conn.execute("SELECT cp.resolve_dlq(%s,'resolved',%s)", (dlq_id, ir))
+    conn.execute("SELECT cp.reconcile_workflow(%s)", (wf,))
+    m2 = conn.execute(
+        "SELECT metrics FROM cp.reconciliation_log "
+        "WHERE check_type='workflow' AND metrics->>'workflow_run_id'=%s "
+        "ORDER BY recon_id DESC LIMIT 1", (wf,)
+    ).fetchone()
+    assert m2[0]["dlq_out"] == 0, "resolved dlq row was still double-counted"
+
+
+def test_reconcile_workflow_terminal_run_chosen_by_seq(conn):
+    """F6 (a): the terminal run is chosen by finished_at DESC NULLS LAST, seq DESC
+    (the 028 deterministic tiebreak). The sink run (highest seq, finalised last)
+    must be the reconciliation_log.run_id."""
+    wf = str(uuid4())
+    _ir, sr = _full_workflow(conn, wf, raw=2, dlq_n=0)
+    # finalise the sink run last so it is unambiguously terminal (sets finished_at)
+    conn.execute("SELECT cp.patch_run(%s,%s)", (sr, json.dumps({"status": "succeeded"})))
+    conn.execute("SELECT cp.reconcile_workflow(%s)", (wf,))
+    term = conn.execute(
+        "SELECT run_id FROM cp.reconciliation_log "
+        "WHERE check_type='workflow' AND metrics->>'workflow_run_id'=%s "
+        "ORDER BY recon_id DESC LIMIT 1", (wf,)
+    ).fetchone()[0]
+    # the chosen terminal run is the one with the max seq for this workflow
+    max_seq_run = conn.execute(
+        "SELECT run_id FROM cp.run_log WHERE workflow_run_id=%s "
+        "ORDER BY finished_at DESC NULLS LAST, seq DESC LIMIT 1", (wf,)
+    ).fetchone()[0]
+    assert str(term) == str(max_seq_run)
+
+
 # ---- recon consistency: input rows = good rows + dlq rows ---------------------
 
 def test_quarantine_recon_input_equals_good_plus_dlq(conn):

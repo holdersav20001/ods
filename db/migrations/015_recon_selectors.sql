@@ -155,6 +155,15 @@ END $$;
 --   accounted = sink_out + dlq_out; discrepancy = raw_in - accounted.
 --   reconciliation_log.run_id = the terminal run of the workflow (latest
 --   started_at); the workflow_run_id is also recorded in metrics.
+--
+--   *** SUPERSEDED by 030_audit_fixes.sql (F6). ***
+--   030 re-declares cp.reconcile_workflow (same signature) reproducing this body
+--   with three corrections: (a) terminal run ordered by finished_at DESC NULLS
+--   LAST, seq DESC (the 028 deterministic tiebreak) instead of started_at/run_id;
+--   (b) dlq_out counts only un-recovered loss (status NOT IN
+--   ('resolved','replayed')) so a replay/resolve does not double-count;
+--   (c) sink_out includes detail_to_aggregate sink outputs, not just
+--   canonical_to_sink. 030 applies last so its definition wins.
 -- =====================================================================
 CREATE OR REPLACE FUNCTION cp.reconcile_workflow(
     p_workflow_run_id text
