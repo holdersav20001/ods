@@ -647,6 +647,12 @@ def test_every_cp_function_is_asserted(conn):
         # 024: schema-validation contract fetch — round-trip below
         # (test_get_schema_contract_*).
         "get_schema_contract",
+        # 027: optional support/developer lookup helpers — round-trips in
+        # tests/test_diagnostics.py (test_dashboard_*_round_trip). The
+        # strengthened developer_diagnostics keeps the same signature (already
+        # asserted above) and is anomaly-covered in tests/test_diagnostics.py.
+        "dashboard_file_usage", "dashboard_target_row_trace",
+        "dashboard_airflow_lookup",
     }
     missing = fns - ASSERTED
     assert not missing, f"cp functions with no contract assertion: {missing}"
